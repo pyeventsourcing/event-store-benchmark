@@ -663,8 +663,37 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
         f.write(html)
 
 
-def generate_top_level_index(out_base: Path, workflow_summaries):
+def generate_top_level_index(out_base: Path, workflow_summaries, env_info=None):
     """Generate top-level index.html that links to individual workflow reports."""
+
+    env_section = ""
+    if env_info:
+        env_section = f"""
+    <h2>Environment Information</h2>
+    <div class='workflow-section'>
+      <div class='row'>
+        <div class='card'>
+          <h3>System</h3>
+          <p><b>CPU:</b> {env_info.get('cpu', {}).get('model', 'N/A')} ({env_info.get('cpu', {}).get('cores', 'N/A')} cores)</p>
+          <p><b>Kernel:</b> {env_info.get('kernel', 'N/A')}</p>
+          <p><b>Memory:</b> {env_info.get('memory', {}).get('total_bytes', 0) // (1024**3)} GB total</p>
+        </div>
+        <div class='card'>
+          <h3>Filesystem & Disk</h3>
+          <p><b>FS Type:</b> {env_info.get('filesystem', {}).get('type', 'N/A')}</p>
+          <p><b>Disk Size:</b> {env_info.get('filesystem', {}).get('disk_size_bytes', 0) // (1024**3)} GB</p>
+          <p><b>Seq Write:</b> {env_info.get('disk', {}).get('sequential_write_bw_bytes_per_sec', 0) / (1024**2):.2f} MB/s</p>
+          <p><b>Seq Read:</b> {env_info.get('disk', {}).get('sequential_read_bw_bytes_per_sec', 0) / (1024**2):.2f} MB/s</p>
+          <p><b>Concurrent Read (4x):</b> {env_info.get('disk', {}).get('concurrent_read_bw_bytes_per_sec', 0) / (1024**2):.2f} MB/s</p>
+        </div>
+        <div class='card'>
+          <h3>Fsync Latency</h3>
+          <p><b>p50:</b> {env_info.get('fsync_latency_ns', {}).get('p50', 0) / 1000:.2f} μs</p>
+          <p><b>p95:</b> {env_info.get('fsync_latency_ns', {}).get('p95', 0) / 1000:.2f} μs</p>
+          <p><b>p99:</b> {env_info.get('fsync_latency_ns', {}).get('p99', 0) / 1000:.2f} μs</p>
+        </div>
+      </div>
+    </div>"""
 
     workflow_sections = ""
     for workflow_name, summary in sorted(workflow_summaries.items()):
@@ -716,7 +745,8 @@ def generate_top_level_index(out_base: Path, workflow_summaries):
 </head>
 <body>
   <h1>Event Store Benchmark Suite</h1>
-  <p>Select a workflow to view detailed benchmark results:</p>
+  {env_section}
+  <h2>Workload Reports</h2>
   {workflow_sections}
 </body>
 </html>
@@ -748,6 +778,16 @@ def main():
     if not runs:
         print(f"No runs found in {raw_dir}")
         return
+
+    # Load environment info if available
+    env_info = None
+    env_check_file = raw_dir / "env_check.json"
+    if env_check_file.exists():
+        try:
+            with open(env_check_file, "r") as f:
+                env_info = json.load(f)
+        except Exception as e:
+            print(f"Warning: Could not load {env_check_file}: {e}")
 
     # Generate individual reports for each run
     for run in runs:
@@ -842,7 +882,7 @@ def main():
         }
 
     # Generate top-level index
-    generate_top_level_index(out_base, workflow_summaries)
+    generate_top_level_index(out_base, workflow_summaries, env_info)
     print(f"\nTop-level index written to {out_base}/index.html")
 
 

@@ -39,6 +39,40 @@ fio --name=write_test \
 WRITE_BW_BYTES=$(jq '.jobs[0].write.bw_bytes' write.json)
 
 # -------------------------
+# SEQUENTIAL READ TEST
+# -------------------------
+fio --name=read_test \
+    --filename=read_test_file \
+    --size=512M \
+    --bs=1M \
+    --rw=read \
+    --direct=1 \
+    --iodepth=1 \
+    --numjobs=1 \
+    --output-format=json > read.json
+
+READ_BW_BYTES=$(jq '.jobs[0].read.bw_bytes' read.json)
+
+# -------------------------
+# CONCURRENT READ TEST (Assess Scaling)
+# -------------------------
+# We use multiple jobs to see if throughput scales with concurrency.
+# Note: we use the same file to simulate concurrent access to a shared resource, 
+# or multiple files if preferred. fio by default creates separate files per job if filename is not fixed.
+# To test scaling, we'll use 4 concurrent jobs.
+fio --name=concurrent_read_test \
+    --size=512M \
+    --bs=1M \
+    --rw=read \
+    --direct=1 \
+    --iodepth=1 \
+    --numjobs=4 \
+    --group_reporting \
+    --output-format=json > concurrent_read.json
+
+CONCURRENT_READ_BW_BYTES=$(jq '.jobs[0].read.bw_bytes' concurrent_read.json)
+
+# -------------------------
 # FSYNC LATENCY TEST
 # -------------------------
 fio --name=fsync_test \
@@ -68,6 +102,8 @@ jq -n \
   --argjson mem_available "$MEM_AVAILABLE_BYTES" \
   --argjson disk_size "$DISK_SIZE_BYTES" \
   --argjson write_bw "$WRITE_BW_BYTES" \
+  --argjson read_bw "$READ_BW_BYTES" \
+  --argjson concurrent_read_bw "$CONCURRENT_READ_BW_BYTES" \
   --argjson fsync_p50 "$FSYNC_P50_NS" \
   --argjson fsync_p95 "$FSYNC_P95_NS" \
   --argjson fsync_p99 "$FSYNC_P99_NS" \
@@ -86,7 +122,9 @@ jq -n \
       disk_size_bytes: $disk_size
     },
     disk: {
-      sequential_write_bw_bytes_per_sec: $write_bw
+      sequential_write_bw_bytes_per_sec: $write_bw,
+      sequential_read_bw_bytes_per_sec: $read_bw,
+      concurrent_read_bw_bytes_per_sec: $concurrent_read_bw
     },
     fsync_latency_ns: {
       p50: $fsync_p50,
