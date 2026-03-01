@@ -1,11 +1,9 @@
 use anyhow::Result;
-use bench_core::adapter::ConnectionParams;
-use bench_core::{run_workload, AdapterFactory, RunOptions, WorkflowFactory, WorkloadFile};
+use bench_core::{run_workload, StoreManagerFactory, WorkloadFactory};
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -25,7 +23,7 @@ enum Commands {
         /// Store adapter name (e.g., umadb)
         #[arg(long)]
         store: String,
-        /// Workflow name (e.g., concurrent_writers)
+        /// Workload name (e.g., concurrent_writers)
         #[arg(long, default_value = "concurrent_writers")]
         workflow: String,
         /// Path to workload YAML
@@ -51,7 +49,7 @@ enum Commands {
     },
     /// List available store adapters
     ListStores,
-    /// List available workflow types
+    /// List available workload types
     ListWorkflows,
 }
 
@@ -75,7 +73,7 @@ where
     }
 }
 
-fn adapter_factories() -> Vec<Box<dyn AdapterFactory>> {
+fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
     vec![
         Box::new(dummy_adapter::DummyFactory),
         Box::new(umadb_adapter::UmaDbFactory),
@@ -85,7 +83,7 @@ fn adapter_factories() -> Vec<Box<dyn AdapterFactory>> {
     ]
 }
 
-fn workflow_factories() -> Vec<Box<dyn WorkflowFactory>> {
+fn workload_factories() -> Vec<Box<dyn WorkloadFactory>> {
     vec![
         Box::new(bench_core::workflows::ConcurrentWritersFactory),
         Box::new(bench_core::workflows::ConcurrentReadersFactory),
@@ -102,18 +100,15 @@ fn main() -> Result<()> {
         )
         .init();
 
-    let factories = adapter_factories();
-
     match cli.command {
         Commands::ListStores => {
-            for f in &factories {
+            for f in store_manager_factories() {
                 println!("{}", f.name());
             }
             Ok(())
         }
         Commands::ListWorkflows => {
-            let workflow_factories_vec = workflow_factories();
-            for f in &workflow_factories_vec {
+            for f in workload_factories() {
                 println!("{}", f.name());
             }
             Ok(())
@@ -137,76 +132,55 @@ fn main() -> Result<()> {
             option,
             seed,
         } => {
-            // Load workload
-            let wl = WorkloadFile::load(&workload)?;
             let adapter_name = store.to_lowercase();
-            let workflow_name = workflow.to_lowercase();
+            let workload_type_name = workflow.to_lowercase();
 
-            // Create nested structure: workflow/adapter-r000-w000
-            let workload_dir = output.join(workflow_name.as_str());
+            // Load workload YAML
+            let yaml_config = fs::read_to_string(&workload)?;
+
+            // Find workload factory and create workload
+            let workload_factory = workload_factories()
+                .into_iter()
+                .find(|f| f.name() == workload_type_name)
+                .ok_or_else(|| anyhow::anyhow!("unknown workload type: {}", workload_type_name))?;
+
+            let workload_instance = workload_factory.create(&yaml_config, seed)?;
+
+            // Find store factory and create store manager
+            let store_factory = store_manager_factories()
+                .into_iter()
+                .find(|f| f.name() == adapter_name)
+                .ok_or_else(|| anyhow::anyhow!("unknown store: {}", adapter_name))?;
+
+            let store_manager = store_factory.create_store_manager(uri, option.into_iter().collect())?;
+
+            // Create output directory
+            let workload_dir = output.join(workload_type_name.as_str());
             fs::create_dir_all(&workload_dir)?;
 
-            // Format directory name based on workload type, zero-padded for sorting
-            let run_dir_name = format!("{}-r{:03}-w{:03}", adapter_name, wl.readers, wl.writers);
+            let run_dir_name = format!("{}-r{:03}-w{:03}", adapter_name, workload_instance.readers(), workload_instance.writers());
             let run_dir = workload_dir.join(run_dir_name);
             fs::create_dir_all(&run_dir)?;
 
-            let default_uri = match adapter_name.as_str() {
-                "umadb" => "http://localhost:50051".to_string(),
-                "kurrentdb" => "esdb://localhost:2113?tls=false".to_string(),
-                "axonserver" => "http://localhost:8124".to_string(),
-                "eventsourcingdb" => "http://localhost:4000".to_string(),
-                _ => String::new(),
-            };
-            let uri = uri.unwrap_or(default_uri);
-            let conn = ConnectionParams {
-                uri,
-                options: option.into_iter().collect(),
-            };
-
-            // Find and move the factory out of the vector
-            let factory_box = factories
-                .into_iter()
-                .find(|f| f.name() == adapter_name)
-                .ok_or_else(|| anyhow::anyhow!("unknown adapter: {}", adapter_name))?;
-
-            // Convert Box to Arc directly
-            let factory_arc: Arc<dyn AdapterFactory> = factory_box.into();
-
-            // Find workflow factory
-            let workflow_factories_vec = workflow_factories();
-            let workflow_factory = workflow_factories_vec
-                .into_iter()
-                .find(|f| f.name() == workflow_name)
-                .ok_or_else(|| anyhow::anyhow!("unknown workflow: {}", workflow_name))?;
-
-            // Create workflow strategy instance
-            let workflow_strategy = workflow_factory.create(&wl, seed)?;
-
+            // Run workload
             let rt = Runtime::new()?;
-            let adapter_name_for_run = adapter_name.clone();
-            let result = rt.block_on(async move {
+            let duration_seconds = workload_instance.duration_seconds();
+            let result = rt.block_on(async {
                 run_workload(
-                    factory_arc,
-                    workflow_strategy,
-                    wl,
-                    RunOptions {
-                        adapter_name: adapter_name_for_run,
-                        conn,
-                        seed,
-                    },
+                    store_manager,
+                    workload_instance,
+                    duration_seconds,
                 )
                 .await
             })?;
 
-            // Write JSON summary and samples
+            // Write outputs
             let summary_path = run_dir.join("summary.json");
             let samples_path = run_dir.join("samples.jsonl");
             fs::write(
                 &summary_path,
                 serde_json::to_string_pretty(&result.summary)?,
             )?;
-            // JSON Lines for samples
             let mut lines = String::new();
             for s in result.samples {
                 lines.push_str(&serde_json::to_string(&s)?);
@@ -214,7 +188,6 @@ fn main() -> Result<()> {
             }
             fs::write(&samples_path, lines)?;
 
-            // Minimal Criterion-compatible marker file (for Python to find runs)
             let meta_path = run_dir.join("run.meta.json");
             fs::write(
                 &meta_path,

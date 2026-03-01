@@ -1,33 +1,41 @@
-use crate::adapter::EventStoreAdapter;
+use crate::adapter::StoreManager;
 use crate::metrics::{LatencyRecorder, RawSample};
-use crate::workload::Workload;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::sync::Arc;
 use std::time::Instant;
 
-/// A workflow strategy defines how to execute a specific type of workload
-/// against event store adapters. Different strategies can implement different
-/// operation patterns (e.g., concurrent writes, read-heavy, transactional).
+/// A workload defines how to execute a specific benchmark scenario
+/// against a store managed by a StoreManager.
 #[async_trait]
-pub trait WorkflowStrategy: Send + Sync {
-    /// Execute the workflow using the provided adapters and timing windows.
+pub trait Workload: Send + Sync {
+    /// Execute the workload.
     /// Returns a tuple of (LatencyRecorder, events_written, events_read, samples).
     async fn execute(
         &self,
-        reader_adapters: Vec<Arc<dyn EventStoreAdapter>>,
-        writer_adapters: Vec<Arc<dyn EventStoreAdapter>>,
+        store: &dyn StoreManager,
         measurement_start: Instant,
         measurement_end: Instant,
         end_at: Instant,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<RawSample>)>;
+
+    /// Workload name
+    fn name(&self) -> String;
+
+    /// Number of writers used in this workload (for reporting)
+    fn writers(&self) -> usize;
+
+    /// Number of readers used in this workload (for reporting)
+    fn readers(&self) -> usize;
+
+    /// Workload duration in seconds
+    fn duration_seconds(&self) -> u64;
 }
 
-/// Factory for creating workflow strategy instances from configuration
-pub trait WorkflowFactory: Send + Sync {
-    /// Name of the workflow (used for selection in CLI)
+/// Factory for creating workload instances from YAML configuration
+pub trait WorkloadFactory: Send + Sync {
+    /// Name of the workload type (used for selection in CLI or automatically detected)
     fn name(&self) -> &'static str;
 
-    /// Create a workflow strategy instance from the given workload configuration
-    fn create(&self, config: &Workload, seed: u64) -> Result<Box<dyn WorkflowStrategy>>;
+    /// Create a workload instance from the given YAML configuration
+    fn create(&self, yaml_config: &str, seed: u64) -> Result<Box<dyn Workload>>;
 }

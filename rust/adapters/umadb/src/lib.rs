@@ -1,10 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bench_core::adapter::{
-    ConnectionParams, ContainerManager, EventData, EventStoreAdapter, ReadEvent, ReadRequest,
+    EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreManager, StoreManagerFactory,
 };
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
+use std::collections::HashMap;
 use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
@@ -13,34 +14,36 @@ use umadb_client::UmaDBClient;
 use umadb_dcb::{DCBEvent, DCBEventStoreAsync, DCBQuery, DCBQueryItem};
 use uuid::Uuid;
 
-// Container manager - handles lifecycle
-pub struct UmaDbContainerManager {
+// Store manager - handles lifecycle and adapter creation
+pub struct UmaDbStoreManager {
+    uri: String,
+    options: HashMap<String, String>,
     container: Option<ContainerAsync<UmaDb>>,
 }
 
-impl UmaDbContainerManager {
-    pub fn new() -> Self {
-        Self { container: None }
+impl UmaDbStoreManager {
+    pub fn new(uri: Option<String>, options: HashMap<String, String>) -> Self {
+        Self {
+            uri: uri.unwrap_or_else(|| "http://localhost:50051".to_string()),
+            options,
+            container: None,
+        }
     }
 }
 
 #[async_trait]
-impl ContainerManager for UmaDbContainerManager {
-    async fn start(&mut self) -> Result<ConnectionParams> {
+impl StoreManager for UmaDbStoreManager {
+    async fn start(&mut self) -> Result<()> {
         let container = UmaDb::default().start().await?;
         let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
-        let uri = format!("http://localhost:{}", host_port);
-
+        self.uri = format!("http://localhost:{}", host_port);
         self.container = Some(container);
 
         // Wait for container to be ready
         for _ in 0..60 {
-            if let Ok(client) = UmaDBClient::new(uri.clone()).connect_async().await {
+            if let Ok(client) = UmaDBClient::new(self.uri.clone()).connect_async().await {
                 if client.head().await.is_ok() {
-                    return Ok(ConnectionParams {
-                        uri,
-                        options: Default::default(),
-                    });
+                    return Ok(());
                 }
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -58,6 +61,14 @@ impl ContainerManager for UmaDbContainerManager {
     fn container_id(&self) -> Option<String> {
         self.container.as_ref().map(|c| c.id().to_string())
     }
+
+    fn name(&self) -> &'static str {
+        "umadb"
+    }
+
+    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+        Ok(Arc::new(UmaDbAdapter::new(&self.uri, &self.options)?))
+    }
 }
 
 // Lightweight adapter - just wraps a client
@@ -66,15 +77,15 @@ pub struct UmaDbAdapter {
 }
 
 impl UmaDbAdapter {
-    pub fn new(params: &ConnectionParams) -> Result<Self> {
-        let mut builder = UmaDBClient::new(params.uri.clone());
-        if let Some(v) = params.options.get("api_key") {
+    pub fn new(uri: &str, options: &HashMap<String, String>) -> Result<Self> {
+        let mut builder = UmaDBClient::new(uri.to_string());
+        if let Some(v) = options.get("api_key") {
             builder = builder.api_key(v.clone());
         }
-        if let Some(v) = params.options.get("ca_path") {
+        if let Some(v) = options.get("ca_path") {
             builder = builder.ca_path(v.clone());
         }
-        if let Some(v) = params.options.get("batch_size") {
+        if let Some(v) = options.get("batch_size") {
             if let Ok(n) = v.parse::<u32>() {
                 builder = builder.batch_size(n);
             }
@@ -156,16 +167,12 @@ impl EventStoreAdapter for UmaDbAdapter {
 
 pub struct UmaDbFactory;
 
-impl bench_core::AdapterFactory for UmaDbFactory {
+impl StoreManagerFactory for UmaDbFactory {
     fn name(&self) -> &'static str {
         "umadb"
     }
 
-    fn create(&self, params: &ConnectionParams) -> Result<Box<dyn EventStoreAdapter>> {
-        Ok(Box::new(UmaDbAdapter::new(params)?))
-    }
-
-    fn create_container_manager(&self) -> Option<Box<dyn ContainerManager>> {
-        Some(Box::new(UmaDbContainerManager::new()))
+    fn create_store_manager(&self, uri: Option<String>, options: HashMap<String, String>) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(UmaDbStoreManager::new(uri, options)))
     }
 }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,22 +37,6 @@ pub struct ReadEvent {
     pub timestamp_ms: u64,
 }
 
-/// Manages the lifecycle of a database container
-/// Separate from the client adapters to allow multiple clients to connect to one container
-#[async_trait]
-pub trait ContainerManager: Send + Sync {
-    /// Start the container and return connection parameters for clients
-    async fn start(&mut self) -> anyhow::Result<ConnectionParams>;
-
-    /// Stop and cleanup the container
-    async fn stop(&mut self) -> anyhow::Result<()>;
-
-    /// Get the container ID for stats collection (if applicable)
-    fn container_id(&self) -> Option<String> {
-        None
-    }
-}
-
 /// Lightweight adapter - just wraps a client connection
 /// Multiple instances can be created to connect to the same server/container
 #[async_trait]
@@ -70,16 +55,28 @@ pub trait EventStoreAdapter: Send + Sync {
     async fn ping(&self) -> anyhow::Result<Duration>;
 }
 
-/// Creates adapter instances (clients) and optionally provides a container manager
-pub trait AdapterFactory: Send + Sync {
+#[async_trait]
+pub trait StoreManager: Send + Sync {
+    /// Start the container and return success status
+    async fn start(&mut self) -> anyhow::Result<()>;
+
+    /// Stop and cleanup the container
+    async fn stop(&mut self) -> anyhow::Result<()>;
+
+    /// Get the container ID for stats collection (if applicable)
+    fn container_id(&self) -> Option<String>;
+
+    /// Store name (adapter name)
     fn name(&self) -> &'static str;
 
-    /// Create a new adapter instance connected to the given params
-    fn create(&self, params: &ConnectionParams) -> anyhow::Result<Box<dyn EventStoreAdapter>>;
+    /// Create a new adapter instance (client)
+    fn create_adapter(&self) -> anyhow::Result<Arc<dyn EventStoreAdapter>>;
+}
 
-    /// Create a container manager if this adapter uses containers
-    /// Returns None for adapters that connect to external servers
-    fn create_container_manager(&self) -> Option<Box<dyn ContainerManager>> {
-        None
-    }
+/// Creates store manager instances
+pub trait StoreManagerFactory: Send + Sync {
+    fn name(&self) -> &'static str;
+
+    /// Create a store manager instance with given (internal) connection params or defaults
+    fn create_store_manager(&self, uri: Option<String>, options: HashMap<String, String>) -> anyhow::Result<Box<dyn StoreManager>>;
 }

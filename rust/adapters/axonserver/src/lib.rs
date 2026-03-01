@@ -4,41 +4,45 @@ use axonserver_client::proto::dcb::source_events_response;
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
 use bench_core::adapter::{
-    ConnectionParams, ContainerManager, EventData, EventStoreAdapter, ReadEvent, ReadRequest,
+    EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreManager, StoreManagerFactory,
 };
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
+use std::collections::HashMap;
+use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use tokio::time::Duration;
 
-// Container manager - handles lifecycle
-pub struct AxonServerContainerManager {
+// Store manager - handles lifecycle and adapter creation
+pub struct AxonServerStoreManager {
+    uri: String,
+    options: HashMap<String, String>,
     container: Option<ContainerAsync<AxonServer>>,
 }
 
-impl AxonServerContainerManager {
-    pub fn new() -> Self {
-        Self { container: None }
+impl AxonServerStoreManager {
+    pub fn new(uri: Option<String>, options: HashMap<String, String>) -> Self {
+        Self {
+            uri: uri.unwrap_or_else(|| "http://localhost:8124".to_string()),
+            options,
+            container: None,
+        }
     }
 }
 
 #[async_trait]
-impl ContainerManager for AxonServerContainerManager {
-    async fn start(&mut self) -> Result<ConnectionParams> {
+impl StoreManager for AxonServerStoreManager {
+    async fn start(&mut self) -> Result<()> {
         let container = AxonServer::default().start().await?;
         let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
-        let uri = format!("http://localhost:{}", host_port);
-
+        self.uri = format!("http://localhost:{}", host_port);
         self.container = Some(container);
 
         // Wait for container to be ready
         for _ in 0..60 {
-            if let Ok(mut client) = AxonServerClient::connect(uri.clone()).await {
+            if let Ok(mut client) = AxonServerClient::connect(self.uri.clone()).await {
                 if client.get_head().await.is_ok() {
-                    return Ok(ConnectionParams {
-                        uri,
-                        options: Default::default(),
-                    });
+                    return Ok(());
                 }
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
@@ -56,6 +60,18 @@ impl ContainerManager for AxonServerContainerManager {
     fn container_id(&self) -> Option<String> {
         self.container.as_ref().map(|c| c.id().to_string())
     }
+
+    fn name(&self) -> &'static str {
+        "axonserver"
+    }
+
+    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+        let adapter = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { AxonServerAdapter::new(&self.uri).await })
+        })?;
+        Ok(Arc::new(adapter))
+    }
 }
 
 // Lightweight adapter - just wraps a client
@@ -64,14 +80,8 @@ pub struct AxonServerAdapter {
 }
 
 impl AxonServerAdapter {
-    pub async fn new(params: &ConnectionParams) -> Result<Self> {
-        let uri = if params.uri.is_empty() {
-            "http://localhost:8124".to_string()
-        } else {
-            params.uri.clone()
-        };
-        let client = AxonServerClient::connect(uri).await?;
-
+    pub async fn new(uri: &str) -> Result<Self> {
+        let client = AxonServerClient::connect(uri.to_string()).await?;
         Ok(Self { client })
     }
 }
@@ -165,22 +175,13 @@ impl EventStoreAdapter for AxonServerAdapter {
 
 pub struct AxonServerFactory;
 
-impl bench_core::AdapterFactory for AxonServerFactory {
+impl StoreManagerFactory for AxonServerFactory {
     fn name(&self) -> &'static str {
         "axonserver"
     }
 
-    fn create(&self, params: &ConnectionParams) -> Result<Box<dyn EventStoreAdapter>> {
-        // AxonServerAdapter::new is async, so we need to block
-        let adapter = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { AxonServerAdapter::new(params).await })
-        })?;
-        Ok(Box::new(adapter))
-    }
-
-    fn create_container_manager(&self) -> Option<Box<dyn ContainerManager>> {
-        Some(Box::new(AxonServerContainerManager::new()))
+    fn create_store_manager(&self, uri: Option<String>, options: HashMap<String, String>) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(AxonServerStoreManager::new(uri, options)))
     }
 }
 

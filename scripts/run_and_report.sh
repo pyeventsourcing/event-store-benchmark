@@ -11,8 +11,8 @@ PUBLISHED_DIR="results/published"
 cargo build --release -p esbs
 
 # Clean previous results
-#rm -rf "$RAW_DIR" "$PUBLISHED_DIR"
-#mkdir -p "$RAW_DIR"
+rm -rf "$RAW_DIR" "$PUBLISHED_DIR"
+mkdir -p "$RAW_DIR"
 
 # Run environment check
 echo "=== Running environment check (Docker) ==="
@@ -22,8 +22,6 @@ if [ -d "env-check" ]; then
 else
   echo "Warning: env-check/ directory not found."
 fi
-
-exit
 
 # TODO: Converge workload/workflow.
 # Run concurrent_writers workflow with different writer counts
