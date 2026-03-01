@@ -494,7 +494,7 @@ def generate_html(report_dir: Path, run):
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>ESBS Report — {summary['adapter']} / {summary['workload']}</title>
+  <title>Benchmark Report — {summary['adapter']} / {summary['workload']}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2 {{ margin-top: 1.2rem; }}
@@ -503,7 +503,7 @@ def generate_html(report_dir: Path, run):
   </style>
 </head>
 <body>
-  <h1>ESBS Report</h1>
+  <h1>Benchmark Report</h1>
   <p><b>Adapter:</b> {summary['adapter']} &nbsp; | &nbsp; <b>Workload:</b> {summary['workload']}</p>
   <p><b>Duration:</b> {summary['duration_s']:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {summary['throughput_eps']:.0f} eps</p>
   <div class='row'>
@@ -632,7 +632,7 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>ESBS Report — {workflow_name}</title>
+  <title>Benchmark Report — {workflow_name}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2, h3 {{ margin-top: 1.2rem; }}
@@ -644,7 +644,7 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
   </style>
 </head>
 <body>
-  <h1>ESBS Report — {workflow_name}</h1>
+  <h1>Benchmark Report — {workflow_name}</h1>
   <p><a href="../index.html">← Back to all workflows</a></p>
   {container_section}
   {scaling_section}
@@ -728,7 +728,7 @@ def generate_top_level_index(out_base: Path, workflow_summaries, env_info=None):
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>ESBS Benchmark Suite</title>
+  <title>ES-BENCH Benchmark Suite</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2, h3 {{ margin-top: 1.2rem; }}
@@ -765,7 +765,7 @@ def extract_workflow_name(workload_name: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate ESBS benchmark report from raw results")
+    parser = argparse.ArgumentParser(description="Generate ES-BENCH benchmark report from raw results")
     parser.add_argument("--raw", type=str, default="results/raw", help="Path to raw results dir")
     parser.add_argument("--out", type=str, default="results/published", help="Output reports dir")
     args = parser.parse_args()

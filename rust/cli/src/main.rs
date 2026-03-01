@@ -8,7 +8,7 @@ use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
-#[command(name = "esbs", version, about = "Event Store Benchmark Suite CLI")]
+#[command(name = "es-bench", version, about = "Event Store Benchmark Suite CLI")]
 struct Cli {
     #[arg(long, default_value = "info")]
     log: String,

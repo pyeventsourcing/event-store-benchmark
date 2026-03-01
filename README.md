@@ -1,4 +1,4 @@
-[![ESBS Logo](images/banner-v2-1280x640.png)](https://)
+[![Logo](images/banner-v2-1280x640.png)](https://)
 
 
 # Event Store Benchmark Suite
@@ -330,10 +330,10 @@ This allows the same workload to run across different systems.
 
 # CLI Commands
 
-The benchmark CLI is `esbs`. You can run it from `./target/release/esbs` after building, or via Cargo:
+The benchmark CLI is `es-bench`. You can run it from `./target/release/es-bench` after building, or via Cargo:
 
 ```bash
-cargo run -p esbs -- <command> [options]
+cargo run -p es-bench -- <command> [options]
 ```
 
 Global options:
@@ -341,12 +341,12 @@ Global options:
 - `-h, --help`: show help
 - `-V, --version`: show version
 
-## esbs run
+## es-bench run
 Execute a workload against a specific adapter and write raw results to a timestamped folder.
 
 Usage:
 ```bash
-esbs run \
+es-bench run \
   --store <adapter> \
   --workload <path/to/workload.yaml> \
   [--output results/raw] \
@@ -369,13 +369,13 @@ Parameters:
 Examples:
 ```bash
 # Basic UmaDB run (insecure gRPC)
-esbs run --store umadb \
+es-bench run --store umadb \
   --workload workloads/concurrent_writers.yaml \
   --uri http://localhost:50051 \
   --seed 42
 
 # UmaDB with TLS and API key
-esbs run --store umadb \
+es-bench run --store umadb \
   --workload workloads/concurrent_writers.yaml \
   --uri https://localhost:50051 \
   --option ca_path=server.pem \
@@ -383,7 +383,7 @@ esbs run --store umadb \
   --option batch_size=1000
 
 # Custom results location
-esbs run --store umadb \
+es-bench run --store umadb \
   --workload workloads/concurrent_writers.yaml \
   --uri http://localhost:50051 \
   --output results/raw/lab-a
@@ -394,25 +394,25 @@ Outputs:
 - `samples.jsonl`: per-append samples (timestamp, latency, ok/error)
 - `run.meta.json`: minimal locator for the Python reporting layer
 
-## esbs list-workloads
+## es-bench list-workloads
 List workload YAML files in a directory (defaults to `workloads/`).
 
 Usage:
 ```bash
-esbs list-workloads [--path <dir>]
+es-bench list-workloads [--path <dir>]
 ```
 
 Example:
 ```bash
-esbs list-workloads
+es-bench list-workloads
 ```
 
-## esbs list-stores
+## es-bench list-stores
 List available adapters.
 
 Usage:
 ```bash
-esbs list-stores
+es-bench list-stores
 ```
 
 Current output:

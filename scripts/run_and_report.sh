@@ -2,13 +2,15 @@
 set -euo pipefail
 
 # TODO: Move this into the workload
-WRITERS=(1 2 4 8 16)
-READERS=(1 2 4 8 16)
+#WRITERS=(1 2 4 8 16)
+#READERS=(1 2 4 8 16)
+WRITERS=(1 2)
+READERS=(1 2)
 STORES=("umadb" "kurrentdb" "axonserver" "eventsourcingdb")
 RAW_DIR="results/raw"
 PUBLISHED_DIR="results/published"
 
-cargo build --release -p esbs
+cargo build --release -p es-bench
 
 # Clean previous results
 rm -rf "$RAW_DIR" "$PUBLISHED_DIR"
@@ -36,7 +38,7 @@ for w in "${WRITERS[@]}"; do
 
   for store in "${STORES[@]}"; do
     echo "=== Running $store with workflow $WORKFLOW and $w writers ==="
-    ./target/release/esbs run \
+    ./target/release/es-bench run \
       --store "$store" \
       --workflow "$WORKFLOW" \
       --workload "$WORKLOAD_FILE" \
@@ -59,7 +61,7 @@ for r in "${READERS[@]}"; do
 
   for store in "${STORES[@]}"; do
     echo "=== Running $store with workflow $WORKFLOW and $r readers ==="
-    ./target/release/esbs run \
+    ./target/release/es-bench run \
       --store "$store" \
       --workflow "$WORKFLOW" \
       --workload "$WORKLOAD_FILE" \
