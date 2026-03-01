@@ -141,20 +141,13 @@ fn main() -> Result<()> {
             let wl = WorkloadFile::load(&workload)?;
             let adapter_name = store.to_lowercase();
             let workflow_name = workflow.to_lowercase();
-            let wl_stem = workload.file_stem().unwrap_or_default().to_string_lossy();
 
-            // Create nested structure: workload/adapter_run
-            let workload_dir = output.join(wl_stem.as_ref());
+            // Create nested structure: workflow/adapter-r000-w000
+            let workload_dir = output.join(workflow_name.as_str());
             fs::create_dir_all(&workload_dir)?;
 
-            // Format directory name based on workflow type
-            let run_dir_name = if wl.readers > 0 && wl.writers == 0 {
-                format!("{}_r{}", adapter_name, wl.readers)
-            } else if wl.writers > 0 && wl.readers == 0 {
-                format!("{}_w{}", adapter_name, wl.writers)
-            } else {
-                format!("{}_w{}_r{}", adapter_name, wl.writers, wl.readers)
-            };
+            // Format directory name based on workload type, zero-padded for sorting
+            let run_dir_name = format!("{}-r{:03}-w{:03}", adapter_name, wl.readers, wl.writers);
             let run_dir = workload_dir.join(run_dir_name);
             fs::create_dir_all(&run_dir)?;
 

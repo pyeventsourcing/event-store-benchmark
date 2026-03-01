@@ -32,7 +32,7 @@ def load_runs(raw_dir: Path):
     (warmup/cooldown excluded). We load all samples and let individual plot functions
     handle edge case filtering as needed.
 
-    Directory structure: raw_dir/{workload}/{adapter}_w{N}/
+    Directory structure: raw_dir/{workload}/{adapter}-r{N}-w{N}/
     """
     runs = []
     # Iterate through workload directories
@@ -535,14 +535,13 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
         readers = s.get("readers", 0)
 
         # Determine link format based on workflow type
+        workflow = extract_workflow_name(workload)
+        report_link = f"../{workflow}/report-{adapter}-r{readers:03d}-w{writers:03d}/index.html"
         if readers > 0 and writers == 0:
-            report_link = f"../{workload}/report-{adapter}_r{readers}/index.html"
             worker_display = readers
         elif writers > 0 and readers == 0:
-            report_link = f"../{workload}/report-{adapter}_w{writers}/index.html"
             worker_display = writers
         else:
-            report_link = f"../{workload}/report-{adapter}_w{writers}_r{readers}/index.html"
             worker_display = f"{writers}w/{readers}r"
 
         # Get container metrics
@@ -728,14 +727,10 @@ def generate_top_level_index(out_base: Path, workflow_summaries):
 
 def extract_workflow_name(workload_name: str) -> str:
     """Extract workflow name from workload name (e.g., 'concurrent_writers_w4' -> 'concurrent_writers', 'concurrent_readers_r8' -> 'concurrent_readers')."""
-    # Remove _w{N} suffix if present
-    parts = workload_name.rsplit('_w', 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        return parts[0]
-    # Remove _r{N} suffix if present
-    parts = workload_name.rsplit('_r', 1)
-    if len(parts) == 2 and parts[1].isdigit():
-        return parts[0]
+    if "_r" in workload_name:
+        return workload_name.rsplit("_r", 1)[0]
+    if "_w" in workload_name:
+        return workload_name.rsplit("_w", 1)[0]
     return workload_name
 
 
@@ -760,20 +755,16 @@ def main():
         run["_samples_df"] = samples_df
         adapter = run["summary"]["adapter"]
         workload = Path(run["summary"]["workload"]).stem
+        workflow = extract_workflow_name(workload)
         writers = run["summary"].get("writers", 0)
         readers = run["summary"].get("readers", 0)
 
-        # Create nested structure: workload/report-adapter
-        workload_dir = out_base / workload
+        # Create nested structure: workflow/report-adapter
+        workload_dir = out_base / workflow
         workload_dir.mkdir(parents=True, exist_ok=True)
 
-        # Format directory name based on workflow type
-        if readers > 0 and writers == 0:
-            report_dir_name = f"report-{adapter}_r{readers}"
-        elif writers > 0 and readers == 0:
-            report_dir_name = f"report-{adapter}_w{writers}"
-        else:
-            report_dir_name = f"report-{adapter}_w{writers}_r{readers}"
+        # Format directory name based on workload type, zero-padded for sorting
+        report_dir_name = f"report-{adapter}-r{readers:03d}-w{writers:03d}"
         report_dir = workload_dir / report_dir_name
         report_dir.mkdir(parents=True, exist_ok=True)
 
