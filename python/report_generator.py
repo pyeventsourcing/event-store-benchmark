@@ -669,8 +669,8 @@ def generate_top_level_index(out_base: Path, workflow_summaries, env_info=None):
     env_section = ""
     if env_info:
         env_section = f"""
-    <h2>Environment Information</h2>
     <div class='workflow-section'>
+      <h2>Environment Information</h2>
       <div class='row'>
         <div class='card'>
           <h3>System</h3>
