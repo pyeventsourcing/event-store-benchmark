@@ -290,12 +290,12 @@ def plot_throughput_scaling(runs, out_path: Path):
         # Convert to events/sec (50ms → 20 samples per second)
         eps = grp * 20
 
-        # Use median throughput for more robust estimate
+        # Use median throughput for a more robust estimate
         throughput = eps.median()
 
         adapter_data[adapter].append((worker_count, throughput))
 
-    # Determine label based on workflow type
+    # Determine label based on the workload type
     first_run = runs[0]["summary"] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
@@ -339,7 +339,7 @@ def plot_p99_scaling(runs, out_path: Path):
         p99 = s["latency"]["p99_ms"]
         adapter_data[adapter].append((worker_count, p99))
 
-    # Determine label based on workflow type
+    # Determine label based on workload type
     first_run = runs[0]["summary"] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
@@ -503,7 +503,7 @@ def generate_html(report_dir: Path, run):
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Benchmark Report — {summary['adapter']} / {summary['workload']}</title>
+  <title>Workload Report — {summary['adapter']} / {summary['workload']}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2 {{ margin-top: 1.2rem; }}
@@ -641,7 +641,7 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Benchmark Report — {workflow_name}</title>
+  <title>Workload Report — {workflow_name}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2, h3 {{ margin-top: 1.2rem; }}
@@ -653,7 +653,7 @@ def generate_workflow_html(out_base: Path, workflow_name: str, runs, writer_grou
   </style>
 </head>
 <body>
-  <h1>Benchmark Report — {workflow_name}</h1>
+  <h1>Workload Report — {workflow_name}</h1>
   <p><a href="../index.html">← Back to all workflows</a></p>
   {container_section}
   {scaling_section}
