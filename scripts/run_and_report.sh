@@ -41,7 +41,7 @@ for w in "${WRITERS[@]}"; do
     echo "=== Running $store with workload $WORKLOAD_NAME and $w writers ==="
     ./target/release/es-bench run \
       --store "$store" \
-      --workload_type "$WORKLOAD_NAME" \
+      --workload "$WORKLOAD_NAME" \
       --config "$WORKLOAD_CONFIG_FILE" \
       --output "$RAW_DIR"
   done
@@ -64,7 +64,7 @@ for r in "${READERS[@]}"; do
     echo "=== Running $store with workload $WORKLOAD_NAME and $r readers ==="
     ./target/release/es-bench run \
       --store "$store" \
-      --workload_type "$WORKLOAD_NAME" \
+      --workload "$WORKLOAD_NAME" \
       --config "$WORKLOAD_CONFIG_FILE" \
       --output "$RAW_DIR"
   done

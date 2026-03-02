@@ -347,7 +347,7 @@ Usage:
 ```bash
 es-bench run \
   --store <adapter> \
-  --workload_type <path/to/workload_type.yaml> \
+  --workload <path/to/workload.yaml> \
   [--output results/raw] \
   [--uri <connection-uri>] \
   [--option key=value ...] \
@@ -369,13 +369,13 @@ Examples:
 ```bash
 # Basic UmaDB run (insecure gRPC)
 es-bench run --store umadb \
-  --workload_type workloads/concurrent_writers.yaml \
+  --workload workloads/concurrent_writers.yaml \
   --uri http://localhost:50051 \
   --seed 42
 
 # UmaDB with TLS and API key
 es-bench run --store umadb \
-  --workload_type workloads/concurrent_writers.yaml \
+  --workload workloads/concurrent_writers.yaml \
   --uri https://localhost:50051 \
   --option ca_path=server.pem \
   --option api_key=umadb:example-api-key \
@@ -383,7 +383,7 @@ es-bench run --store umadb \
 
 # Custom results location
 es-bench run --store umadb \
-  --workload_type workloads/concurrent_writers.yaml \
+  --workload workloads/concurrent_writers.yaml \
   --uri http://localhost:50051 \
   --output results/raw/lab-a
 ```

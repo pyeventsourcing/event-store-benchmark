@@ -109,7 +109,7 @@ pub async fn execute_run(
     let dur_s = duration_seconds as f64;
     let total_ops = events_written + events_read;
     let summary = Summary {
-        workload_type: workload.name(),
+        workload: workload.name(),
         adapter: store.name().to_string(),
         writers: workload.writers(),
         readers: workload.readers(),
