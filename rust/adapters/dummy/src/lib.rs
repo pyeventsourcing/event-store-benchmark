@@ -38,11 +38,11 @@ pub struct DummyAdapter;
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     async fn append(&self, _evt: EventData) -> Result<()> {
-        tokio::time::sleep(Duration::from_micros(1000)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         Ok(())
     }
     async fn read(&self, _req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        tokio::time::sleep(Duration::from_micros(1000)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         Ok(vec![])
     }
     async fn ping(&self) -> Result<Duration> {

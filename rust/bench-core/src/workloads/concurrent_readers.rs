@@ -167,13 +167,14 @@ impl Workload for ConcurrentReadersWorkload {
                     // Only record samples during the measurement window (after warmup, before cooldown)
                     if now >= measurement_start && now <= measurement_end {
                         rec.record(dt);
-                        let mut s = samples.lock().await;
-                        s.push(RawSample {
+                        let sample = RawSample {
                             t_ms: now_ms(),
                             op: "read".to_string(),
                             latency_us: dt.as_micros() as u64,
                             ok,
-                        });
+                        };
+                        let mut s = samples.lock().await;
+                        s.push(sample);
                     }
                 }
                 (rec, total_events_read)
