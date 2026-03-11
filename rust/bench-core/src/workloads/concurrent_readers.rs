@@ -6,9 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,12 +118,10 @@ impl Workload for ConcurrentReadersWorkload {
         }
         println!("All {} reader clients ready", self.config.readers);
 
-        let samples = Arc::new(Mutex::new(Vec::<RawSample>::with_capacity(100_000)));
         let mut set = JoinSet::new();
 
         // Start one task per reader - each uses its own adapter instance
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
-            let samples = samples.clone();
             let config = self.config.clone();
             let seed = self.seed + (i as u64);
 
@@ -135,6 +131,7 @@ impl Workload for ConcurrentReadersWorkload {
                 let hot_set = 100_u64.min(config.streams.unique_streams.max(1));
                 let mut rec = LatencyRecorder::new();
                 let mut total_events_read = 0u64;
+                let mut task_samples = Vec::new();
 
                 while Instant::now() < end_at {
                     let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
@@ -173,23 +170,23 @@ impl Workload for ConcurrentReadersWorkload {
                             latency_us: dt.as_micros() as u64,
                             ok,
                         };
-                        let mut s = samples.lock().await;
-                        s.push(sample);
+                        task_samples.push(sample);
                     }
                 }
-                (rec, total_events_read)
+                (rec, total_events_read, task_samples)
             });
         }
 
         let mut overall = LatencyRecorder::new();
         let mut events_read: u64 = 0;
+        let mut samples_vec = Vec::new();
         while let Some(res) = set.join_next().await {
-            let (rec, reader_events_read) = res.expect("join");
+            let (rec, reader_events_read, task_samples) = res.expect("join");
             overall.hist.add(&rec.hist)?;
             events_read += reader_events_read;
+            samples_vec.extend(task_samples);
         }
 
-        let samples_vec = samples.lock().await.clone();
         Ok((overall, 0, events_read, samples_vec))
     }
 
