@@ -29,10 +29,10 @@ fi
 
 # Run concurrent_writers workload_type with different writer counts
 WORKLOAD_NAME="concurrent_writers"
-WORKLOAD_CONFIG_FILE_TEMPLATE="workloads/concurrent_writers.yaml"
+WORKLOAD_CONFIG_FILE_TEMPLATE="configs/concurrent_writers.yaml"
 for w in "${WRITERS[@]}"; do
   # Generate workload_type config file
-  WORKLOAD_CONFIG_FILE="workloads/${WORKLOAD_NAME}_w${w}.yaml"
+  WORKLOAD_CONFIG_FILE="configs/${WORKLOAD_NAME}_w${w}.yaml"
   sed "s/^writers:.*/writers: ${w}/" "$WORKLOAD_CONFIG_FILE_TEMPLATE" \
     | sed "s/^name:.*/name: ${WORKLOAD_NAME}_w${w}/" \
     > "$WORKLOAD_CONFIG_FILE"
@@ -52,10 +52,10 @@ done
 
 # Run concurrent_readers workload_type with different reader counts
 WORKLOAD_NAME="concurrent_readers"
-WORKLOAD_CONFIG_FILE_TEMPLATE="workloads/concurrent_readers.yaml"
+WORKLOAD_CONFIG_FILE_TEMPLATE="configs/concurrent_readers.yaml"
 for r in "${READERS[@]}"; do
   # Generate workload_type config file
-  WORKLOAD_CONFIG_FILE="workloads/${WORKLOAD_NAME}_r${r}.yaml"
+  WORKLOAD_CONFIG_FILE="configs/${WORKLOAD_NAME}_r${r}.yaml"
   sed "s/^readers:.*/readers: ${r}/" "$WORKLOAD_CONFIG_FILE_TEMPLATE" \
     | sed "s/^name:.*/name: ${WORKLOAD_NAME}_r${r}/" \
     > "$WORKLOAD_CONFIG_FILE"

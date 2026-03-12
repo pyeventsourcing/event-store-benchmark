@@ -1,3 +1,4 @@
+workload: concurrent_readers
 duration_seconds: 6
 readers: 4
 event_size_bytes: 256

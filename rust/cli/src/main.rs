@@ -17,6 +17,11 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(serde::Deserialize)]
+struct WorkloadConfig {
+    workload: String,
+}
+
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Run a workload against a store
@@ -24,13 +29,10 @@ enum Commands {
         /// Store name (e.g., umadb)
         #[arg(long, default_value = "all")]
         store: String,
-        /// Workload name (e.g., concurrent_writers)
-        #[arg(long, default_value = "concurrent_writers")]
-        workload: String,
-        /// Path to workload YAML
+        /// Path to YAML file
         #[arg(long)]
         config: PathBuf,
-        /// Output directory base (raw results will be placed under an adapter-workload folder)
+        /// Output directory base
         #[arg(long, default_value = "results/raw")]
         output: PathBuf,
         /// Random seed (default is a random value)
@@ -85,13 +87,17 @@ fn main() -> Result<()> {
         }
         Commands::Run {
             store,
-            workload,
             config,
             output,
             seed,
         } => {
             let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
             let store_name = store.to_lowercase();
+
+            // Parse workload name from YAML config
+            let config_content = fs::read_to_string(&config)?;
+            let workload_config: WorkloadConfig = serde_yaml::from_str(&config_content)?;
+            let workload = workload_config.workload;
 
             if store_name == "all" {
                 for store_manager_factory in store_manager_factories() {
@@ -108,7 +114,7 @@ fn main() -> Result<()> {
 
                 let store_manager = store_manager_factory.create_store_manager()?;
                 run_workload_and_write_output(store_name, store_manager, workload, &config, output, actual_seed)?;
-                
+
             }
             Ok(())
         }
