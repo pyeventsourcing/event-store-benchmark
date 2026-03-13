@@ -531,31 +531,30 @@ function renderThroughputChart() {
 
 // Render latency comparison chart
 function renderLatencyChart() {
-  const data = sessionData.stores.flatMap(store => [
-    {store: store.name, percentile: "p50", latency: store.latency_p50_ms},
-    {store: store.name, percentile: "p95", latency: store.latency_p95_ms},
-    {store: store.name, percentile: "p99", latency: store.latency_p99_ms}
-  ]);
+  const container = document.getElementById('latency-chart');
 
-  const chart = Plot.plot({
-    marginLeft: 60,
-    marginBottom: 60,
-    height: 300,
-    x: {label: "Event Store"},
-    y: {label: "Latency (ms)", type: "log", grid: true},
-    color: {legend: true},
-    marks: [
-      Plot.barY(data, {
-        x: "store",
-        y: "latency",
-        fill: "percentile",
-        tip: true
-      }),
-      Plot.ruleY([1])
-    ]
+  // Create a simple table-based visualization
+  let html = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
+  html += '<thead><tr><th style="text-align: left; padding: 12px; border-bottom: 2px solid #e5e7eb;">Store</th>';
+  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p50 (ms)</th>';
+  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p95 (ms)</th>';
+  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p99 (ms)</th>';
+  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p999 (ms)</th></tr></thead>';
+  html += '<tbody>';
+
+  sessionData.stores.forEach((store, idx) => {
+    const bgColor = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+    html += `<tr style="background: ${bgColor};">`;
+    html += `<td style="padding: 12px; font-weight: 600;">${store.name}</td>`;
+    html += `<td style="padding: 12px; text-align: right;">${store.latency_p50_ms.toFixed(3)}</td>`;
+    html += `<td style="padding: 12px; text-align: right;">${store.latency_p95_ms.toFixed(3)}</td>`;
+    html += `<td style="padding: 12px; text-align: right;">${store.latency_p99_ms.toFixed(3)}</td>`;
+    html += `<td style="padding: 12px; text-align: right;">${store.latency_p999_ms.toFixed(3)}</td>`;
+    html += '</tr>';
   });
 
-  document.getElementById('latency-chart').appendChild(chart);
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
 }
 
 // Render store details
