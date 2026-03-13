@@ -1,0 +1,12 @@
+name: heavy-writes-zipf-w4
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 4
+operations:
+  write:
+    event_size_bytes: 256
+streams:
+  distribution: zipf  # Heavy-tailed: 20% of requests hit hot streams
+  count: 10000

@@ -1,0 +1,12 @@
+name: baseline-writes-w1
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 1
+operations:
+  write:
+    event_size_bytes: 256
+streams:
+  distribution: uniform
+  count: 10000

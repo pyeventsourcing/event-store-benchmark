@@ -64,7 +64,7 @@ Parameters:
 
 **Run a simple write workload:**
 ```bash
-./target/release/es-bench run --config configs/concurrent_writers.yaml --seed 42
+./target/release/es-bench run --config configs/baseline-writes-w4.yaml --seed 42
 ```
 
 This will:
@@ -76,7 +76,7 @@ This will:
 
 **Run a read workload:**
 ```bash
-./target/release/es-bench run --config configs/concurrent_readers.yaml --seed 42
+./target/release/es-bench run --config configs/baseline-reads-r4.yaml --seed 42
 ```
 
 **Run with specific stores (specified in config):**
@@ -338,9 +338,66 @@ streams:
 Workload names should be descriptive and include key parameters:
 - `baseline-writes-w4` - Baseline write performance with 4 writers
 - `heavy-reads-zipf-r16` - Read-heavy with Zipf distribution, 16 readers
-- `mixed-70-30` - Mixed workload with 70% reads, 30% writes
+- `mixed-read-heavy-70-30` - Mixed workload with 70% reads, 30% writes
 
 This naming makes results self-documenting when browsing the results directory.
+
+## Available Workload Configurations
+
+The `configs/` directory includes a variety of example workloads:
+
+### Baseline Workloads
+Standard performance benchmarks for common scenarios:
+
+- **`baseline-writes-w1.yaml`** - Single writer baseline (raw single-threaded performance)
+- **`baseline-writes-w4.yaml`** - 4 concurrent writers (typical production)
+- **`baseline-writes-w16.yaml`** - 16 concurrent writers (high-concurrency)
+- **`baseline-reads-r4.yaml`** - 4 concurrent readers
+- **`baseline-reads-r16.yaml`** - 16 concurrent readers (high read throughput)
+
+### Distribution Variations
+Testing skewed access patterns (hot streams):
+
+- **`heavy-writes-zipf-w4.yaml`** - Write with Zipf distribution (hot aggregates)
+- **`heavy-reads-zipf-r16.yaml`** - Read with Zipf distribution (popular streams)
+
+### Mixed Workloads
+Combined read/write scenarios:
+
+- **`mixed-read-heavy-70-30.yaml`** - 70% reads, 30% writes (read-dominant)
+- **`mixed-balanced-50-50.yaml`** - 50% reads, 50% writes (balanced)
+- **`mixed-write-heavy-30-70.yaml`** - 30% reads, 70% writes (write-dominant)
+
+### Scaling Sweeps (`scaling/`)
+Measure scalability across different dimensions:
+
+- **`scaling/writers.yaml`** - Writer concurrency sweep: [1, 2, 4, 8, 16, 32]
+- **`scaling/readers.yaml`** - Reader concurrency sweep: [1, 2, 4, 8, 16, 32]
+- **`scaling/event-size.yaml`** - Event size variations (template)
+
+### Real-World Scenarios (`scenarios/`)
+Simulate production patterns:
+
+- **`scenarios/microservices-aggregate.yaml`** - Typical microservices event sourcing (8 writers, Zipf, 512-byte events)
+- **`scenarios/cqrs-read-model.yaml`** - CQRS pattern (85% reads, 15% writes, 24 readers, 4 writers)
+- **`scenarios/high-throughput-ingestion.yaml`** - High-volume data ingestion (32 writers, 50K streams)
+- **`scenarios/audit-log.yaml`** - Audit logging pattern (16 writers, uniform distribution)
+
+### Running Examples
+
+```bash
+# Baseline write performance
+./target/release/es-bench run --config configs/baseline-writes-w4.yaml
+
+# Test with hot streams
+./target/release/es-bench run --config configs/heavy-writes-zipf-w4.yaml
+
+# CQRS read model simulation
+./target/release/es-bench run --config configs/scenarios/cqrs-read-model.yaml
+
+# Scaling analysis (sweep across multiple writer counts and stores)
+./target/release/es-bench run --config configs/scaling/writers.yaml
+```
 
 # Results Structure
 

@@ -1,0 +1,18 @@
+name: scaling-event-size
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 4
+operations:
+  write:
+    # Note: event_size_bytes sweep not yet implemented
+    # This is a template for future sweep support
+    event_size_bytes: 256
+streams:
+  distribution: uniform
+  count: 10000
+
+# TODO: Implement event size sweep
+# event_sizes: [128, 256, 512, 1024, 4096]
+# For now, create separate configs for each size

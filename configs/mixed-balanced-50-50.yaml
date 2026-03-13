@@ -1,0 +1,20 @@
+name: mixed-balanced-50-50
+workload_type: performance
+mode: mixed
+duration_seconds: 60
+concurrency:
+  writers: 8
+  readers: 8
+operations:
+  write:
+    event_size_bytes: 256
+    probability: 0.5  # 50% writes
+  read:
+    batch_size: 50
+    probability: 0.5  # 50% reads
+streams:
+  distribution: uniform
+  count: 10000
+setup:
+  prepopulate_events: 10000
+  prepopulate_streams: 5000

@@ -1,0 +1,12 @@
+name: scenario-high-throughput-ingestion
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 32
+operations:
+  write:
+    event_size_bytes: 128  # Small events for high throughput
+streams:
+  distribution: uniform
+  count: 50000  # Many streams

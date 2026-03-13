@@ -1,0 +1,12 @@
+name: scenario-audit-log
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 16
+operations:
+  write:
+    event_size_bytes: 256  # Typical audit entry
+streams:
+  distribution: uniform  # Distributed across many entities
+  count: 20000

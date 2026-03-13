@@ -1,0 +1,15 @@
+name: baseline-reads-r16
+workload_type: performance
+mode: read
+duration_seconds: 60
+concurrency:
+  readers: 16
+operations:
+  read:
+    batch_size: 100
+streams:
+  distribution: uniform
+  count: 1000
+setup:
+  prepopulate_events: 10000
+  prepopulate_streams: 1000

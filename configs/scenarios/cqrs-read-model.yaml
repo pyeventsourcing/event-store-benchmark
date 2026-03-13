@@ -1,0 +1,20 @@
+name: scenario-cqrs-read-model
+workload_type: performance
+mode: mixed
+duration_seconds: 120
+concurrency:
+  writers: 4
+  readers: 24
+operations:
+  write:
+    event_size_bytes: 384
+    probability: 0.15  # 15% writes (commands)
+  read:
+    batch_size: 50
+    probability: 0.85  # 85% reads (queries)
+streams:
+  distribution: zipf  # Popular aggregates accessed frequently
+  count: 10000
+setup:
+  prepopulate_events: 30000
+  prepopulate_streams: 8000

@@ -1,0 +1,12 @@
+name: scenario-microservices-aggregate
+workload_type: performance
+mode: write
+duration_seconds: 60
+concurrency:
+  writers: 8
+operations:
+  write:
+    event_size_bytes: 512  # Medium events (commands, domain events)
+streams:
+  distribution: zipf  # Hot aggregates pattern
+  count: 5000
