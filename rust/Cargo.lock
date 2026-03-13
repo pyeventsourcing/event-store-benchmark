@@ -32,6 +32,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "analytics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -914,9 +925,11 @@ dependencies = [
 name = "es-bench"
 version = "0.1.0"
 dependencies = [
+ "analytics",
  "anyhow",
  "axonserver-adapter",
  "bench-core",
+ "chrono",
  "clap",
  "dummy-adapter",
  "eventsourcingdb-adapter",
