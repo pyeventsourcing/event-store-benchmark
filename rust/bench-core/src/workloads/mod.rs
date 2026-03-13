@@ -1,5 +1,10 @@
-pub mod concurrent_readers;
-pub mod concurrent_writers;
+// Workload architecture
+pub mod consistency;
+pub mod durability;
+pub mod factory;
+pub mod operational;
+pub mod performance;
 
-pub use concurrent_readers::ConcurrentReadersFactory;
-pub use concurrent_writers::ConcurrentWritersFactory;
+// Re-export main types
+pub use factory::{Workload, WorkloadFactory, WorkloadType};
+pub use performance::PerformanceWorkload;

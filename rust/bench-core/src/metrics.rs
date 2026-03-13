@@ -1,5 +1,6 @@
 use hdrhistogram::Histogram;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,4 +85,68 @@ pub fn now_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis()
+}
+
+// New metadata structures for session-based results
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionMetadata {
+    pub session_id: String,
+    pub benchmark_version: String,
+    pub workload_name: String,
+    pub workload_type: String,
+    pub config_file: String,
+    pub seed: u64,
+    pub stores_run: Vec<String>,
+    pub is_sweep: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OsInfo {
+    pub name: String,
+    pub version: String,
+    pub kernel: String,
+    pub arch: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CpuInfo {
+    pub model: String,
+    pub cores: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MemoryInfo {
+    pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskInfo {
+    #[serde(rename = "type")]
+    pub disk_type: String,
+    pub filesystem: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContainerRuntimeInfo {
+    #[serde(rename = "type")]
+    pub runtime_type: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentInfo {
+    pub os: OsInfo,
+    pub cpu: CpuInfo,
+    pub memory: MemoryInfo,
+    pub disk: DiskInfo,
+    pub container_runtime: ContainerRuntimeInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RunManifest {
+    pub session_id: String,
+    pub workload_name: String,
+    pub store: String,
+    pub parameters: HashMap<String, serde_json::Value>,
 }

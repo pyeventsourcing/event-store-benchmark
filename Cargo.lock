@@ -917,6 +917,7 @@ dependencies = [
  "anyhow",
  "axonserver-adapter",
  "bench-core",
+ "chrono",
  "clap",
  "dummy-adapter",
  "eventsourcingdb-adapter",

@@ -1,13 +1,13 @@
 use crate::adapter::StoreManager;
 use crate::metrics::{RunMetrics, Summary};
-use crate::workload::Workload;
-use crate::{container_stats, metrics::ContainerMetrics};
+use crate::workloads::{Workload, PerformanceWorkload};
+use crate::metrics::ContainerMetrics;
 use anyhow::Result;
 use std::time::{Duration, Instant};
 
 pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
-    workload: Box<dyn Workload>,
+    workload: &Workload,
 ) -> Result<RunMetrics> {
     // Start store container
     println!("Starting {} container...", store.name());
@@ -22,12 +22,61 @@ pub async fn execute_run(
         startup_time_s
     );
 
-    // Prepare the workload_type
-    workload
-        .prepare(
-            store.as_ref(),
-        )
-        .await?;
+    // Extract workload details and execute based on type
+    let (workload_name, duration_seconds, writers, readers, overall, events_written, events_read, samples_vec) = match workload {
+        Workload::Performance(perf_workload) => {
+            execute_performance_workload(store.as_ref(), perf_workload).await?
+        }
+        Workload::Durability(dur_workload) => {
+            anyhow::bail!("Durability workloads not yet implemented: {}", dur_workload.name());
+        }
+        Workload::Consistency(cons_workload) => {
+            anyhow::bail!("Consistency workloads not yet implemented: {}", cons_workload.name());
+        }
+        Workload::Operational(op_workload) => {
+            anyhow::bail!("Operational workloads not yet implemented: {}", op_workload.name());
+        }
+    };
+
+    let dur_s = duration_seconds as f64;
+    let total_ops = events_written + events_read;
+    let summary = Summary {
+        workload: workload_name,
+        adapter: store.name().to_string(),
+        writers,
+        readers,
+        events_written,
+        events_read,
+        duration_s: dur_s,
+        throughput_eps: (total_ops as f64) / dur_s.max(0.001),
+        latency: overall.to_stats(),
+        container: ContainerMetrics {
+            image_size_bytes: None,
+            startup_time_s,
+            avg_cpu_percent: None,
+            peak_cpu_percent: None,
+            avg_memory_bytes: None,
+            peak_memory_bytes: None,
+        },
+    };
+
+    let metrics = RunMetrics {
+        summary,
+        samples: samples_vec,
+    };
+
+    // Stop container
+    store.stop().await?;
+
+    Ok(metrics)
+}
+
+async fn execute_performance_workload(
+    store: &dyn StoreManager,
+    workload: &PerformanceWorkload,
+) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, u64, u64, Vec<crate::metrics::RawSample>)> {
+    // Prepare the workload
+    workload.prepare(store).await?;
 
     // Warmup and cooldown durations
     let duration_seconds = workload.duration_seconds();
@@ -42,92 +91,24 @@ pub async fn execute_run(
     let measurement_end = measurement_start + Duration::from_secs(duration_seconds);
     let end_at = start_at + total_run_duration;
 
-    // Start a background task to periodically collect container stats during the workload_type
-    let container_id = store.container_id();
-    let stats_handle = tokio::task::spawn_blocking(move || {
-        let mut cpu_samples = Vec::new();
-        let mut mem_samples = Vec::new();
-
-        while Instant::now() < end_at {
-            if let Some(ref id) = container_id {
-                if let Ok(stats) = container_stats::get_container_stats(id) {
-                    cpu_samples.push(stats.cpu_percent);
-                    mem_samples.push(stats.memory_bytes);
-                }
-            }
-            std::thread::sleep(Duration::from_secs(1));
-        }
-
-        (cpu_samples, mem_samples)
-    });
-
-    // Execute the workload_type
+    // Execute the workload
     let (overall, events_written, events_read, samples_vec) = workload
         .execute(
-            store.as_ref(),
+            store,
             measurement_start,
             measurement_end,
             end_at,
         )
         .await?;
 
-    // Wait for stats collection to finish
-    let (cpu_samples, mem_samples) = stats_handle.await.unwrap_or_default();
-
-    // Collect final container metrics
-    let mut container_metrics = if let Some(id) = store.container_id() {
-        let image_size_bytes = container_stats::get_container_image_size(&id).ok();
-        ContainerMetrics {
-            image_size_bytes,
-            startup_time_s,
-            avg_cpu_percent: None,
-            peak_cpu_percent: None,
-            avg_memory_bytes: None,
-            peak_memory_bytes: None,
-        }
-    } else {
-        ContainerMetrics {
-            startup_time_s,
-            ..Default::default()
-        }
-    };
-
-    if !cpu_samples.is_empty() {
-        let avg_cpu = cpu_samples.iter().sum::<f64>() / cpu_samples.len() as f64;
-        let peak_cpu = cpu_samples.iter().copied().fold(0.0f64, f64::max);
-        container_metrics.avg_cpu_percent = Some(avg_cpu);
-        container_metrics.peak_cpu_percent = Some(peak_cpu);
-    }
-
-    if !mem_samples.is_empty() {
-        let avg_mem = mem_samples.iter().sum::<u64>() / mem_samples.len() as u64;
-        let peak_mem = *mem_samples.iter().max().unwrap_or(&0);
-        container_metrics.avg_memory_bytes = Some(avg_mem);
-        container_metrics.peak_memory_bytes = Some(peak_mem);
-    }
-
-    let dur_s = duration_seconds as f64;
-    let total_ops = events_written + events_read;
-    let summary = Summary {
-        workload: workload.name(),
-        adapter: store.name().to_string(),
-        writers: workload.writers(),
-        readers: workload.readers(),
+    Ok((
+        workload.name().to_string(),
+        duration_seconds,
+        workload.writers(),
+        workload.readers(),
+        overall,
         events_written,
         events_read,
-        duration_s: dur_s,
-        throughput_eps: (total_ops as f64) / dur_s.max(0.001),
-        latency: overall.to_stats(),
-        container: container_metrics,
-    };
-
-    let metrics = RunMetrics {
-        summary,
-        samples: samples_vec,
-    };
-
-    // Stop container
-    store.stop().await?;
-
-    Ok(metrics)
+        samples_vec,
+    ))
 }

@@ -1,10 +1,15 @@
-workload: concurrent_readers
+name: concurrent-readers-r4
+workload_type: performance
+mode: read
 duration_seconds: 6
-readers: 4
-event_size_bytes: 256
+concurrency:
+  readers: 4
+operations:
+  read:
+    batch_size: 100
 streams:
   distribution: uniform
-  unique_streams: 1000
+  count: 1000
 setup:
-  events_to_prepopulate: 10000
+  prepopulate_events: 10000
   prepopulate_streams: 1000

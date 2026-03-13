@@ -24,82 +24,92 @@ The benchmark is built with:
 
 # CLI Commands
 
-The benchmark CLI is `es-bench`. You can run it from `./target/release/es-bench` after building:
+The benchmark CLI is `es-bench`. Build it first:
 
 ```bash
 cargo build --release
-./target/release/es-bench <command> [options]
-```
-
-Or via Cargo:
-
-```bash
-cargo run --release -p es-bench -- <command> [options]
-```
-
-Global options:
-- `--log <level>`: set log verbosity (`trace`, `debug`, `info`, `warn`, `error`). Default: `info`.
-- `-h, --help`: show help
-- `-V, --version`: show version
-
-## help
-
-You can print help for subcommands, such as `run`:
-
-```bash
-es-bench help run
-```
-
-## list-workloads
-Print available workloads.
-
-Usage:
-```bash
-es-bench list-workloads
 ```
 
 ## list-stores
-Print adapted event stores.
 
-Usage:
+List available store adapters:
+
 ```bash
-es-bench list-stores
+./target/release/es-bench list-stores
+```
+
+Output:
+```
+dummy
+umadb
+kurrentdb
+axonserver
+eventsourcingdb
 ```
 
 ## run
 
-Execute a workload with an event store and write raw results to a folder.
+Execute a workload against one or more event stores:
 
-Usage:
 ```bash
-es-bench run \
-  --store <STORE> \
-  --config <CONFIG> \
-  [--output results/raw] \
-  [--seed <seed>]
+./target/release/es-bench run --config <CONFIG> [--seed <SEED>]
 ```
 
 Parameters:
-- `--store`: adapter name (e.g. umadb).
-- `--config <CONFIG>`: workload configuration.
-- `--output <dir>`: base directory for raw results. Default: `results/raw`.
-- `--seed <u64>`: deterministic RNG seed. Default: `42`.
+- `--config <path>`: Path to workload YAML configuration file
+- `--seed <u64>`: Deterministic RNG seed (optional, defaults to random)
+- `--log <level>`: Log verbosity: `trace`, `debug`, `info`, `warn`, `error` (default: `info`)
 
-Examples:
+### Examples
+
+**Run a simple write workload:**
 ```bash
-# Benchmark writing to UmaDB
-es-bench run --store umadb \
-  --config configs/concurrent_writers.yaml \
-  --seed 42
-
-# Benchmark writing to KurrentDB
-es-bench run --store kurrentdb \
-  --config configs/concurrent_writers.yaml \
-  --seed 42
+./target/release/es-bench run --config configs/concurrent_writers.yaml --seed 42
 ```
 
-Tips:
-- Prefer `--seed` to make runs comparable across machines.
+This will:
+- Run the workload against all stores (or stores specified in the config)
+- Generate a session ID based on the current timestamp
+- Collect system environment information
+- Execute the workload for each store
+- Write results to `results/raw/sessions/{timestamp}/`
+
+**Run a read workload:**
+```bash
+./target/release/es-bench run --config configs/concurrent_readers.yaml --seed 42
+```
+
+**Run with specific stores (specified in config):**
+```yaml
+# configs/my_workload.yaml
+name: my-custom-workload
+workload_type: performance
+mode: write
+stores: [umadb, kurrentdb]  # Only these stores
+# ... rest of config
+```
+
+### Output Structure
+
+Results are organized by session:
+
+```
+results/raw/sessions/
+  2026-03-13T20-54-26/              # Session timestamp
+    session.json                     # Session metadata (stores, seed, git hash)
+    environment.json                 # Hardware/system info
+    config.yaml                      # Copy of workload config
+    concurrent-writers-w4/           # Workload name
+      umadb/
+        summary.json                 # Aggregated metrics
+        samples.jsonl                # Raw per-operation samples
+      kurrentdb/
+        summary.json
+        samples.jsonl
+      dummy/
+        summary.json
+        samples.jsonl
+```
 
 
 
@@ -225,52 +235,237 @@ trait EventStoreAdapter {
 
 This allows the same workload to run across different systems.
 
-# Workload Definitions
+# Workload Architecture
 
-Workload types are defined in Rust and configured in YAML.
+Workloads are defined by **named YAML configuration files** that specify both the workload type and its parameters.
 
-Example:
+## Workload Types
+
+The benchmark supports four workload categories:
+
+### 1. Performance Workloads
+Generic event store usage patterns with configurable concurrency and operations:
+- **Write mode**: Concurrent writers appending events
+- **Read mode**: Concurrent readers consuming events
+- **Mixed mode**: Combined read/write operations
+
+### 2. Durability Workloads *(stub)*
+Testing persistence guarantees:
+- Crash recovery testing
+- fsync timing analysis
+- WAL replay verification
+
+### 3. Consistency Workloads *(stub)*
+Testing correctness guarantees:
+- Optimistic concurrency conflict detection
+- Read-after-write verification
+- Event ordering validation
+
+### 4. Operational Workloads *(stub)*
+Testing operational characteristics:
+- Startup/shutdown performance
+- Backup/restore speed
+- Storage growth measurement
+
+## Named Workload Configurations
+
+Each workload is defined by a named YAML file. The `name` field identifies the workload, and `workload_type` specifies which implementation to use.
+
+### Example: Write Workload
 
 ```yaml
-workload: concurrent_writers
+# configs/concurrent_writers.yaml
+name: concurrent-writers-w4
+workload_type: performance
+mode: write
 duration_seconds: 6
-writers: 4
-event_size_bytes: 256
+concurrency:
+  writers: 4
+operations:
+  write:
+    event_size_bytes: 256
 streams:
-  distribution: uniform
-  unique_streams: 10000
+  distribution: uniform  # or "zipf" for heavy-tailed
+  count: 10000
 ```
 
+### Example: Read Workload
 
-# Workload Suite
+```yaml
+# configs/concurrent_readers.yaml
+name: concurrent-readers-r4
+workload_type: performance
+mode: read
+duration_seconds: 6
+concurrency:
+  readers: 4
+operations:
+  read:
+    batch_size: 100
+streams:
+  distribution: uniform
+  count: 1000
+setup:
+  prepopulate_events: 10000
+  prepopulate_streams: 1000
+```
 
-The suite includes:
+### Example: Mixed Read/Write Workload
 
-## Concurrent Writers
+```yaml
+# configs/mixed_workload.yaml
+name: mixed-70-30
+workload_type: performance
+mode: mixed
+duration_seconds: 60
+concurrency:
+  writers: 4
+  readers: 12
+operations:
+  write:
+    event_size_bytes: 256
+    probability: 0.3  # 30% writes
+  read:
+    batch_size: 50
+    probability: 0.7  # 70% reads
+streams:
+  distribution: zipf
+  count: 10000
+```
 
-Multiple concurrent writers.
+### Workload Naming Convention
 
-## Concurrent Readers
+Workload names should be descriptive and include key parameters:
+- `baseline-writes-w4` - Baseline write performance with 4 writers
+- `heavy-reads-zipf-r16` - Read-heavy with Zipf distribution, 16 readers
+- `mixed-70-30` - Mixed workload with 70% reads, 30% writes
 
-Multiple concurrent readers.
+This naming makes results self-documenting when browsing the results directory.
 
-## Mixed Read/Write
+# Results Structure
 
-Write-heavy workloads with background reads.
+All benchmark results are organized by **session** - a single execution of `es-bench run`.
+
+## Session Directory
+
+```
+results/raw/sessions/{ISO-timestamp}/
+├── session.json          # Session metadata
+├── environment.json      # Hardware/system information
+├── config.yaml           # Copy of workload configuration
+└── {workload-name}/      # Named workload directory
+    ├── {store-1}/
+    │   ├── summary.json
+    │   └── samples.jsonl
+    ├── {store-2}/
+    │   ├── summary.json
+    │   └── samples.jsonl
+    └── ...
+```
+
+## Metadata Files
+
+### session.json
+Contains session-level metadata for reproducibility:
+
+```json
+{
+  "session_id": "2026-03-13T20-54-26",
+  "benchmark_version": "bb583fd",  // Git commit hash
+  "workload_name": "concurrent-writers-w4",
+  "workload_type": "performance",
+  "config_file": "configs/concurrent_writers.yaml",
+  "seed": 42,
+  "stores_run": ["umadb", "kurrentdb", "dummy"],
+  "is_sweep": false
+}
+```
+
+### environment.json
+Hardware and system information for performance context:
+
+```json
+{
+  "os": {
+    "name": "macOS",
+    "version": "26.3",
+    "kernel": "Darwin ...",
+    "arch": "aarch64"
+  },
+  "cpu": {
+    "model": "Apple M4 Pro",
+    "cores": 14
+  },
+  "memory": {
+    "total_bytes": 51539607552
+  },
+  "disk": {
+    "type": "NVMe",
+    "filesystem": "apfs"
+  },
+  "container_runtime": {
+    "type": "docker",
+    "version": "28.0.4"
+  }
+}
+```
+
+### summary.json
+Per-store aggregated metrics:
+
+```json
+{
+  "workload": "concurrent-writers-w4",
+  "adapter": "umadb",
+  "writers": 4,
+  "readers": 0,
+  "events_written": 28923,
+  "events_read": 0,
+  "duration_s": 6.0,
+  "throughput_eps": 4820.5,
+  "latency": {
+    "p50_ms": 0.65,
+    "p95_ms": 1.23,
+    "p99_ms": 2.45,
+    "p999_ms": 12.8
+  },
+  "container": {
+    "image_size_bytes": 892790634,
+    "startup_time_s": 2.38,
+    "avg_cpu_percent": 85.3,
+    "peak_cpu_percent": 142.1,
+    "avg_memory_bytes": 653291520,
+    "peak_memory_bytes": 721420288
+  }
+}
+```
+
+### samples.jsonl
+Raw per-operation measurements (JSONL format - one JSON object per line):
+
+```jsonl
+{"t_ms":1772419900760,"op":"append","latency_us":650,"ok":true}
+{"t_ms":1772419900762,"op":"append","latency_us":720,"ok":true}
+{"t_ms":1772419900764,"op":"append","latency_us":685,"ok":true}
+...
+```
+
+Each sample contains:
+- `t_ms`: Timestamp in milliseconds since epoch
+- `op`: Operation type (`append` or `read`)
+- `latency_us`: Latency in microseconds
+- `ok`: Whether the operation succeeded
 
 # Metrics Captured
 
 Benchmark runs capture:
 
-* Throughput (events/sec)
-* Latency percentiles
-* CPU utilization
-* Memory usage
-* Disk I/O
-* Index size growth
-* Write amplification (if available)
-* Recovery time
-* Error/conflict rates
+* **Throughput**: Events per second
+* **Latency percentiles**: p50, p95, p99, p999
+* **Container metrics**: CPU, memory, startup time
+* **Raw samples**: Per-operation timing data
+* **Environment**: Hardware, OS, disk, runtime info
+* **Reproducibility**: Git commit hash, seed, exact config
 
 
 # Environmental Controls

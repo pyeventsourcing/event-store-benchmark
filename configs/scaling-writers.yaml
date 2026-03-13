@@ -1,12 +1,13 @@
-name: concurrent-writers-w4
+name: scaling-writers
 workload_type: performance
 mode: write
 duration_seconds: 6
 concurrency:
-  writers: 4
+  writers: [1, 2, 4]
 operations:
   write:
     event_size_bytes: 256
 streams:
   distribution: uniform
   count: 10000
+stores: [umadb, kurrentdb, dummy]
