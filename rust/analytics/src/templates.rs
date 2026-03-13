@@ -529,32 +529,83 @@ function renderThroughputChart() {
   document.getElementById('throughput-chart').appendChild(chart);
 }
 
-// Render latency comparison chart
+// Render latency comparison chart using SVG
 function renderLatencyChart() {
   const container = document.getElementById('latency-chart');
+  const width = 900;
+  const barHeight = 18;
+  const storeSpacing = 110;
+  const marginLeft = 150;
+  const marginTop = 50;
+  const chartWidth = width - marginLeft - 50;
 
-  // Create a simple table-based visualization
-  let html = '<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">';
-  html += '<thead><tr><th style="text-align: left; padding: 12px; border-bottom: 2px solid #e5e7eb;">Store</th>';
-  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p50 (ms)</th>';
-  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p95 (ms)</th>';
-  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p99 (ms)</th>';
-  html += '<th style="text-align: right; padding: 12px; border-bottom: 2px solid #e5e7eb;">p999 (ms)</th></tr></thead>';
-  html += '<tbody>';
+  // Find max value for log scale
+  const maxLatency = Math.max(...sessionData.stores.flatMap(s =>
+    [s.latency_p50_ms, s.latency_p95_ms, s.latency_p99_ms, s.latency_p999_ms]
+  ));
 
+  const minLatency = Math.min(...sessionData.stores.flatMap(s =>
+    [s.latency_p50_ms, s.latency_p95_ms, s.latency_p99_ms, s.latency_p999_ms]
+  ));
+
+  // Log scale function with proper range
+  const logScale = (value) => {
+    // Use a lower bound that's ~10% below the minimum to ensure all bars are visible
+    const scaledMin = minLatency * 0.8;
+    const logMin = Math.log10(scaledMin);
+    const logMax = Math.log10(maxLatency);
+    const logVal = Math.log10(value);
+    return ((logVal - logMin) / (logMax - logMin)) * chartWidth;
+  };
+
+  const height = sessionData.stores.length * storeSpacing + marginTop + 40;
+
+  let svg = `<svg width="${width}" height="${height}" style="font-family: -apple-system, sans-serif;">`;
+
+  // Title
+  svg += `<text x="${marginLeft}" y="20" font-size="14" font-weight="600" fill="#666">Latency (ms) - Log Scale</text>`;
+
+  // Legend
+  const legendY = 35;
+  svg += `<rect x="${marginLeft}" y="${legendY}" width="15" height="10" fill="#3b82f6"/>`;
+  svg += `<text x="${marginLeft + 20}" y="${legendY + 9}" font-size="11">p50</text>`;
+  svg += `<rect x="${marginLeft + 70}" y="${legendY}" width="15" height="10" fill="#10b981"/>`;
+  svg += `<text x="${marginLeft + 90}" y="${legendY + 9}" font-size="11">p95</text>`;
+  svg += `<rect x="${marginLeft + 140}" y="${legendY}" width="15" height="10" fill="#f59e0b"/>`;
+  svg += `<text x="${marginLeft + 160}" y="${legendY + 9}" font-size="11">p99</text>`;
+  svg += `<rect x="${marginLeft + 210}" y="${legendY}" width="15" height="10" fill="#ef4444"/>`;
+  svg += `<text x="${marginLeft + 230}" y="${legendY + 9}" font-size="11">p999</text>`;
+
+  // Render bars for each store
   sessionData.stores.forEach((store, idx) => {
-    const bgColor = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-    html += `<tr style="background: ${bgColor};">`;
-    html += `<td style="padding: 12px; font-weight: 600;">${store.name}</td>`;
-    html += `<td style="padding: 12px; text-align: right;">${store.latency_p50_ms.toFixed(3)}</td>`;
-    html += `<td style="padding: 12px; text-align: right;">${store.latency_p95_ms.toFixed(3)}</td>`;
-    html += `<td style="padding: 12px; text-align: right;">${store.latency_p99_ms.toFixed(3)}</td>`;
-    html += `<td style="padding: 12px; text-align: right;">${store.latency_p999_ms.toFixed(3)}</td>`;
-    html += '</tr>';
+    const y = idx * storeSpacing + marginTop + 10;
+
+    // Store name
+    svg += `<text x="10" y="${y + 45}" font-size="14" font-weight="600" fill="#1a1a1a">${store.name}</text>`;
+
+    // p50 bar
+    const p50Width = logScale(store.latency_p50_ms);
+    svg += `<rect x="${marginLeft}" y="${y}" width="${p50Width}" height="${barHeight}" fill="#3b82f6" opacity="0.9"/>`;
+    svg += `<text x="${marginLeft + p50Width + 5}" y="${y + 13}" font-size="11" fill="#666">${store.latency_p50_ms.toFixed(2)}</text>`;
+
+    // p95 bar
+    const p95Width = logScale(store.latency_p95_ms);
+    svg += `<rect x="${marginLeft}" y="${y + 23}" width="${p95Width}" height="${barHeight}" fill="#10b981" opacity="0.9"/>`;
+    svg += `<text x="${marginLeft + p95Width + 5}" y="${y + 36}" font-size="11" fill="#666">${store.latency_p95_ms.toFixed(2)}</text>`;
+
+    // p99 bar
+    const p99Width = logScale(store.latency_p99_ms);
+    svg += `<rect x="${marginLeft}" y="${y + 46}" width="${p99Width}" height="${barHeight}" fill="#f59e0b" opacity="0.9"/>`;
+    svg += `<text x="${marginLeft + p99Width + 5}" y="${y + 59}" font-size="11" fill="#666">${store.latency_p99_ms.toFixed(2)}</text>`;
+
+    // p999 bar
+    const p999Width = logScale(store.latency_p999_ms);
+    svg += `<rect x="${marginLeft}" y="${y + 69}" width="${p999Width}" height="${barHeight}" fill="#ef4444" opacity="0.9"/>`;
+    svg += `<text x="${marginLeft + p999Width + 5}" y="${y + 82}" font-size="11" fill="#666">${store.latency_p999_ms.toFixed(2)}</text>`;
   });
 
-  html += '</tbody></table></div>';
-  container.innerHTML = html;
+  svg += '</svg>';
+  container.innerHTML = svg;
 }
 
 // Render store details
