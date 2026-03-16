@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -33,44 +34,59 @@ def load_runs(raw_dir: Path):
     (warmup/cooldown excluded). We load all samples and let individual plot functions
     handle edge case filtering as needed.
 
-    Directory structure: raw_dir/{workload_type}/{adapter}-r{N}-w{N}/
+    Directory structure: raw_dir/sessions/{session_id}/{run_name}/{adapter}/
     """
     runs = []
-    # Iterate through workload directories
     if not raw_dir.exists():
         return []
-    
-    for workload_dir in sorted(raw_dir.iterdir()):
-        if not workload_dir.is_dir():
+
+    sessions_dir = raw_dir / "sessions"
+    if not sessions_dir.exists():
+        print(f"No 'sessions' directory found in {raw_dir}")
+        return []
+
+    # Iterate through session directories (timestamped)
+    for session_dir in sorted(sessions_dir.iterdir()):
+        if not session_dir.is_dir():
             continue
-        # Iterate through run directories within each workload
-        for run_path in sorted(workload_dir.iterdir()):
+
+        # Iterate through run directories within each session
+        for run_path in sorted(session_dir.iterdir()):
             if not run_path.is_dir():
                 continue
-            summary_file = run_path / "summary.json"
-            samples_file = run_path / "samples.jsonl"
-            meta_file = run_path / "run.meta.json"
 
-            if summary_file.exists() and samples_file.exists():
-                with open(summary_file) as f:
-                    summary = json.load(f)
-                
-                meta = {}
-                if meta_file.exists():
-                    with open(meta_file) as f:
-                        meta = json.load(f)
+            # In the new format, each run directory has subdirectories for adapters
+            # Each adapter directory contains summary.json and samples.jsonl
+            for adapter_path in sorted(run_path.iterdir()):
+                if not adapter_path.is_dir():
+                    continue
 
-                samples = []
-                with open(samples_file) as f:
-                    for line in f:
-                        samples.append(json.loads(line))
+                summary_file = adapter_path / "summary.json"
+                samples_file = adapter_path / "samples.jsonl"
+                meta_file = adapter_path / "run.meta.json"
 
-                runs.append({
-                    "path": run_path,
-                    "summary": summary,
-                    "meta": meta,
-                    "samples": samples,
-                })
+                if summary_file.exists() and samples_file.exists():
+                    with open(summary_file) as f:
+                        summary = json.load(f)
+                    
+                    meta = {}
+                    if meta_file.exists():
+                        with open(meta_file) as f:
+                            meta = json.load(f)
+
+                    samples = []
+                    with open(samples_file) as f:
+                        for line in f:
+                            samples.append(json.loads(line))
+
+                    runs.append({
+                        "session_id": session_dir.name,
+                        "session_dir": session_dir,
+                        "path": adapter_path,
+                        "summary": summary,
+                        "meta": meta,
+                        "samples": samples,
+                    })
     return runs
 
 
@@ -683,12 +699,87 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         f.write(html)
 
 
-def generate_top_level_index(out_base: Path, workload_summaries, env_info=None):
-    """Generate top-level index.html that links to individual workload reports."""
+def generate_top_level_index(out_base: Path, sessions_summaries):
+    """Generate top-level index.html that links to individual session reports."""
+    
+    session_rows = ""
+    for session_id, summary in sorted(sessions_summaries.items(), reverse=True):
+        workloads = ", ".join(sorted(summary['workloads']))
+        adapters = ", ".join(sorted(summary['adapters']))
+        
+        session_rows += f"""
+      <tr>
+        <td><a href='{session_id}/index.html'>{session_id}</a></td>
+        <td>{summary.get('workload_name', 'N/A')}</td>
+        <td>{workloads}</td>
+        <td>{adapters}</td>
+        <td>{summary.get('benchmark_version', 'N/A')}</td>
+      </tr>"""
+
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <title>ES-BENCH Benchmark Suite</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
+    h1, h2, h3 {{ margin-top: 1.2rem; }}
+    table {{ border-collapse: collapse; margin: 1rem 0; width: 100%; }}
+    th, td {{ border: 1px solid #ddd; padding: 0.8rem 1rem; text-align: left; }}
+    th {{ background: #f5f5f5; }}
+    a {{ color: #0066cc; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+  <h1>Event Store Benchmark Suite</h1>
+  <h2>Benchmark Sessions</h2>
+  <table>
+    <tr><th>Session ID</th><th>Primary Workload</th><th>Logical Workloads</th><th>Adapters</th><th>Version</th></tr>
+    {session_rows}
+  </table>
+</body>
+</html>
+"""
+    with open(out_base / "index.html", "w") as f:
+        f.write(html)
+
+
+def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries, env_info=None, session_info=None):
+    """Generate index.html for a specific session."""
 
     env_section = ""
     if env_info:
-        env_section = f"""
+        # Check if it's the new environment.json format
+        if "os" in env_info:
+            cpu_model = env_info.get('cpu', {}).get('model', 'N/A')
+            cpu_cores = env_info.get('cpu', {}).get('cores', 'N/A')
+            kernel = env_info.get('os', {}).get('kernel', 'N/A')
+            mem_gb = env_info.get('memory', {}).get('total_bytes', 0) // (1024**3)
+            fs_type = env_info.get('disk', {}).get('filesystem', 'N/A')
+            disk_type = env_info.get('disk', {}).get('type', 'N/A')
+            
+            env_section = f"""
+    <div class='workload-section'>
+      <h2>Environment Information</h2>
+      <div class='row'>
+        <div class='card'>
+          <h3>System</h3>
+          <p><b>CPU:</b> {cpu_model} ({cpu_cores} cores)</p>
+          <p><b>Kernel:</b> {kernel}</p>
+          <p><b>Memory:</b> {mem_gb} GB total</p>
+        </div>
+        <div class='card'>
+          <h3>Storage</h3>
+          <p><b>Disk Type:</b> {disk_type}</p>
+          <p><b>FS Type:</b> {fs_type}</p>
+        </div>
+      </div>
+    </div>"""
+        else:
+            # Old format
+            env_section = f"""
     <div class='workload-section'>
       <h2>Environment Information</h2>
       <div class='row'>
@@ -743,12 +834,17 @@ def generate_top_level_index(out_base: Path, workload_summaries, env_info=None):
       {scaling_plots}
     </div>"""
 
+    # Generate session index
+    session_title = f"Benchmark Session: {session_id}"
+    if session_info and session_info.get('workload_name'):
+        session_title += f" — {session_info['workload_name']}"
+
     html = f"""
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>ES-BENCH Benchmark Suite</title>
+  <title>{session_title}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2, h3 {{ margin-top: 1.2rem; }}
@@ -764,14 +860,15 @@ def generate_top_level_index(out_base: Path, workload_summaries, env_info=None):
   </style>
 </head>
 <body>
-  <h1>Event Store Benchmark Suite</h1>
+  <h1>{session_title}</h1>
+  <p><a href="../index.html">← Back to all sessions</a></p>
   {env_section}
   <h2>Workload Reports</h2>
   {workload_sections}
 </body>
 </html>
 """
-    with open(out_base / "index.html", "w") as f:
+    with open(session_out_dir / "index.html", "w") as f:
         f.write(html)
 
 
@@ -781,120 +878,201 @@ def main():
     parser = argparse.ArgumentParser(description="Generate ES-BENCH benchmark report from raw results")
     parser.add_argument("--raw", type=str, default="results/raw", help="Path to raw results dir")
     parser.add_argument("--out", type=str, default="results/published", help="Output reports dir")
+    parser.add_argument("--force", action="store_true", help="Force regeneration of already published sessions")
     args = parser.parse_args()
 
     raw_dir = Path(args.raw)
     out_base = Path(args.out)
     out_base.mkdir(parents=True, exist_ok=True)
 
-    runs = load_runs(raw_dir)
-    if not runs:
+    all_runs = load_runs(raw_dir)
+    if not all_runs:
         print(f"No runs found in {raw_dir}")
         return
 
-    # Load environment info if available
-    env_info = None
-    env_check_file = raw_dir / "env_check.json"
-    if env_check_file.exists():
-        try:
-            with open(env_check_file, "r") as f:
-                env_info = json.load(f)
-        except Exception as e:
-            print(f"Warning: Could not load {env_check_file}: {e}")
+    # Group runs by session
+    session_runs = defaultdict(list)
+    for run in all_runs:
+        session_runs[run["session_id"]].append(run)
 
-    # Generate individual reports for each run
-    for run in runs:
-        samples_df = pd.DataFrame(run["samples"])
-        run["_samples_df"] = samples_df
-        adapter = run["summary"]["adapter"]
-        workload_name = run["summary"]["workload"]
+    sessions_summaries = {}
 
-        writers = run["summary"].get("writers", 0)
-        readers = run["summary"].get("readers", 0)
+    for session_id, runs in sorted(session_runs.items()):
+        print(f"\n>>> Processing session: {session_id}")
+        session_out_dir = out_base / session_id
+        
+        # Check if session already exists and skip if not forced
+        session_index = session_out_dir / "index.html"
+        skip_session = session_index.exists() and not args.force
 
-        # Create nested structure: workload/report-adapter
-        workload_dir = out_base / workload_name
-        workload_dir.mkdir(parents=True, exist_ok=True)
+        session_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Format directory name based on workload type, zero-padded for sorting
-        report_dir_name = f"report-{adapter}-r{readers:03d}-w{writers:03d}"
-        report_dir = workload_dir / report_dir_name
-        report_dir.mkdir(parents=True, exist_ok=True)
+        # Load environment and session info for this session
+        env_info = None
+        session_info = None
+        
+        session_dir = runs[0]["session_dir"]
+        env_file = session_dir / "environment.json"
+        if env_file.exists():
+            try:
+                with open(env_file, "r") as f:
+                    env_info = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load {env_file}: {e}")
+        
+        # Fallback to old format if no environment.json
+        if not env_info:
+            env_check_file = raw_dir / "env_check.json"
+            if env_check_file.exists():
+                try:
+                    with open(env_check_file, "r") as f:
+                        env_info = json.load(f)
+                except Exception as e:
+                    print(f"Warning: Could not load {env_check_file}: {e}")
 
-        plot_latency_cdf(samples_df, report_dir / "latency_cdf.png")
-        plot_throughput(samples_df, report_dir / "throughput.png", report_dir / "throughput_data.json")
-        generate_html(report_dir, run)
-        print(f"Report written to {report_dir}/index.html")
+        session_info_file = session_dir / "session.json"
+        if session_info_file.exists():
+            try:
+                with open(session_info_file, "r") as f:
+                    session_info = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load {session_info_file}: {e}")
 
-    # Group runs by workload
-    workload_groups = defaultdict(list)
-    for run in runs:
-        workload_name = run["summary"]["workload"]
-        workload_groups[workload_name].append(run)
+        # Group runs by workload within the session
+        workload_groups = defaultdict(list)
+        for run in runs:
+            full_workload_name = run["summary"]["workload"]
+            workload_name = re.sub(r'-w\d+-r\d+$', '', full_workload_name)
+            workload_groups[workload_name].append(run)
 
-    # Generate per-workload consolidated reports
-    workload_summaries = {}
-    for workload_name, workload_runs in workload_groups.items():
-        print(f"\nProcessing workload: {workload_name}")
+        # Skip remaining processing if session already published
+        if skip_session:
+            print(f"  Session {session_id} already published, skipping regeneration...")
+            
+            # Still need to collect workload information for the top-level index
+            workload_summaries = {}
+            all_adapters = set()
+            for workload_name, workload_runs in workload_groups.items():
+                adapters_set = set()
+                writer_counts_set = set()
+                
+                first_run = workload_runs[0]["summary"] if workload_runs else {}
+                is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
 
-        # Group runs by worker count (writers or readers) for this workload
-        writer_groups = defaultdict(list)
-        adapters_set = set()
-        writer_counts_set = set()
+                for run in workload_runs:
+                    writers = run["summary"].get("writers", 0)
+                    readers = run["summary"].get("readers", 0)
+                    wc = readers if is_readers else writers
+                    adapter = run["summary"]["adapter"]
+                    adapters_set.add(adapter)
+                    writer_counts_set.add(wc)
+                    all_adapters.add(adapter)
+                
+                workload_summaries[workload_name] = {
+                    'run_count': len(workload_runs),
+                    'adapters': adapters_set,
+                    'writer_counts': writer_counts_set,
+                }
+            
+            sessions_summaries[session_id] = {
+                'workload_name': session_info.get('workload_name') if session_info else 'N/A',
+                'benchmark_version': session_info.get('benchmark_version') if session_info else 'N/A',
+                'workloads': list(workload_summaries.keys()),
+                'adapters': list(all_adapters),
+            }
+            continue
 
-        # Determine if this is a readers or writers workload
-        first_run = workload_runs[0]["summary"] if workload_runs else {}
-        is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
-        worker_label = "reader" if is_readers else "writer"
-        worker_suffix = "r" if is_readers else "w"
+        # Generate individual reports for each run in this session
+        for run in runs:
+            samples_df = pd.DataFrame(run["samples"])
+            run["_samples_df"] = samples_df
+            adapter = run["summary"]["adapter"]
+            workload_name = run["summary"]["workload"]
 
-        for run in workload_runs:
             writers = run["summary"].get("writers", 0)
             readers = run["summary"].get("readers", 0)
-            wc = readers if is_readers else writers
-            adapter = run["summary"]["adapter"]
-            writer_groups[wc].append((adapter, run["_samples_df"]))
-            adapters_set.add(adapter)
-            writer_counts_set.add(wc)
 
-        # Generate per-worker-count comparison charts for this workload_type
-        workload_dir = out_base / workload_name
-        workload_dir.mkdir(parents=True, exist_ok=True)
+            # Create nested structure: workload/report-adapter
+            report_workload_name = re.sub(r'-w\d+-r\d+$', '', workload_name)
+            workload_dir = session_out_dir / report_workload_name
+            workload_dir.mkdir(parents=True, exist_ok=True)
 
-        for wc, run_data in sorted(writer_groups.items()):
-            plot_comparison_latency_cdf(
-                run_data,
-                f"Latency CDF — {wc} {worker_label}(s)",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
-            )
-            plot_comparison_throughput(
-                run_data,
-                f"Throughput — {wc} {worker_label}(s)",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
-            )
+            # Format directory name based on workload type, zero-padded for sorting
+            report_dir_name = f"report-{adapter}-r{readers:03d}-w{writers:03d}"
+            report_dir = workload_dir / report_dir_name
+            report_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate scaling summary charts for this workload_type (if multiple writer counts)
-        if len(writer_groups) > 1:
-            plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png")
-            plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png")
+            plot_latency_cdf(samples_df, report_dir / "latency_cdf.png")
+            plot_throughput(samples_df, report_dir / "throughput.png", report_dir / "throughput_data.json")
+            generate_html(report_dir, run)
 
-        # Generate container metrics visualization for this workload_type
-        plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
+        # Generate per-workload consolidated reports for this session
+        workload_summaries = {}
+        all_adapters = set()
+        for workload_name, workload_runs in workload_groups.items():
+            print(f"  Processing workload: {workload_name}")
 
-        # Generate consolidated HTML for this workload_type
-        generate_workload_html(out_base, workload_name, workload_runs, writer_groups)
-        print(f"Workload report written to {workload_dir}/index.html")
+            writer_groups = defaultdict(list)
+            adapters_set = set()
+            writer_counts_set = set()
 
-        # Store summary for top-level index
-        workload_summaries[workload_name] = {
-            'run_count': len(workload_runs),
-            'adapters': adapters_set,
-            'writer_counts': writer_counts_set,
+            first_run = workload_runs[0]["summary"] if workload_runs else {}
+            is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
+            worker_label = "reader" if is_readers else "writer"
+            worker_suffix = "r" if is_readers else "w"
+
+            for run in workload_runs:
+                writers = run["summary"].get("writers", 0)
+                readers = run["summary"].get("readers", 0)
+                wc = readers if is_readers else writers
+                adapter = run["summary"]["adapter"]
+                writer_groups[wc].append((adapter, run["_samples_df"]))
+                adapters_set.add(adapter)
+                writer_counts_set.add(wc)
+                all_adapters.add(adapter)
+
+            workload_dir = session_out_dir / workload_name
+            workload_dir.mkdir(parents=True, exist_ok=True)
+
+            for wc, run_data in sorted(writer_groups.items()):
+                plot_comparison_latency_cdf(
+                    run_data,
+                    f"Latency CDF — {wc} {worker_label}(s)",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
+                )
+                plot_comparison_throughput(
+                    run_data,
+                    f"Throughput — {wc} {worker_label}(s)",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
+                )
+
+            if len(writer_groups) > 1:
+                plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png")
+                plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png")
+
+            plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
+            generate_workload_html(session_out_dir, workload_name, workload_runs, writer_groups)
+
+            workload_summaries[workload_name] = {
+                'run_count': len(workload_runs),
+                'adapters': adapters_set,
+                'writer_counts': writer_counts_set,
+            }
+
+        # Generate session index
+        generate_session_index(session_out_dir, session_id, workload_summaries, env_info, session_info)
+        
+        # Collect session summary for top-level index
+        sessions_summaries[session_id] = {
+            'workload_name': session_info.get('workload_name') if session_info else 'N/A',
+            'benchmark_version': session_info.get('benchmark_version') if session_info else 'N/A',
+            'workloads': list(workload_summaries.keys()),
+            'adapters': list(all_adapters),
         }
 
     # Generate top-level index
-    generate_top_level_index(out_base, workload_summaries, env_info)
+    generate_top_level_index(out_base, sessions_summaries)
     print(f"\nTop-level index written to {out_base}/index.html")
 
 
