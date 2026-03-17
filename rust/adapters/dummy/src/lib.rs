@@ -40,11 +40,11 @@ pub struct DummyAdapter;
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     async fn append(&self, _evt: EventData) -> Result<()> {
-        precise_delay(Duration::from_millis(500));
+        precise_delay(Duration::from_millis(1));
         Ok(())
     }
     async fn read(&self, _req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        precise_delay(Duration::from_millis(500));
+        precise_delay(Duration::from_millis(1));
         Ok(vec![])
     }
 }
@@ -66,7 +66,7 @@ pub fn precise_delay(delay: Duration) {
     let start = Instant::now();
     let target = start + delay;
 
-    let spin_threshold = Duration::from_micros(50);
+    let spin_threshold = Duration::from_millis(10);
 
     if delay > spin_threshold {
         thread::sleep(delay - spin_threshold);
