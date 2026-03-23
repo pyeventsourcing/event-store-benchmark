@@ -1,14 +1,15 @@
 use hdrhistogram::Histogram;
+use hdrhistogram::serialization::{Serializer, V2Serializer};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::io::Write;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Throughput time-series sample: timestamp and cumulative operation count
 #[derive(Debug, Clone, Serialize)]
-pub struct RawSample {
+pub struct ThroughputSample {
     pub t_ms: u128,
-    pub op: String,
-    pub latency_us: u64,
-    pub ok: bool,
+    pub count: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -53,15 +54,18 @@ pub struct Summary {
 #[derive(Debug, Clone, Serialize)]
 pub struct RunMetrics {
     pub summary: Summary,
-    pub samples: Vec<RawSample>,
+    pub throughput_samples: Vec<ThroughputSample>,
     #[serde(default = "default_sample_rate")]
     pub sample_rate: u64,
+    #[serde(skip)]  // Don't serialize histogram to JSON
+    pub latency_histogram: LatencyRecorder,
 }
 
 fn default_sample_rate() -> u64 {
     1 // Default to no sampling (every event sampled)
 }
 
+#[derive(Clone, Debug)]
 pub struct LatencyRecorder {
     pub hist: Histogram<u64>,
 }
@@ -83,6 +87,19 @@ impl LatencyRecorder {
             p99_ms: self.hist.value_at_quantile(0.99) as f64 / 1000.0,
             p999_ms: self.hist.value_at_quantile(0.999) as f64 / 1000.0,
         }
+    }
+
+    /// Serialize histogram to a writer using HdrHistogram V2 format
+    pub fn serialize_to_writer<W: Write>(&self, writer: &mut W) -> anyhow::Result<()> {
+        V2Serializer::new().serialize(&self.hist, writer)?;
+        Ok(())
+    }
+
+    /// Serialize histogram to a byte vector
+    pub fn serialize_to_vec(&self) -> anyhow::Result<Vec<u8>> {
+        let mut vec = Vec::new();
+        self.serialize_to_writer(&mut vec)?;
+        Ok(vec)
     }
 }
 

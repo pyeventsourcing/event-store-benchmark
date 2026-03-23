@@ -10,6 +10,13 @@ import pandas as pd
 import seaborn as sns
 from scipy.ndimage import gaussian_filter1d
 
+try:
+    from hdrh.histogram import HdrHistogram
+    HDR_AVAILABLE = True
+except ImportError:
+    HDR_AVAILABLE = False
+    print("Warning: hdrhistogram library not installed. Run: pip install hdrhistogram")
+
 sns.set_theme(style="whitegrid")
 
 # Consistent color scheme for all adapters across all plots
@@ -96,7 +103,64 @@ def load_runs(raw_dir: Path, load_samples: bool = True):
     return runs
 
 
+def load_hdr_histogram(file_path: Path):
+    """Load HDR histogram from V2 binary file."""
+    if not HDR_AVAILABLE:
+        return None
+    if not file_path.exists():
+        return None
+
+    try:
+        with open(file_path, 'rb') as f:
+            hist_bytes = f.read()
+
+        # Decode V2 format
+        histogram = HdrHistogram.decode(hist_bytes)
+        return histogram
+    except Exception as e:
+        print(f"Warning: Failed to load HDR histogram from {file_path}: {e}")
+        return None
+
+
+def plot_latency_cdf_from_hdr(hist_file: Path, out_path: Path):
+    """Plot latency CDF from HDR histogram file."""
+    histogram = load_hdr_histogram(hist_file)
+
+    if histogram is None:
+        return False
+
+    # Get percentile values from HDR histogram
+    percentiles = []
+    latencies_ms = []
+
+    # Sample key percentiles with fine granularity in the tail
+    for p in range(0, 100):
+        percentile = p / 100.0 * 100  # Convert to 0-100 scale
+        latency_us = histogram.get_value_at_percentile(percentile)
+        latencies_ms.append(latency_us / 1000.0)
+        percentiles.append(percentile)
+
+    # Add fine-grained tail percentiles
+    for p in [99.0, 99.5, 99.9, 99.99, 99.999]:
+        latency_us = histogram.get_value_at_percentile(p)
+        latencies_ms.append(latency_us / 1000.0)
+        percentiles.append(p)
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
+    plt.xscale("log")
+    plt.xlabel("Latency (ms) [log]")
+    plt.ylabel("Percentile (%)")
+    plt.title("Latency CDF (from HDR Histogram)")
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    return True
+
+
 def plot_latency_cdf(samples: pd.DataFrame, out_path: Path):
+    """Fallback: Plot latency CDF from samples (legacy method)."""
     if samples.empty or "ok" not in samples.columns:
         return
     lat_ms = samples.loc[samples["ok"], "latency_us"].astype(float) / 1000.0
@@ -1005,7 +1069,11 @@ def main():
             report_dir = workload_dir / report_dir_name
             report_dir.mkdir(parents=True, exist_ok=True)
 
-            plot_latency_cdf(samples_df, report_dir / "latency_cdf.png")
+            # Try HDR histogram first, fallback to samples
+            hist_file = run["path"] / "latency.hdr"
+            if not plot_latency_cdf_from_hdr(hist_file, report_dir / "latency_cdf.png"):
+                plot_latency_cdf(samples_df, report_dir / "latency_cdf.png")
+
             plot_throughput(samples_df, report_dir / "throughput.png", report_dir / "throughput_data.json", sample_rate=sample_rate)
             generate_html(report_dir, run)
 

@@ -10,7 +10,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 criterion = { version = "0.5", default-features = false }
 futures = "0.3"
-hdrhistogram = "7"
+hdrhistogram = { version = "7", features = ["serialization"] }
 humantime-serde = "1.1"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }

@@ -64,6 +64,7 @@ pub async fn execute_run(
         summary,
         samples: samples_vec,
         sample_rate: 100, // 1-in-100 sampling
+        latency_histogram: overall,
     };
 
     // Stop container

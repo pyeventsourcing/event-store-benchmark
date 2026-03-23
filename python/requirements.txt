@@ -4,3 +4,4 @@ matplotlib>=3.8
 seaborn>=0.13
 scipy>=1.11
 jinja2>=3.1
+hdrhistogram>=0.10.3
