@@ -346,10 +346,9 @@ impl PerformanceWorkload {
                     if adapter.append(evt).await.is_ok() {
                         local_count += 1;
 
-                        // Periodically update shared counter (every 100 ops to minimize contention)
-                        if local_count % 100 == 0 {
-                            worker_counter.store(local_count, Ordering::Relaxed);
-                        }
+                        // Update shared counter on every operation for maximum throughput accuracy
+                        // (atomic store is ~0.5ns, negligible compared to append latency)
+                        worker_counter.store(local_count, Ordering::Relaxed);
 
                         // Record latency sample
                         if let Some(start) = t0 {
