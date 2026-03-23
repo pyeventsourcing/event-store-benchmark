@@ -115,11 +115,16 @@ def plot_latency_cdf(samples: pd.DataFrame, out_path: Path):
     plt.close()
 
 
-def compute_throughput_timeseries(samples: pd.DataFrame, bin_size_ms: int = 500):
+def compute_throughput_timeseries(samples: pd.DataFrame, bin_size_ms: int = 500, sample_rate: int = 1):
     """Compute throughput time series from response timestamps.
 
     Uses fixed-size time bins to compute throughput, which handles both
     single-threaded and concurrent workloads correctly.
+
+    Args:
+        samples: DataFrame with sample data
+        bin_size_ms: Size of time bins in milliseconds
+        sample_rate: Sampling rate (e.g., 100 means 1-in-100 sampling)
 
     Returns:
         dict with 'time_s', 'throughput_eps', and 'throughput_eps_smooth' arrays
@@ -155,8 +160,9 @@ def compute_throughput_timeseries(samples: pd.DataFrame, bin_size_ms: int = 500)
     # Count responses per bin
     bin_counts = np.bincount(bins, minlength=num_bins)
 
-    # Convert to events per second
-    eps = bin_counts * (1000.0 / bin_size_ms)
+    # Convert to events per second, scaling by sample rate
+    # If sampling 1-in-100, multiply by 100 to get actual throughput
+    eps = bin_counts * (1000.0 / bin_size_ms) * sample_rate
 
     # Time points at bin centers
     time_s = (np.arange(num_bins) + 0.5) * bin_size_ms / 1000.0
@@ -172,9 +178,9 @@ def compute_throughput_timeseries(samples: pd.DataFrame, bin_size_ms: int = 500)
     }
 
 
-def plot_throughput(samples: pd.DataFrame, out_path: Path, data_path: Path = None):
+def plot_throughput(samples: pd.DataFrame, out_path: Path, data_path: Path = None, sample_rate: int = 1):
     """Plot throughput over time with both raw and smoothed data."""
-    result = compute_throughput_timeseries(samples, bin_size_ms=500)
+    result = compute_throughput_timeseries(samples, bin_size_ms=500, sample_rate=sample_rate)
 
     if result is None:
         return
@@ -236,8 +242,8 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
     # Store data for all adapters if data_path provided
     all_data = {}
 
-    for label, samples_df in run_data:
-        result = compute_throughput_timeseries(samples_df, bin_size_ms=500)
+    for label, samples_df, sample_rate in run_data:
+        result = compute_throughput_timeseries(samples_df, bin_size_ms=500, sample_rate=sample_rate)
 
         if result is None:
             continue
@@ -986,6 +992,9 @@ def main():
             writers = run["summary"].get("writers", 0)
             readers = run["summary"].get("readers", 0)
 
+            # Extract sample rate from metadata (default to 1 if not present)
+            sample_rate = run.get("meta", {}).get("sample_rate", 1)
+
             # Create nested structure: workload/report-adapter
             report_workload_name = re.sub(r'-w\d+-r\d+$', '', workload_name)
             workload_dir = session_out_dir / report_workload_name
@@ -997,7 +1006,7 @@ def main():
             report_dir.mkdir(parents=True, exist_ok=True)
 
             plot_latency_cdf(samples_df, report_dir / "latency_cdf.png")
-            plot_throughput(samples_df, report_dir / "throughput.png", report_dir / "throughput_data.json")
+            plot_throughput(samples_df, report_dir / "throughput.png", report_dir / "throughput_data.json", sample_rate=sample_rate)
             generate_html(report_dir, run)
 
         # Generate per-workload consolidated reports for this session
@@ -1020,7 +1029,8 @@ def main():
                 readers = run["summary"].get("readers", 0)
                 wc = readers if is_readers else writers
                 adapter = run["summary"]["adapter"]
-                writer_groups[wc].append((adapter, run["_samples_df"]))
+                sample_rate = run.get("meta", {}).get("sample_rate", 1)
+                writer_groups[wc].append((adapter, run["_samples_df"], sample_rate))
                 adapters_set.add(adapter)
                 writer_counts_set.add(wc)
                 all_adapters.add(adapter)

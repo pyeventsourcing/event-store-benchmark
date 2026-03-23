@@ -63,6 +63,7 @@ pub async fn execute_run(
     let metrics = RunMetrics {
         summary,
         samples: samples_vec,
+        sample_rate: 100, // 1-in-100 sampling
     };
 
     // Stop container

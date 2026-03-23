@@ -317,7 +317,12 @@ impl PerformanceWorkload {
                 let event_type = "test".to_string();
                 let payload = vec![0u8; size];
 
-                // Simple tight loop matching reference benchmark
+                // Sampling for latency measurement (1 in every N operations)
+                const SAMPLE_RATE: u64 = 100;
+                let mut rec = LatencyRecorder::new();
+                let mut task_samples = Vec::new();
+
+                // Tight loop with minimal overhead
                 while Instant::now() < end_at {
                     let evt = EventData {
                         stream: stream.clone(),
@@ -326,24 +331,48 @@ impl PerformanceWorkload {
                         tags: vec![],
                     };
 
-                    match adapter.append(evt).await {
-                        Ok(_) => count += 1,
-                        Err(_) => break,
+                    // Sample every Nth operation
+                    let should_sample = count % SAMPLE_RATE == 0;
+                    let t0 = if should_sample { Some(Instant::now()) } else { None };
+
+                    let ok = match adapter.append(evt).await {
+                        Ok(_) => {
+                            count += 1;
+                            true
+                        }
+                        Err(_) => {
+                            count += 1;
+                            false
+                        }
+                    };
+
+                    // Record sample if this operation was sampled
+                    if let Some(start) = t0 {
+                        let dt = start.elapsed();
+                        rec.record(dt);
+                        let sample = RawSample {
+                            t_ms: now_ms(),
+                            op: "append".to_string(),
+                            latency_us: dt.as_micros() as u64,
+                            ok,
+                        };
+                        task_samples.push(sample);
                     }
                 }
-                count
+                (rec, count, task_samples)
             });
         }
 
+        let mut overall = LatencyRecorder::new();
         let mut events_written: u64 = 0;
-        while let Some(res) = set.join_next().await {
-            let count = res.expect("join");
-            events_written += count;
-        }
+        let mut samples_vec = Vec::new();
 
-        // Create minimal latency recorder (will be empty)
-        let overall = LatencyRecorder::new();
-        let samples_vec = Vec::new();
+        while let Some(res) = set.join_next().await {
+            let (rec, count, task_samples) = res.expect("join");
+            overall.hist.add(&rec.hist).unwrap();
+            events_written += count;
+            samples_vec.extend(task_samples);
+        }
 
         Ok((overall, events_written, 0, samples_vec))
     }

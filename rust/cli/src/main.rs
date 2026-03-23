@@ -200,6 +200,13 @@ fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
             }
             fs::write(store_dir.join("samples.jsonl"), samples_lines)?;
 
+            // Write metadata with sample rate
+            let metadata = serde_json::json!({
+                "sample_rate": result.sample_rate,
+            });
+            let metadata_json = serde_json::to_string_pretty(&metadata)?;
+            fs::write(store_dir.join("run.meta.json"), metadata_json)?;
+
             println!(
                 "✓ {} completed: {:.2} events/sec",
                 store_name, result.summary.throughput_eps
