@@ -307,13 +307,15 @@ impl PerformanceWorkload {
 
         let write_config = self.config.operations.write.as_ref().unwrap();
 
-        // Shared atomic counter for all writers
-        let total_count = Arc::new(AtomicU64::new(0));
+        // Per-worker atomic counters to avoid contention
+        let worker_counters: Vec<Arc<AtomicU64>> = (0..writers)
+            .map(|_| Arc::new(AtomicU64::new(0)))
+            .collect();
 
         // Spawn writer tasks
-        for (_i, adapter) in writer_adapters.into_iter().enumerate() {
+        for (i, adapter) in writer_adapters.into_iter().enumerate() {
             let write_cfg = write_config.clone();
-            let counter = total_count.clone();
+            let worker_counter = worker_counters[i].clone();
 
             set.spawn(async move {
                 let mut local_count = 0u64;
@@ -343,7 +345,11 @@ impl PerformanceWorkload {
 
                     if adapter.append(evt).await.is_ok() {
                         local_count += 1;
-                        counter.fetch_add(1, Ordering::Relaxed);
+
+                        // Periodically update shared counter (every 100 ops to minimize contention)
+                        if local_count % 100 == 0 {
+                            worker_counter.store(local_count, Ordering::Relaxed);
+                        }
 
                         // Record latency sample
                         if let Some(start) = t0 {
@@ -351,23 +357,30 @@ impl PerformanceWorkload {
                         }
                     }
                 }
+
+                // Store final count for this worker
+                worker_counter.store(local_count, Ordering::Relaxed);
                 rec
             });
         }
 
         // Spawn throughput sampling task
-        let sample_counter = total_count.clone();
-        let start_time = Instant::now();
+        let sample_counters = worker_counters.clone();
         let throughput_handle = tokio::spawn(async move {
             let mut samples = Vec::new();
             let sample_interval = Duration::from_millis(500); // Sample every 500ms
 
             while Instant::now() < end_at {
                 tokio::time::sleep(sample_interval).await;
-                let count = sample_counter.load(Ordering::Relaxed);
+
+                // Sum counts from all workers
+                let total_count: u64 = sample_counters.iter()
+                    .map(|c| c.load(Ordering::Relaxed))
+                    .sum();
+
                 samples.push(ThroughputSample {
                     t_ms: now_ms(),
-                    count,
+                    count: total_count,
                 });
             }
             samples
@@ -380,8 +393,10 @@ impl PerformanceWorkload {
             overall.hist.add(&rec.hist).unwrap();
         }
 
-        // Get final count and throughput samples
-        let events_written = total_count.load(Ordering::Relaxed);
+        // Get final count from all workers
+        let events_written: u64 = worker_counters.iter()
+            .map(|c| c.load(Ordering::Relaxed))
+            .sum();
         let throughput_samples = throughput_handle.await.expect("throughput task");
 
         Ok((overall, events_written, 0, throughput_samples))
