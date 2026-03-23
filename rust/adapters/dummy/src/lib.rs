@@ -40,11 +40,11 @@ pub struct DummyAdapter;
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     async fn append(&self, _evt: EventData) -> Result<()> {
-        precise_delay(Duration::from_millis(1));
+        precise_delay(Duration::from_micros(200));
         Ok(())
     }
     async fn read(&self, _req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        precise_delay(Duration::from_millis(1));
+        precise_delay(Duration::from_millis(200));
         Ok(vec![])
     }
 }

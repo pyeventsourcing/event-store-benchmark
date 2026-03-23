@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct UmaDbStoreManager {
     uri: Option<String>,
     container: Option<ContainerAsync<UmaDb>>,
+    local: bool,
 }
 
 impl UmaDbStoreManager {
@@ -24,6 +25,7 @@ impl UmaDbStoreManager {
         Self {
             uri: None,
             container: None,
+            local: true,
         }
     }
 }
@@ -31,10 +33,14 @@ impl UmaDbStoreManager {
 #[async_trait]
 impl StoreManager for UmaDbStoreManager {
     async fn start(&mut self) -> Result<()> {
-        let container = UmaDb::default().start().await?;
-        let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
-        self.uri = Some(format!("http://localhost:{}", host_port));
-        self.container = Some(container);
+        if !self.local {
+            let container = UmaDb::default().start().await?;
+            let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
+            self.uri = Some(format!("http://localhost:{}", host_port));
+            self.container = Some(container);
+        } else {
+            self.uri = Some(format!("http://localhost:{}", UMADB_PORT));
+        }
 
         // Wait for container to be ready
         for _ in 0..60 {

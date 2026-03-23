@@ -1,9 +1,9 @@
 name: scaling-writers
 workload_type: performance
 mode: write
-duration_seconds: 6
+duration_seconds: 120
 concurrency:
-  writers: [1, 2, 4]
+  writers: [1,2,4]
 operations:
   write:
     event_size_bytes: 256

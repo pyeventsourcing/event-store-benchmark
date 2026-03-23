@@ -27,15 +27,58 @@ def get_adapter_color(adapter_name):
     return ADAPTER_COLORS.get(adapter_name, '#cccccc')
 
 
-def load_runs(raw_dir: Path):
-    """Load benchmark runs from raw results directory.
+def load_session_runs(session_dir: Path, load_samples: bool = True):
+    """Load benchmark runs from a single session directory.
 
-    Samples are already filtered to the measurement window by the benchmark runner
-    (warmup/cooldown excluded). We load all samples and let individual plot functions
-    handle edge case filtering as needed.
-
-    Directory structure: raw_dir/sessions/{session_id}/{run_name}/{adapter}/
+    Directory structure: {session_dir}/{run_name}/{adapter}/
     """
+    runs = []
+    if not session_dir.exists() or not session_dir.is_dir():
+        return []
+
+    # Iterate through run directories within each session
+    for run_path in sorted(session_dir.iterdir()):
+        if not run_path.is_dir():
+            continue
+
+        # In the new format, each run directory has subdirectories for adapters
+        # Each adapter directory contains summary.json and samples.jsonl
+        for adapter_path in sorted(run_path.iterdir()):
+            if not adapter_path.is_dir():
+                continue
+
+            summary_file = adapter_path / "summary.json"
+            samples_file = adapter_path / "samples.jsonl"
+            meta_file = adapter_path / "run.meta.json"
+
+            if summary_file.exists():
+                with open(summary_file) as f:
+                    summary = json.load(f)
+                
+                meta = {}
+                if meta_file.exists():
+                    with open(meta_file) as f:
+                        meta = json.load(f)
+
+                samples = []
+                if load_samples and samples_file.exists():
+                    with open(samples_file) as f:
+                        for line in f:
+                            samples.append(json.loads(line))
+
+                runs.append({
+                    "session_id": session_dir.name,
+                    "session_dir": session_dir,
+                    "path": adapter_path,
+                    "summary": summary,
+                    "meta": meta,
+                    "samples": samples,
+                })
+    return runs
+
+
+def load_runs(raw_dir: Path, load_samples: bool = True):
+    """Load benchmark runs from raw results directory."""
     runs = []
     if not raw_dir.exists():
         return []
@@ -49,44 +92,7 @@ def load_runs(raw_dir: Path):
     for session_dir in sorted(sessions_dir.iterdir()):
         if not session_dir.is_dir():
             continue
-
-        # Iterate through run directories within each session
-        for run_path in sorted(session_dir.iterdir()):
-            if not run_path.is_dir():
-                continue
-
-            # In the new format, each run directory has subdirectories for adapters
-            # Each adapter directory contains summary.json and samples.jsonl
-            for adapter_path in sorted(run_path.iterdir()):
-                if not adapter_path.is_dir():
-                    continue
-
-                summary_file = adapter_path / "summary.json"
-                samples_file = adapter_path / "samples.jsonl"
-                meta_file = adapter_path / "run.meta.json"
-
-                if summary_file.exists() and samples_file.exists():
-                    with open(summary_file) as f:
-                        summary = json.load(f)
-                    
-                    meta = {}
-                    if meta_file.exists():
-                        with open(meta_file) as f:
-                            meta = json.load(f)
-
-                    samples = []
-                    with open(samples_file) as f:
-                        for line in f:
-                            samples.append(json.loads(line))
-
-                    runs.append({
-                        "session_id": session_dir.name,
-                        "session_dir": session_dir,
-                        "path": adapter_path,
-                        "summary": summary,
-                        "meta": meta,
-                        "samples": samples,
-                    })
+        runs.extend(load_session_runs(session_dir, load_samples))
     return runs
 
 
@@ -850,25 +856,50 @@ def main():
     out_base = Path(args.out)
     out_base.mkdir(parents=True, exist_ok=True)
 
-    all_runs = load_runs(raw_dir)
-    if not all_runs:
-        print(f"No runs found in {raw_dir}")
+    sessions_dir = raw_dir / "sessions"
+    if not sessions_dir.exists():
+        print(f"No sessions found in {sessions_dir}")
+        return
+
+    session_ids = sorted([d.name for d in sessions_dir.iterdir() if d.is_dir()])
+    if not session_ids:
+        print(f"No sessions found in {sessions_dir}")
         return
 
     # Group runs by session
     session_runs = defaultdict(list)
-    for run in all_runs:
-        session_runs[run["session_id"]].append(run)
+    for session_id in session_ids:
+        session_out_dir = out_base / session_id
+        session_index = session_out_dir / "index.html"
+        force_regenerate = args.force
+        
+        # If not forced and already exists, load without samples for speed
+        load_samples = force_regenerate or not session_index.exists()
+        
+        session_dir = sessions_dir / session_id
+        runs = load_session_runs(session_dir, load_samples=load_samples)
+        session_runs[session_id].extend(runs)
+
+    if not session_runs:
+        print(f"No runs found in {raw_dir}")
+        return
 
     sessions_summaries = {}
 
     for session_id, runs in sorted(session_runs.items()):
-        print(f"\n>>> Processing session: {session_id}")
         session_out_dir = out_base / session_id
         
         # Check if session already exists and skip if not forced
         session_index = session_out_dir / "index.html"
         skip_session = session_index.exists() and not args.force
+        
+        if skip_session:
+            print(f">>> Session {session_id} already published, skipping regeneration (loaded without samples)...")
+        elif not runs:
+            print(f">>> No runs found for session {session_id}. Skipping.")
+            continue
+        else:
+            print(f">>> Processing session: {session_id}")
 
         session_out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -912,8 +943,6 @@ def main():
 
         # Skip remaining processing if session already published
         if skip_session:
-            print(f"  Session {session_id} already published, skipping regeneration...")
-            
             # Still need to collect workload information for the top-level index
             workload_summaries = {}
             all_adapters = set()
