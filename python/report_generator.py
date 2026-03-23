@@ -103,55 +103,37 @@ def load_runs(raw_dir: Path, load_samples: bool = True):
     return runs
 
 
-def load_hdr_histogram(file_path: Path):
-    """Load HDR histogram from V2 binary file."""
-    if not HDR_AVAILABLE:
-        return None
+def load_latency_percentiles(file_path: Path):
+    """Load latency percentile data from JSON file."""
     if not file_path.exists():
         return None
 
     try:
-        with open(file_path, 'rb') as f:
-            hist_bytes = f.read()
-
-        # Decode V2 format
-        histogram = HdrHistogram.decode(hist_bytes)
-        return histogram
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            return data.get("percentiles", [])
     except Exception as e:
-        print(f"Warning: Failed to load HDR histogram from {file_path}: {e}")
+        print(f"Warning: Failed to load latency percentiles from {file_path}: {e}")
         return None
 
 
-def plot_latency_cdf_from_hdr(hist_file: Path, out_path: Path):
-    """Plot latency CDF from HDR histogram file."""
-    histogram = load_hdr_histogram(hist_file)
+def plot_latency_cdf_from_json(latency_file: Path, out_path: Path):
+    """Plot latency CDF from JSON percentile file."""
+    percentiles_data = load_latency_percentiles(latency_file)
 
-    if histogram is None:
+    if percentiles_data is None or len(percentiles_data) == 0:
         return False
 
-    # Get percentile values from HDR histogram
-    percentiles = []
-    latencies_ms = []
-
-    # Sample key percentiles with fine granularity in the tail
-    for p in range(0, 100):
-        percentile = p / 100.0 * 100  # Convert to 0-100 scale
-        latency_us = histogram.get_value_at_percentile(percentile)
-        latencies_ms.append(latency_us / 1000.0)
-        percentiles.append(percentile)
-
-    # Add fine-grained tail percentiles
-    for p in [99.0, 99.5, 99.9, 99.99, 99.999]:
-        latency_us = histogram.get_value_at_percentile(p)
-        latencies_ms.append(latency_us / 1000.0)
-        percentiles.append(p)
+    # Extract percentiles and latencies
+    percentiles = [p["percentile"] for p in percentiles_data]
+    latencies_ms = [p["latency_us"] / 1000.0 for p in percentiles_data]
 
     plt.figure(figsize=(6, 4))
     plt.plot(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
     plt.xscale("log")
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    plt.title("Latency CDF (from HDR Histogram)")
+    plt.title("Latency CDF")
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -1052,9 +1034,9 @@ def main():
             report_dir = workload_dir / report_dir_name
             report_dir.mkdir(parents=True, exist_ok=True)
 
-            # Plot latency from HDR histogram
-            hist_file = run["path"] / "latency.hdr"
-            plot_latency_cdf_from_hdr(hist_file, report_dir / "latency_cdf.png")
+            # Plot latency from JSON percentiles
+            latency_file = run["path"] / "latency.json"
+            plot_latency_cdf_from_json(latency_file, report_dir / "latency_cdf.png")
 
             plot_throughput(throughput_df, report_dir / "throughput.png", report_dir / "throughput_data.json", sample_rate=sample_rate)
             generate_html(report_dir, run)

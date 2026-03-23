@@ -1,3 +1,4 @@
+use base64::Engine;
 use hdrhistogram::Histogram;
 use hdrhistogram::serialization::{Serializer, V2Serializer};
 use serde::Serialize;
@@ -91,11 +92,38 @@ impl LatencyRecorder {
         Ok(())
     }
 
-    /// Serialize histogram to a byte vector
-    pub fn serialize_to_vec(&self) -> anyhow::Result<Vec<u8>> {
+    /// Serialize histogram to a base64-encoded string (for Python compatibility)
+    pub fn serialize_to_base64(&self) -> anyhow::Result<String> {
         let mut vec = Vec::new();
         self.serialize_to_writer(&mut vec)?;
-        Ok(vec)
+        Ok(base64::engine::general_purpose::STANDARD.encode(&vec))
+    }
+
+    /// Export histogram percentile data as JSON for analysis
+    pub fn to_percentile_json(&self) -> serde_json::Value {
+        let mut percentiles = Vec::new();
+
+        // Sample key percentiles with fine granularity in the tail
+        for p in 0..100 {
+            let quantile = p as f64 / 100.0;
+            let latency_us = self.hist.value_at_quantile(quantile);
+            percentiles.push(serde_json::json!({
+                "percentile": p as f64,
+                "latency_us": latency_us
+            }));
+        }
+
+        // Add fine-grained tail percentiles
+        for p in [99.0, 99.5, 99.9, 99.99, 99.999] {
+            let quantile = p / 100.0;
+            let latency_us = self.hist.value_at_quantile(quantile);
+            percentiles.push(serde_json::json!({
+                "percentile": p,
+                "latency_us": latency_us
+            }));
+        }
+
+        serde_json::json!({ "percentiles": percentiles })
     }
 }
 

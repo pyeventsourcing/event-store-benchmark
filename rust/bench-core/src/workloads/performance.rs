@@ -458,14 +458,9 @@ impl PerformanceWorkload {
                     let dt = t0.elapsed();
                     let now = Instant::now();
 
-                    let (ok, _events_count) = match result {
-                        Ok(events) => {
-                            let count = events.len() as u64;
-                            total_events_read += count;
-                            (true, count)
-                        }
-                        Err(_) => (false, 0),
-                    };
+                    if let Ok(events) = result {
+                        total_events_read += events.len() as u64;
+                    }
 
                     if now >= measurement_start && now <= measurement_end {
                         rec.record(dt);
@@ -552,7 +547,7 @@ impl PerformanceWorkload {
                         false
                     };
 
-                    let (op_name, dt, ok) = if should_write {
+                    let dt = if should_write {
                         if let Some(write_cfg) = write_cfg {
                             let evt = EventData {
                                 stream: format!("stream-{}", stream_idx),
@@ -561,12 +556,10 @@ impl PerformanceWorkload {
                                 tags: vec![],
                             };
                             let t0 = Instant::now();
-                            let ok = adapter.append(evt).await.is_ok();
-                            let dt = t0.elapsed();
-                            if ok {
+                            if adapter.append(evt).await.is_ok() {
                                 events_written += 1;
                             }
-                            ("append", dt, ok)
+                            t0.elapsed()
                         } else {
                             continue;
                         }
@@ -579,16 +572,10 @@ impl PerformanceWorkload {
                             };
                             let t0 = Instant::now();
                             let result = adapter.read(req).await;
-                            let dt = t0.elapsed();
-                            let (ok, _count) = match result {
-                                Ok(events) => {
-                                    let count = events.len() as u64;
-                                    events_read += count;
-                                    (true, count)
-                                }
-                                Err(_) => (false, 0),
-                            };
-                            ("read", dt, ok)
+                            if let Ok(events) = result {
+                                events_read += events.len() as u64;
+                            }
+                            t0.elapsed()
                         } else {
                             continue;
                         }

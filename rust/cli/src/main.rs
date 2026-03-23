@@ -207,9 +207,12 @@ fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
             fs::write(store_dir.join("run.meta.json"), metadata_json)?;
 
-            // Write HDR histogram file (V2 binary format)
-            let hist_bytes = result.latency_histogram.serialize_to_vec()?;
-            fs::write(store_dir.join("latency.hdr"), hist_bytes)?;
+            // Write histogram as JSON percentile data
+            let percentile_json = result.latency_histogram.to_percentile_json();
+            fs::write(
+                store_dir.join("latency.json"),
+                serde_json::to_string_pretty(&percentile_json)?
+            )?;
 
             println!(
                 "✓ {} completed: {:.2} events/sec",

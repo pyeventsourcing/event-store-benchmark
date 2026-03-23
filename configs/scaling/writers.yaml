@@ -1,7 +1,7 @@
 name: scaling-writers
 workload_type: performance
 mode: write
-duration_seconds: 120
+duration_seconds: 20
 concurrency:
   writers: [1,2,4]
 operations:
