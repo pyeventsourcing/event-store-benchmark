@@ -160,11 +160,13 @@ pub struct OsInfo {
 pub struct CpuInfo {
     pub model: String,
     pub cores: usize,
+    pub threads: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MemoryInfo {
     pub total_bytes: u64,
+    pub available_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -179,6 +181,8 @@ pub struct ContainerRuntimeInfo {
     #[serde(rename = "type")]
     pub runtime_type: String,
     pub version: String,
+    pub ncpu: usize,
+    pub mem_total: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

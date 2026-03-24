@@ -799,22 +799,42 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
     if env_info:
         # Check if it's the new environment.json format
         if "os" in env_info:
-            cpu_model = env_info.get('cpu', {}).get('model', 'N/A')
-            cpu_cores = env_info.get('cpu', {}).get('cores', 'N/A')
+            cpu = env_info.get('cpu', {})
+            cpu_model = cpu.get('model', 'N/A')
+            cpu_cores = cpu.get('cores', 'N/A')
+            cpu_threads = cpu.get('threads', 'N/A')
             kernel = env_info.get('os', {}).get('kernel', 'N/A')
-            mem_gb = env_info.get('memory', {}).get('total_bytes', 0) // (1024**3)
+            
+            memory = env_info.get('memory', {})
+            total_mem_gb = memory.get('total_bytes', 0) // (1024**3)
+            avail_mem_gb = memory.get('available_bytes', 0) / (1024**3)
+            
             fs_type = env_info.get('disk', {}).get('filesystem', 'N/A')
             disk_type = env_info.get('disk', {}).get('type', 'N/A')
             
+            runtime = env_info.get('container_runtime', {})
+            rt_type = runtime.get('type', 'N/A')
+            rt_ver = runtime.get('version', 'N/A')
+            rt_cpu = runtime.get('ncpu', 'N/A')
+            rt_mem = runtime.get('mem_total', 0) / (1024**3)
+
             env_section = f"""
     <div class='workload-section'>
       <h2>Environment Information</h2>
       <div class='row'>
         <div class='card'>
           <h3>System</h3>
-          <p><b>CPU:</b> {cpu_model} ({cpu_cores} cores)</p>
+          <p><b>CPU:</b> {cpu_model}</p>
+          <p><b>Cores/Threads:</b> {cpu_cores} cores / {cpu_threads} threads</p>
           <p><b>Kernel:</b> {kernel}</p>
-          <p><b>Memory:</b> {mem_gb} GB total</p>
+          <p><b>Memory:</b> {total_mem_gb} GB total ({avail_mem_gb:.1f} GB available)</p>
+        </div>
+        <div class='card'>
+          <h3>Docker Runtime</h3>
+          <p><b>Type:</b> {rt_type}</p>
+          <p><b>Version:</b> {rt_ver}</p>
+          <p><b>Available Cores:</b> {rt_cpu}</p>
+          <p><b>Available Memory:</b> {rt_mem:.1f} GB</p>
         </div>
         <div class='card'>
           <h3>Storage</h3>
