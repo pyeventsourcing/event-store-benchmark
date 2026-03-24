@@ -9,6 +9,7 @@ use rand::Rng;
 use std::fs;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -64,6 +65,17 @@ fn main() -> Result<()> {
         )
         .init();
 
+    let rt = Runtime::new()?;
+    let cancel_token = CancellationToken::new();
+    let ct = cancel_token.clone();
+
+    // Spawn Ctrl+C handler
+    rt.spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl_c");
+        println!("\nInterrupt received, shutting down...");
+        ct.cancel();
+    });
+
     match cli.command {
         Commands::ListStores => {
             for f in store_manager_factories() {
@@ -72,7 +84,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         Commands::Run { config, seed } => {
-            run_benchmark(&config, seed)?;
+            rt.block_on(async { run_benchmark(&config, seed, cancel_token).await })?;
             Ok(())
         }
         Commands::Report { sessions, output } => {
@@ -82,7 +94,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
+async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, cancel_token: CancellationToken) -> Result<()> {
     let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
 
     // Read config file
@@ -112,7 +124,7 @@ fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
     println!("Session ID: {}", session_id);
 
     // Collect environment info
-    let environment_info = collect_environment_info()?;
+    let environment_info = collect_environment_info().await?;
 
     // Get benchmark version (git commit)
     let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
@@ -169,6 +181,9 @@ fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
 
         // Run workload for each store
         for store_name in &stores_to_run {
+            if cancel_token.is_cancelled() {
+                break;
+            }
             println!("\n=== Running {} on {} ===", workload_name, store_name);
 
             // Find store factory
@@ -185,8 +200,18 @@ fn run_benchmark(config_path: &PathBuf, seed: Option<u64>) -> Result<()> {
             fs::create_dir_all(&store_dir)?;
 
             // Execute the run
-            let rt = Runtime::new()?;
-            let result = rt.block_on(async { execute_run(store_manager, &workload).await })?;
+            let result = execute_run(store_manager, &workload, cancel_token.clone()).await;
+            
+            let result = match result {
+                Ok(res) => res,
+                Err(e) => {
+                    if cancel_token.is_cancelled() {
+                        println!("Run interrupted, skipping results for {}", store_name);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            };
 
             // Write summary
             let summary_json = serde_json::to_string_pretty(&result.summary)?;

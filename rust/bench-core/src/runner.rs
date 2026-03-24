@@ -5,16 +5,25 @@ use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
 use anyhow::Result;
 use std::time::{Instant};
+use tokio_util::sync::CancellationToken;
 
 pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
+    cancel_token: CancellationToken,
 ) -> Result<RunMetrics> {
     // Start store container
     println!("Starting {} container...", store.name());
     let setup_start = Instant::now();
 
-    store.start().await?;
+    tokio::select! {
+        res = store.start() => res?,
+        _ = cancel_token.cancelled() => {
+            println!("Interrupted while starting container.");
+            store.stop().await.ok();
+            anyhow::bail!("Interrupted");
+        }
+    }
 
     let startup_time_s = setup_start.elapsed().as_secs_f64();
     println!(
@@ -40,18 +49,35 @@ pub async fn execute_run(
     };
 
     // Extract workload details and execute based on type
-    let (workload_name, duration_seconds, writers, readers, overall, events_written, events_read, throughput_samples) = match workload {
-        Workload::Performance(perf_workload) => {
-            execute_performance_workload(store.as_ref(), perf_workload).await?
+    let workload_res = tokio::select! {
+        res = async {
+            match workload {
+                Workload::Performance(perf_workload) => {
+                    execute_performance_workload(store.as_ref(), perf_workload, cancel_token.clone()).await
+                }
+                Workload::Durability(dur_workload) => {
+                    anyhow::bail!("Durability workloads not yet implemented: {}", dur_workload.name());
+                }
+                Workload::Consistency(cons_workload) => {
+                    anyhow::bail!("Consistency workloads not yet implemented: {}", cons_workload.name());
+                }
+                Workload::Operational(op_workload) => {
+                    anyhow::bail!("Operational workloads not yet implemented: {}", op_workload.name());
+                }
+            }
+        } => res,
+        _ = cancel_token.cancelled() => {
+            println!("Interrupted during workload execution.");
+            anyhow::bail!("Interrupted");
         }
-        Workload::Durability(dur_workload) => {
-            anyhow::bail!("Durability workloads not yet implemented: {}", dur_workload.name());
-        }
-        Workload::Consistency(cons_workload) => {
-            anyhow::bail!("Consistency workloads not yet implemented: {}", cons_workload.name());
-        }
-        Workload::Operational(op_workload) => {
-            anyhow::bail!("Operational workloads not yet implemented: {}", op_workload.name());
+    };
+
+    let (workload_name, duration_seconds, writers, readers, overall, events_written, events_read, throughput_samples) = match workload_res {
+        Ok(vals) => vals,
+        Err(e) => {
+            // Ensure container is stopped on error/interruption
+            store.stop().await.ok();
+            return Err(e);
         }
     };
 
@@ -119,6 +145,7 @@ pub async fn execute_run(
 async fn execute_performance_workload(
     store: &dyn StoreManager,
     workload: &PerformanceWorkload,
+    cancel_token: CancellationToken,
 ) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, u64, u64, Vec<crate::metrics::ThroughputSample>)> {
     // Prepare the workload
     workload.prepare(store).await?;
@@ -128,7 +155,7 @@ async fn execute_performance_workload(
 
     // Execute the workload
     let (overall, events_written, events_read, throughput_samples) = workload
-        .execute(store)
+        .execute(store, cancel_token)
         .await?;
 
     Ok((

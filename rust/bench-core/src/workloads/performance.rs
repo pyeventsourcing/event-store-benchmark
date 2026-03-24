@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
@@ -261,18 +262,19 @@ impl PerformanceWorkload {
     pub async fn execute(
         &self,
         store: &dyn StoreManager,
+        cancel_token: CancellationToken,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         match self.config.mode {
             PerformanceMode::Write => {
-                self.execute_write_workload(store)
+                self.execute_write_workload(store, cancel_token)
                     .await
             }
             PerformanceMode::Read => {
-                self.execute_read_workload(store)
+                self.execute_read_workload(store, cancel_token)
                     .await
             }
             PerformanceMode::Mixed => {
-                self.execute_mixed_workload(store)
+                self.execute_mixed_workload(store, cancel_token)
                     .await
             }
         }
@@ -281,6 +283,7 @@ impl PerformanceWorkload {
     async fn execute_write_workload(
         &self,
         store: &dyn StoreManager,
+        cancel_token: CancellationToken,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let writers = self.config.concurrency.writers.first();
         println!("Creating {} writer clients...", writers);
@@ -308,11 +311,12 @@ impl PerformanceWorkload {
 
         let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
         
-        // Spawn writer tasks first - they will run until end_time
+        // Spawn writer tasks first
         for (i, adapter) in writer_adapters.into_iter().enumerate() {
             let write_cfg = write_config.clone();
             let worker_counter = worker_counters[i].clone();
             let has_stopped = has_stopped.clone();
+            let cancel_token = cancel_token.clone();
 
             set.spawn(async move {
                 let mut local_count = 0u64;
@@ -327,7 +331,7 @@ impl PerformanceWorkload {
                 let mut rec = LatencyRecorder::new();
 
                 // Tight loop with minimal overhead
-                while !has_stopped.load(Ordering::Relaxed) {
+                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
                     let evt = EventData {
                         stream: stream.clone(),
                         event_type: event_type.clone(),
@@ -359,12 +363,17 @@ impl PerformanceWorkload {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let sample_counters = worker_counters.clone();
         let duration_seconds = self.config.duration_seconds;
+        let has_stopped_throughput = has_stopped.clone();
+        let cancel_token_throughput = cancel_token.clone();
         let throughput_handle = tokio::spawn(async move {
             // Pre-allocate vector for N+1 samples
             let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
 
             // Take samples at 1-second intervals (N+1 total for N seconds)
             for i in 0..=duration_seconds {
+                if cancel_token_throughput.is_cancelled() {
+                    break;
+                }
                 let total_count: u64 = sample_counters.iter()
                     .map(|c| c.load(Ordering::Relaxed))
                     .sum();
@@ -376,9 +385,12 @@ impl PerformanceWorkload {
 
                 // Sleep until next second (except after last sample)
                 if i < duration_seconds {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                        _ = cancel_token_throughput.cancelled() => { break; }
+                    }
                 } else {
-                    has_stopped.store(true, Ordering::Relaxed);
+                    has_stopped_throughput.store(true, Ordering::Relaxed);
                 }
             }
 
@@ -404,6 +416,7 @@ impl PerformanceWorkload {
     async fn execute_read_workload(
         &self,
         store: &dyn StoreManager,
+        cancel_token: CancellationToken,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let readers = self.config.concurrency.readers.first();
         println!("Creating {} reader clients...", readers);
@@ -438,6 +451,7 @@ impl PerformanceWorkload {
             let seed = self.seed + (i as u64);
             let worker_counter = worker_counters[i].clone();
             let has_stopped = has_stopped.clone();
+            let cancel_token = cancel_token.clone();
 
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
@@ -446,7 +460,7 @@ impl PerformanceWorkload {
                 let mut rec = LatencyRecorder::new();
                 let mut total_events_read = 0u64;
 
-                while !has_stopped.load(Ordering::Relaxed) {
+                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
                     let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
                         rng.gen_range(0..hot_set)
                     } else {
@@ -478,12 +492,17 @@ impl PerformanceWorkload {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let sample_counters = worker_counters.clone();
         let duration_seconds = self.config.duration_seconds;
+        let has_stopped_throughput = has_stopped.clone();
+        let cancel_token_throughput = cancel_token.clone();
         let throughput_handle = tokio::spawn(async move {
             // Pre-allocate vector for N+1 samples
             let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
 
             // Take samples at 1-second intervals (N+1 total for N seconds)
             for i in 0..=duration_seconds {
+                if cancel_token_throughput.is_cancelled() {
+                    break;
+                }
                 let total_count: u64 = sample_counters.iter()
                     .map(|c| c.load(Ordering::Relaxed))
                     .sum();
@@ -495,9 +514,12 @@ impl PerformanceWorkload {
 
                 // Sleep until next second (except after last sample)
                 if i < duration_seconds {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                        _ = cancel_token_throughput.cancelled() => { break; }
+                    }
                 } else {
-                    has_stopped.store(true, Ordering::Relaxed);
+                    has_stopped_throughput.store(true, Ordering::Relaxed);
                 }
             }
 
@@ -521,6 +543,7 @@ impl PerformanceWorkload {
     async fn execute_mixed_workload(
         &self,
         store: &dyn StoreManager,
+        cancel_token: CancellationToken,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let writers = self.config.concurrency.writers.first();
         let readers = self.config.concurrency.readers.first();
@@ -564,6 +587,7 @@ impl PerformanceWorkload {
             let is_writer = i < writers;
             let worker_counter = worker_counters[i].clone();
             let has_stopped = has_stopped.clone();
+            let cancel_token = cancel_token.clone();
 
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
@@ -576,7 +600,7 @@ impl PerformanceWorkload {
                 let write_cfg = config.operations.write.as_ref();
                 let read_cfg = config.operations.read.as_ref();
 
-                while !has_stopped.load(Ordering::Relaxed) {
+                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
                     let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
                         rng.gen_range(0..hot_set)
                     } else {
@@ -635,12 +659,17 @@ impl PerformanceWorkload {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let sample_counters = worker_counters.clone();
         let duration_seconds = self.config.duration_seconds;
+        let has_stopped_throughput = has_stopped.clone();
+        let cancel_token_throughput = cancel_token.clone();
         let throughput_handle = tokio::spawn(async move {
             // Pre-allocate vector for N+1 samples
             let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
 
             // Take samples at 1-second intervals (N+1 total for N seconds)
             for i in 0..=duration_seconds {
+                if cancel_token_throughput.is_cancelled() {
+                    break;
+                }
                 let total_count: u64 = sample_counters.iter()
                     .map(|c| c.load(Ordering::Relaxed))
                     .sum();
@@ -652,9 +681,12 @@ impl PerformanceWorkload {
 
                 // Sleep until next second (except after last sample)
                 if i < duration_seconds {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                        _ = cancel_token_throughput.cancelled() => { break; }
+                    }
                 } else {
-                    has_stopped.store(true, Ordering::Relaxed);
+                    has_stopped_throughput.store(true, Ordering::Relaxed);
                 }
             }
 

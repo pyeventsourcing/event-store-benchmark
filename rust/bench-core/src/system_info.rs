@@ -19,13 +19,13 @@ pub fn get_git_commit_hash() -> Result<String> {
 }
 
 /// Collect system environment information
-pub fn collect_environment_info() -> Result<EnvironmentInfo> {
+pub async fn collect_environment_info() -> Result<EnvironmentInfo> {
     Ok(EnvironmentInfo {
         os: collect_os_info()?,
         cpu: collect_cpu_info()?,
         memory: collect_memory_info()?,
         disk: collect_disk_info()?,
-        container_runtime: collect_container_runtime_info()?,
+        container_runtime: collect_container_runtime_info().await?,
     })
 }
 
@@ -265,16 +265,12 @@ fn collect_disk_info() -> Result<DiskInfo> {
     }
 }
 
-fn collect_container_runtime_info() -> Result<ContainerRuntimeInfo> {
+async fn collect_container_runtime_info() -> Result<ContainerRuntimeInfo> {
     // Try to detect Docker using bollard
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    
-    let docker_info = rt.block_on(async {
+    let docker_info = async {
         let docker = bollard::Docker::connect_with_local_defaults()?;
         docker.info().await
-    });
+    }.await;
 
     if let Ok(info) = docker_info {
         return Ok(ContainerRuntimeInfo {
