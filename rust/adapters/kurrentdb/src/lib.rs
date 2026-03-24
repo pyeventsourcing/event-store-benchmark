@@ -15,13 +15,15 @@ use uuid::Uuid;
 pub struct KurrentDbStoreManager {
     uri: Option<String>,
     container: Option<ContainerAsync<KurrentDb>>,
+    data_dir: Option<String>,
 }
 
 impl KurrentDbStoreManager {
-    pub fn new() -> Self {
+    pub fn new(data_dir: Option<String>) -> Self {
         Self {
             uri: None,
             container: None,
+            data_dir,
         }
     }
 }
@@ -29,7 +31,7 @@ impl KurrentDbStoreManager {
 #[async_trait]
 impl StoreManager for KurrentDbStoreManager {
     async fn start(&mut self) -> Result<()> {
-        let container = KurrentDb::default().start().await?;
+        let container = KurrentDb::new(self.data_dir.clone()).start().await?;
         let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
         self.uri = Some(format!("esdb://localhost:{}?tls=false", host_port));
         self.container = Some(container);
@@ -146,7 +148,7 @@ impl StoreManagerFactory for KurrentDbFactory {
         "kurrentdb"
     }
 
-    fn create_store_manager(&self) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(KurrentDbStoreManager::new()))
+    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(KurrentDbStoreManager::new(data_dir)))
     }
 }

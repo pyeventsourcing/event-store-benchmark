@@ -13,8 +13,12 @@ pub struct KurrentDb {
     mounts: Vec<Mount>,
 }
 
-impl Default for KurrentDb {
-    fn default() -> Self {
+impl KurrentDb {
+    pub fn new(data_dir: Option<String>) -> Self {
+        let mount = match data_dir {
+            Some(path) => Mount::bind_mount(path, "/var/lib/kurrentdb"),
+            None => Mount::volume_mount("", "/var/lib/kurrentdb"),
+        };
         Self {
             env_vars: vec![
                 ("KURRENTDB_INSECURE", "true"),
@@ -24,8 +28,14 @@ impl Default for KurrentDb {
                 ("KURRENTDB_MEM_DB", "false"),
                 ("KURRENTDB_TELEMETRY_OPTOUT", "true"),
             ],
-            mounts: vec![Mount::volume_mount("", "/var/lib/kurrentdb")],
+            mounts: vec![mount],
         }
+    }
+}
+
+impl Default for KurrentDb {
+    fn default() -> Self {
+        Self::new(None)
     }
 }
 

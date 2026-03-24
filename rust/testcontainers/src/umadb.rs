@@ -12,11 +12,21 @@ pub struct UmaDb {
     mounts: Vec<Mount>,
 }
 
+impl UmaDb {
+    pub fn new(data_dir: Option<String>) -> Self {
+        let mount = match data_dir {
+            Some(path) => Mount::bind_mount(path, "/data"),
+            None => Mount::volume_mount("", "/data"),
+        };
+        Self {
+            mounts: vec![mount],
+        }
+    }
+}
+
 impl Default for UmaDb {
     fn default() -> Self {
-        Self {
-            mounts: vec![Mount::volume_mount("", "/data")],
-        }
+        Self::new(None)
     }
 }
 

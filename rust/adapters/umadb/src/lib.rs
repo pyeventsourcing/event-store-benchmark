@@ -18,15 +18,17 @@ pub struct UmaDbStoreManager {
     container: Option<ContainerAsync<UmaDb>>,
     client: Option<Arc<umadb_client::AsyncUmaDBClient>>,
     local: bool,
+    data_dir: Option<String>,
 }
 
 impl UmaDbStoreManager {
-    pub fn new() -> Self {
+    pub fn new(data_dir: Option<String>) -> Self {
         Self {
             uri: None,
             container: None,
             client: None,
             local: false,
+            data_dir,
         }
     }
 }
@@ -35,7 +37,7 @@ impl UmaDbStoreManager {
 impl StoreManager for UmaDbStoreManager {
     async fn start(&mut self) -> Result<()> {
         if !self.local {
-            let container = UmaDb::default().start().await?;
+            let container = UmaDb::new(self.data_dir.clone()).start().await?;
             let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
             self.uri = Some(format!("http://localhost:{}", host_port));
             self.container = Some(container);
@@ -152,7 +154,7 @@ impl StoreManagerFactory for UmaDbFactory {
         "umadb"
     }
 
-    fn create_store_manager(&self) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(UmaDbStoreManager::new()))
+    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(UmaDbStoreManager::new(data_dir)))
     }
 }

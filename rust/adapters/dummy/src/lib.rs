@@ -67,6 +67,7 @@ impl StoreManagerFactory for DummyFactory {
     }
     fn create_store_manager(
         &self,
+        _data_dir: Option<String>,
     ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(DummyStoreManager::new()))
     }

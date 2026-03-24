@@ -15,11 +15,21 @@ pub struct EventsourcingDb {
     mounts: Vec<Mount>,
 }
 
+impl EventsourcingDb {
+    pub fn new(data_dir: Option<String>) -> Self {
+        let mount = match data_dir {
+            Some(path) => Mount::bind_mount(path, "/var/lib/esdb"),
+            None => Mount::volume_mount("", "/var/lib/esdb"),
+        };
+        Self {
+            mounts: vec![mount],
+        }
+    }
+}
+
 impl Default for EventsourcingDb {
     fn default() -> Self {
-        Self {
-            mounts: vec![Mount::volume_mount("", "/var/lib/esdb")],
-        }
+        Self::new(None)
     }
 }
 

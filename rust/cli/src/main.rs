@@ -31,6 +31,9 @@ enum Commands {
         /// Random seed (defaults to random value)
         #[arg(long)]
         seed: Option<u64>,
+        /// Optional directory to store benchmark data (enables bind mounts)
+        #[arg(long)]
+        data_dir: Option<String>,
     },
     /// List available store adapters
     ListStores,
@@ -83,8 +86,8 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::Run { config, seed } => {
-            rt.block_on(async { run_benchmark(&config, seed, cancel_token).await })?;
+        Commands::Run { config, seed, data_dir } => {
+            rt.block_on(async { run_benchmark(&config, seed, data_dir, cancel_token).await })?;
             Ok(())
         }
         Commands::Report { sessions, output } => {
@@ -94,8 +97,21 @@ fn main() -> Result<()> {
     }
 }
 
-async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, cancel_token: CancellationToken) -> Result<()> {
+async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Option<String>, cancel_token: CancellationToken) -> Result<()> {
     let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
+
+    // Resolve data_dir to an absolute path if provided
+    let data_dir = if let Some(path) = data_dir {
+        let abs_path = fs::canonicalize(&path)
+            .or_else(|_| {
+                // If it doesn't exist yet, create it and then canonicalize
+                fs::create_dir_all(&path)?;
+                fs::canonicalize(&path)
+            })?;
+        Some(abs_path.to_string_lossy().to_string())
+    } else {
+        None
+    };
 
     // Read config file
     let config_yaml = fs::read_to_string(config_path)?;
@@ -193,7 +209,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, cancel_token: C
                 .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store_name))?;
 
             // Create store manager
-            let store_manager = store_factory.create_store_manager()?;
+            let store_manager = store_factory.create_store_manager(data_dir.clone())?;
 
             // Create store directory
             let store_dir = workload_dir.join(store_name);

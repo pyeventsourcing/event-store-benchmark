@@ -16,16 +16,26 @@ pub struct AxonServer {
     mounts: Vec<Mount>,
 }
 
-impl Default for AxonServer {
-    fn default() -> Self {
+impl AxonServer {
+    pub fn new(data_dir: Option<String>) -> Self {
+        let mount = match data_dir {
+            Some(path) => Mount::bind_mount(path, "/axonserver/events"),
+            None => Mount::volume_mount("", "/axonserver/events"),
+        };
         Self {
             env_vars: vec![
                 ("AXONIQ_AXONSERVER_NAME", "bench-axon-server"),
                 ("AXONIQ_AXONSERVER_HOSTNAME", "bench-axon-server"),
                 ("AXONIQ_AXONSERVER_STANDALONE_DCB", "true"),
             ],
-            mounts: vec![Mount::volume_mount("", "/axonserver/events")],
+            mounts: vec![mount],
         }
+    }
+}
+
+impl Default for AxonServer {
+    fn default() -> Self {
+        Self::new(None)
     }
 }
 
