@@ -604,7 +604,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     """Generate a consolidated report for a specific workload."""
     # Summary table
     summary_rows = ""
-    for run in runs:
+    def row_key(row):
+        s = row["summary"]
+        adapter = s["adapter"]
+        writers = s.get("writers", 0)
+        readers = s.get("readers", 0)
+        return (writers, readers, adapter)
+
+    for run in sorted(runs, key=row_key):
         s = run["summary"]
         adapter = s["adapter"]
         writers = s.get("writers", 0)
