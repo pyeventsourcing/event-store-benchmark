@@ -133,7 +133,9 @@ def plot_latency_cdf_from_json(latency_file: Path, out_path: Path):
     plt.xscale("log")
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    plt.gca().xaxis.set_major_formatter(plt.ScalarFormatter())
+    formatter = plt.ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
     plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
     plt.title("Latency CDF")
@@ -232,15 +234,11 @@ def plot_throughput(throughput_samples: pd.DataFrame, out_path: Path, data_path:
     plt.figure(figsize=(6, 4))
     # Plot raw count deltas with thin line and markers
     plt.plot(result["time_s"], result["throughput_eps"],
-             linewidth=1.0, alpha=0.3, color='#1f77b4', marker='o',
-             markersize=3, label='Raw')
-    # Plot smoothed moving average with thick line
-    plt.plot(result["time_s"], result["throughput_eps_smooth"],
-             linewidth=2.5, alpha=0.9, color='#1f77b4', label='Moving Average')
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker='o',
+             markersize=3)
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Throughput (events/sec)")
     plt.title("Throughput over Time")
-    plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -273,7 +271,9 @@ def plot_comparison_latency_cdf(run_data, title, out_path: Path):
     plt.xscale("log")
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    plt.gca().xaxis.set_major_formatter(plt.ScalarFormatter())
+    formatter = plt.ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
     plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
     plt.title(title)
@@ -298,12 +298,9 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
             continue
 
         color = get_adapter_color(label)
-        # Plot raw data with very thin line
+        # Plot throughput data
         plt.plot(result["time_s"], result["throughput_eps"],
-                linewidth=0.3, alpha=0.15, color=color)
-        # Plot smoothed moving average with thick line
-        plt.plot(result["time_s"], result["throughput_eps_smooth"],
-                label=label, color=color, linewidth=2.5, alpha=0.9)
+                label=label, color=color, linewidth=2.0, alpha=0.9, marker='o', markersize=3)
 
         # Store data
         if data_path:
@@ -371,7 +368,11 @@ def plot_throughput_scaling(runs, out_path: Path):
     plt.yscale("log")
     plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("Throughput (events/sec) [log]")
-    plt.gca().yaxis.set_major_formatter(plt.ScalarFormatter())
+    formatter = plt.ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
     plt.gca().yaxis.set_minor_formatter(plt.NullFormatter())
     plt.title(title)
     plt.legend()
@@ -415,7 +416,11 @@ def plot_p99_scaling(runs, out_path: Path):
     plt.yscale("log")
     plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("p99 Latency (ms) [log]")
-    plt.gca().yaxis.set_major_formatter(plt.ScalarFormatter())
+    formatter = plt.ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
     plt.gca().yaxis.set_minor_formatter(plt.NullFormatter())
     plt.title(title)
     plt.legend()

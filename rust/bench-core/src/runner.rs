@@ -3,7 +3,7 @@ use crate::metrics::{RunMetrics, Summary};
 use crate::workloads::{Workload, PerformanceWorkload};
 use crate::metrics::ContainerMetrics;
 use anyhow::Result;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
@@ -94,24 +94,9 @@ async fn execute_performance_workload(
     // Warmup and cooldown durations
     let duration_seconds = workload.duration_seconds();
 
-    let warmup_duration = Duration::from_secs(1);
-    let cooldown_duration = Duration::from_secs(1);
-    let total_run_duration =
-        Duration::from_secs(duration_seconds) + warmup_duration + cooldown_duration;
-
-    let start_at = Instant::now();
-    let measurement_start = start_at + warmup_duration;
-    let measurement_end = measurement_start + Duration::from_secs(duration_seconds);
-    let end_at = start_at + total_run_duration;
-
     // Execute the workload
     let (overall, events_written, events_read, throughput_samples) = workload
-        .execute(
-            store,
-            measurement_start,
-            measurement_end,
-            end_at,
-        )
+        .execute(store)
         .await?;
 
     Ok((

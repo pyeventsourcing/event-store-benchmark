@@ -261,21 +261,18 @@ impl PerformanceWorkload {
     pub async fn execute(
         &self,
         store: &dyn StoreManager,
-        measurement_start: Instant,
-        measurement_end: Instant,
-        end_at: Instant,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         match self.config.mode {
             PerformanceMode::Write => {
-                self.execute_write_workload(store, measurement_start, measurement_end, end_at)
+                self.execute_write_workload(store)
                     .await
             }
             PerformanceMode::Read => {
-                self.execute_read_workload(store, measurement_start, measurement_end, end_at)
+                self.execute_read_workload(store)
                     .await
             }
             PerformanceMode::Mixed => {
-                self.execute_mixed_workload(store, measurement_start, measurement_end, end_at)
+                self.execute_mixed_workload(store)
                     .await
             }
         }
@@ -284,9 +281,6 @@ impl PerformanceWorkload {
     async fn execute_write_workload(
         &self,
         store: &dyn StoreManager,
-        _measurement_start: Instant,
-        _measurement_end: Instant,
-        end_at: Instant,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let writers = self.config.concurrency.writers.first();
         println!("Creating {} writer clients...", writers);
@@ -312,10 +306,13 @@ impl PerformanceWorkload {
             .map(|_| Arc::new(AtomicU64::new(0)))
             .collect();
 
-        // Spawn writer tasks
+        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        
+        // Spawn writer tasks first - they will run until end_time
         for (i, adapter) in writer_adapters.into_iter().enumerate() {
             let write_cfg = write_config.clone();
             let worker_counter = worker_counters[i].clone();
+            let has_stopped = has_stopped.clone();
 
             set.spawn(async move {
                 let mut local_count = 0u64;
@@ -327,11 +324,10 @@ impl PerformanceWorkload {
                 let payload = vec![0u8; size];
 
                 // Sampling for latency measurement (1 in every N operations)
-                const SAMPLE_RATE: u64 = 100;
                 let mut rec = LatencyRecorder::new();
 
                 // Tight loop with minimal overhead
-                while Instant::now() < end_at {
+                while !has_stopped.load(Ordering::Relaxed) {
                     let evt = EventData {
                         stream: stream.clone(),
                         event_type: event_type.clone(),
@@ -339,9 +335,7 @@ impl PerformanceWorkload {
                         tags: vec![],
                     };
 
-                    // Sample every Nth operation for latency
-                    let should_sample = local_count % SAMPLE_RATE == 0;
-                    let t0 = if should_sample { Some(Instant::now()) } else { None };
+                    let operation_started = Instant::now();
 
                     if adapter.append(evt).await.is_ok() {
                         local_count += 1;
@@ -351,9 +345,7 @@ impl PerformanceWorkload {
                         worker_counter.store(local_count, Ordering::Relaxed);
 
                         // Record latency sample
-                        if let Some(start) = t0 {
-                            rec.record(start.elapsed());
-                        }
+                        rec.record(operation_started.elapsed());
                     }
                 }
 
@@ -363,47 +355,32 @@ impl PerformanceWorkload {
             });
         }
 
-        // Spawn throughput sampling task
+        // Spawn throughput sampling task that waits for warmup, then samples
+        tokio::time::sleep(Duration::from_secs(1)).await;
         let sample_counters = worker_counters.clone();
         let duration_seconds = self.config.duration_seconds;
         let throughput_handle = tokio::spawn(async move {
-            // Pre-allocate vector for N+1 samples (one per second boundary, plus final)
+            // Pre-allocate vector for N+1 samples
             let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
-            let sample_start = Instant::now();
 
-            // Take initial sample at t=0
-            let initial_count: u64 = sample_counters.iter()
-                .map(|c| c.load(Ordering::Relaxed))
-                .sum();
-            samples.push(ThroughputSample {
-                elapsed_s: 0.0,
-                count: initial_count,
-            });
-
-            // Sample at each second boundary
-            for i in 1..=duration_seconds {
-                let target_time = sample_start + Duration::from_secs(i);
-                tokio::time::sleep_until(target_time.into()).await;
-
+            // Take samples at 1-second intervals (N+1 total for N seconds)
+            for i in 0..=duration_seconds {
                 let total_count: u64 = sample_counters.iter()
                     .map(|c| c.load(Ordering::Relaxed))
                     .sum();
 
                 samples.push(ThroughputSample {
-                    elapsed_s: sample_start.elapsed().as_secs_f64(),
+                    elapsed_s: i as f64,
                     count: total_count,
                 });
-            }
 
-            // Take final sample after workload completes
-            tokio::time::sleep_until(end_at.into()).await;
-            let final_count: u64 = sample_counters.iter()
-                .map(|c| c.load(Ordering::Relaxed))
-                .sum();
-            samples.push(ThroughputSample {
-                elapsed_s: sample_start.elapsed().as_secs_f64(),
-                count: final_count,
-            });
+                // Sleep until next second (except after last sample)
+                if i < duration_seconds {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                } else {
+                    has_stopped.store(true, Ordering::Relaxed);
+                }
+            }
 
             samples
         });
@@ -427,9 +404,6 @@ impl PerformanceWorkload {
     async fn execute_read_workload(
         &self,
         store: &dyn StoreManager,
-        measurement_start: Instant,
-        measurement_end: Instant,
-        end_at: Instant,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let readers = self.config.concurrency.readers.first();
         println!("Creating {} reader clients...", readers);
@@ -450,10 +424,20 @@ impl PerformanceWorkload {
 
         let read_config = self.config.operations.read.as_ref().unwrap();
 
+        // Per-worker atomic counters to track operations
+        let worker_counters: Vec<Arc<AtomicU64>> = (0..readers)
+            .map(|_| Arc::new(AtomicU64::new(0)))
+            .collect();
+
+        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // Spawn reader tasks
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
             let config = self.config.clone();
             let read_cfg = read_config.clone();
             let seed = self.seed + (i as u64);
+            let worker_counter = worker_counters[i].clone();
+            let has_stopped = has_stopped.clone();
 
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
@@ -462,7 +446,7 @@ impl PerformanceWorkload {
                 let mut rec = LatencyRecorder::new();
                 let mut total_events_read = 0u64;
 
-                while Instant::now() < end_at {
+                while !has_stopped.load(Ordering::Relaxed) {
                     let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
                         rng.gen_range(0..hot_set)
                     } else {
@@ -475,23 +459,52 @@ impl PerformanceWorkload {
                         limit: Some(read_cfg.batch_size as u64),
                     };
 
-                    let t0 = Instant::now();
+                    let operation_started = Instant::now();
                     let result = adapter.read(req).await;
-                    let dt = t0.elapsed();
-                    let now = Instant::now();
 
                     if let Ok(events) = result {
                         total_events_read += events.len() as u64;
+                        worker_counter.store(total_events_read, Ordering::Relaxed);
                     }
 
-                    if now >= measurement_start && now <= measurement_end {
-                        rec.record(dt);
-                    }
+                    // Record latency for all operations
+                    rec.record(operation_started.elapsed());
                 }
                 (rec, total_events_read)
             });
         }
 
+        // Spawn throughput sampling task that waits for warmup, then samples
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let sample_counters = worker_counters.clone();
+        let duration_seconds = self.config.duration_seconds;
+        let throughput_handle = tokio::spawn(async move {
+            // Pre-allocate vector for N+1 samples
+            let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
+
+            // Take samples at 1-second intervals (N+1 total for N seconds)
+            for i in 0..=duration_seconds {
+                let total_count: u64 = sample_counters.iter()
+                    .map(|c| c.load(Ordering::Relaxed))
+                    .sum();
+
+                samples.push(ThroughputSample {
+                    elapsed_s: i as f64,
+                    count: total_count,
+                });
+
+                // Sleep until next second (except after last sample)
+                if i < duration_seconds {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                } else {
+                    has_stopped.store(true, Ordering::Relaxed);
+                }
+            }
+
+            samples
+        });
+
+        // Collect results from reader tasks
         let mut overall = LatencyRecorder::new();
         let mut events_read: u64 = 0;
         while let Some(res) = set.join_next().await {
@@ -500,16 +513,14 @@ impl PerformanceWorkload {
             events_read += reader_events_read;
         }
 
-        // No throughput samples for read workloads yet
-        Ok((overall, 0, events_read, Vec::new()))
+        let throughput_samples = throughput_handle.await.expect("throughput task");
+
+        Ok((overall, 0, events_read, throughput_samples))
     }
 
     async fn execute_mixed_workload(
         &self,
         store: &dyn StoreManager,
-        measurement_start: Instant,
-        measurement_end: Instant,
-        end_at: Instant,
     ) -> Result<(LatencyRecorder, u64, u64, Vec<ThroughputSample>)> {
         let writers = self.config.concurrency.writers.first();
         let readers = self.config.concurrency.readers.first();
@@ -531,6 +542,13 @@ impl PerformanceWorkload {
 
         let mut set = JoinSet::new();
 
+        // Per-worker atomic counters to track operations
+        let worker_counters: Vec<Arc<AtomicU64>> = (0..total_workers)
+            .map(|_| Arc::new(AtomicU64::new(0)))
+            .collect();
+
+        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         let write_prob = self
             .config
             .operations
@@ -539,10 +557,13 @@ impl PerformanceWorkload {
             .and_then(|w| w.probability)
             .unwrap_or(0.5);
 
+        // Spawn worker tasks
         for (i, adapter) in worker_adapters.into_iter().enumerate() {
             let config = self.config.clone();
             let seed = self.seed + (i as u64);
             let is_writer = i < writers;
+            let worker_counter = worker_counters[i].clone();
+            let has_stopped = has_stopped.clone();
 
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
@@ -555,7 +576,7 @@ impl PerformanceWorkload {
                 let write_cfg = config.operations.write.as_ref();
                 let read_cfg = config.operations.read.as_ref();
 
-                while Instant::now() < end_at {
+                while !has_stopped.load(Ordering::Relaxed) {
                     let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
                         rng.gen_range(0..hot_set)
                     } else {
@@ -569,7 +590,9 @@ impl PerformanceWorkload {
                         false
                     };
 
-                    let dt = if should_write {
+                    let operation_started = Instant::now();
+
+                    if should_write {
                         if let Some(write_cfg) = write_cfg {
                             let evt = EventData {
                                 stream: format!("stream-{}", stream_idx),
@@ -577,11 +600,10 @@ impl PerformanceWorkload {
                                 payload: vec![0u8; write_cfg.event_size_bytes],
                                 tags: vec![],
                             };
-                            let t0 = Instant::now();
                             if adapter.append(evt).await.is_ok() {
                                 events_written += 1;
+                                worker_counter.store(events_written, Ordering::Relaxed);
                             }
-                            t0.elapsed()
                         } else {
                             continue;
                         }
@@ -592,26 +614,54 @@ impl PerformanceWorkload {
                                 from_offset: None,
                                 limit: Some(read_cfg.batch_size as u64),
                             };
-                            let t0 = Instant::now();
                             let result = adapter.read(req).await;
                             if let Ok(events) = result {
                                 events_read += events.len() as u64;
+                                worker_counter.store(events_read, Ordering::Relaxed);
                             }
-                            t0.elapsed()
                         } else {
                             continue;
                         }
                     };
 
-                    let now = Instant::now();
-                    if now >= measurement_start && now <= measurement_end {
-                        rec.record(dt);
-                    }
+                    // Record latency for all operations
+                    rec.record(operation_started.elapsed());
                 }
                 (rec, events_written, events_read)
             });
         }
 
+        // Spawn throughput sampling task that waits for warmup, then samples
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let sample_counters = worker_counters.clone();
+        let duration_seconds = self.config.duration_seconds;
+        let throughput_handle = tokio::spawn(async move {
+            // Pre-allocate vector for N+1 samples
+            let mut samples = Vec::with_capacity((duration_seconds + 1) as usize);
+
+            // Take samples at 1-second intervals (N+1 total for N seconds)
+            for i in 0..=duration_seconds {
+                let total_count: u64 = sample_counters.iter()
+                    .map(|c| c.load(Ordering::Relaxed))
+                    .sum();
+
+                samples.push(ThroughputSample {
+                    elapsed_s: i as f64,
+                    count: total_count,
+                });
+
+                // Sleep until next second (except after last sample)
+                if i < duration_seconds {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                } else {
+                    has_stopped.store(true, Ordering::Relaxed);
+                }
+            }
+
+            samples
+        });
+
+        // Collect results from worker tasks
         let mut overall = LatencyRecorder::new();
         let mut total_events_written: u64 = 0;
         let mut total_events_read: u64 = 0;
@@ -622,6 +672,8 @@ impl PerformanceWorkload {
             total_events_read += read;
         }
 
-        Ok((overall, total_events_written, total_events_read, Vec::new()))
+        let throughput_samples = throughput_handle.await.expect("throughput task");
+
+        Ok((overall, total_events_written, total_events_read, throughput_samples))
     }
 }

@@ -7,6 +7,16 @@ use bench_core::adapter::{
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+use lazy_static::lazy_static;
+use rayon::ThreadPoolBuilder;
+
+lazy_static! {
+    static ref DELAY_POOL: rayon::ThreadPool = ThreadPoolBuilder::new()
+        .num_threads(128)
+        .thread_name(|i| format!("dummy-delay-{}", i))
+        .build()
+        .expect("Failed to create delay thread pool");
+}
 
 pub struct DummyStoreManager {}
 
@@ -40,11 +50,11 @@ pub struct DummyAdapter;
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     async fn append(&self, _evt: EventData) -> Result<()> {
-        precise_delay(Duration::from_micros(5000));
+        precise_delay(Duration::from_micros(5000)).await;
         Ok(())
     }
     async fn read(&self, _req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        precise_delay(Duration::from_micros(5000));
+        precise_delay(Duration::from_micros(5000)).await;
         Ok(vec![])
     }
 }
@@ -62,17 +72,26 @@ impl StoreManagerFactory for DummyFactory {
     }
 }
 
-pub fn precise_delay(delay: Duration) {
-    let start = Instant::now();
-    let target = start + delay;
+pub async fn precise_delay(delay: Duration) {
+    // Execute the blocking delay on our dedicated thread pool
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-    let spin_threshold = Duration::from_micros(1500);
+    DELAY_POOL.spawn(move || {
+        let start = Instant::now();
+        let target = start + delay;
 
-    if delay > spin_threshold {
-        thread::sleep(delay - spin_threshold);
-    }
+        let spin_threshold = Duration::from_micros(2000);
 
-    while Instant::now() < target {
-        spin_loop();
-    }
+        if delay > spin_threshold {
+            thread::sleep(delay - spin_threshold);
+        }
+
+        while Instant::now() < target {
+            spin_loop();
+        }
+
+        let _ = tx.send(());
+    });
+
+    let _ = rx.await;
 }

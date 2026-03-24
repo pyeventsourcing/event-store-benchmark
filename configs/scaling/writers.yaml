@@ -1,9 +1,9 @@
 name: scaling-writers
 workload_type: performance
 mode: write
-duration_seconds: 20
+duration_seconds: 120
 concurrency:
-  writers: [1,2,4,8,16]
+  writers: [1, 2, 4, 8, 16, 32]
 operations:
   write:
     event_size_bytes: 256
@@ -11,5 +11,6 @@ streams:
   distribution: uniform
   count: 10000
 #stores: [dummy]
-stores: [umadb, kurrentdb, axonserver, dummy]
+#stores: [umadb, axonserver, eventsourcingdb]
+stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
 #stores: [umadb]
