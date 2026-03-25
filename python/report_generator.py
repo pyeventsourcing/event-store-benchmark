@@ -352,7 +352,7 @@ def plot_throughput_scaling(runs, out_path: Path):
     first_run_summary = runs[0]["summary"] if runs else {}
     is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
-    title = f"Throughput Scaling by {xlabel[:-1]} Count"
+    title = f"Throughput by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(8, 5))
     for adapter, points in sorted(adapter_data.items()):
@@ -391,6 +391,57 @@ def plot_throughput_scaling(runs, out_path: Path):
     plt.close()
 
 
+def plot_p50_scaling(runs, out_path: Path):
+    """Plot p50 latency vs worker count (writers or readers), one line per adapter."""
+    adapter_data = defaultdict(list)
+    for run in runs:
+        s = run["summary"]
+        adapter = s["adapter"]
+        writers = s.get("writers", 0)
+        readers = s.get("readers", 0)
+        worker_count = writers if writers > 0 else readers
+        p50 = s["latency"]["p50_ms"]
+        adapter_data[adapter].append((worker_count, p50))
+
+    # Determine label based on workload type
+    first_run_summary_p50 = runs[0]["summary"] if runs else {}
+    is_readers = first_run_summary_p50.get("readers", 0) > 0 and first_run_summary_p50.get("writers", 0) == 0
+    xlabel = "Readers" if is_readers else "Writers"
+    title = f"p50 Latency by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(8, 5))
+    for adapter, points in sorted(adapter_data.items()):
+        points.sort()
+        ws = [p[0] for p in points]
+        p50s = [p[1] for p in points]
+        color = get_adapter_color(adapter)
+        plt.plot(ws, p50s, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel(f"{xlabel} [log]")
+    plt.ylabel("p50 Latency (ms) [log]")
+    formatter = ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
+    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    all_worker_counts = sorted({
+        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
+         else s["summary"].get("readers", 0)) for s in runs
+    })
+    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_p99_scaling(runs, out_path: Path):
     """Plot p99 latency vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
@@ -407,7 +458,7 @@ def plot_p99_scaling(runs, out_path: Path):
     first_run_summary_p99 = runs[0]["summary"] if runs else {}
     is_readers = first_run_summary_p99.get("readers", 0) > 0 and first_run_summary_p99.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
-    title = f"p99 Latency Scaling by {xlabel[:-1]} Count"
+    title = f"p99 Latency by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(8, 5))
     for adapter, points in sorted(adapter_data.items()):
@@ -429,6 +480,159 @@ def plot_p99_scaling(runs, out_path: Path):
     # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    all_worker_counts = sorted({
+        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
+         else s["summary"].get("readers", 0)) for s in runs
+    })
+    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_startup_scaling(runs, out_path: Path):
+    """Plot startup time vs worker count (writers or readers), one line per adapter."""
+    adapter_data = defaultdict(list)
+    for run in runs:
+        s = run["summary"]
+        adapter = s["adapter"]
+        writers = s.get("writers", 0)
+        readers = s.get("readers", 0)
+        worker_count = writers if writers > 0 else readers
+        container = s.get("container", {})
+        startup = container.get("startup_time_s")
+        if startup is not None:
+            adapter_data[adapter].append((worker_count, startup))
+
+    if not adapter_data:
+        return
+
+    first_run_summary = runs[0]["summary"] if runs else {}
+    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    xlabel = "Readers" if is_readers else "Writers"
+    title = f"Startup Time by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(8, 5))
+    for adapter, points in sorted(adapter_data.items()):
+        points.sort()
+        ws = [p[0] for p in points]
+        startups = [p[1] for p in points]
+        color = get_adapter_color(adapter)
+        plt.plot(ws, startups, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    
+    plt.xscale("log")
+    plt.xlabel(f"{xlabel} [log]")
+    plt.ylabel("Startup Time (s)")
+    formatter = ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    all_worker_counts = sorted({
+        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
+         else s["summary"].get("readers", 0)) for s in runs
+    })
+    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_peak_cpu_scaling(runs, out_path: Path):
+    """Plot peak CPU usage vs worker count (writers or readers), one line per adapter."""
+    adapter_data = defaultdict(list)
+    for run in runs:
+        s = run["summary"]
+        adapter = s["adapter"]
+        writers = s.get("writers", 0)
+        readers = s.get("readers", 0)
+        worker_count = writers if writers > 0 else readers
+        container = s.get("container", {})
+        peak_cpu = container.get("peak_cpu_percent")
+        if peak_cpu is not None:
+            adapter_data[adapter].append((worker_count, peak_cpu))
+
+    if not adapter_data:
+        return
+
+    first_run_summary = runs[0]["summary"] if runs else {}
+    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    xlabel = "Readers" if is_readers else "Writers"
+    title = f"Peak CPU by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(8, 5))
+    for adapter, points in sorted(adapter_data.items()):
+        points.sort()
+        ws = [p[0] for p in points]
+        cpus = [p[1] for p in points]
+        color = get_adapter_color(adapter)
+        plt.plot(ws, cpus, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    
+    plt.xscale("log")
+    plt.xlabel(f"{xlabel} [log]")
+    plt.ylabel("Peak CPU (%)")
+    formatter = ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    all_worker_counts = sorted({
+        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
+         else s["summary"].get("readers", 0)) for s in runs
+    })
+    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_peak_mem_scaling(runs, out_path: Path):
+    """Plot peak memory usage vs worker count (writers or readers), one line per adapter."""
+    adapter_data = defaultdict(list)
+    for run in runs:
+        s = run["summary"]
+        adapter = s["adapter"]
+        writers = s.get("writers", 0)
+        readers = s.get("readers", 0)
+        worker_count = writers if writers > 0 else readers
+        container = s.get("container", {})
+        peak_mem = container.get("peak_memory_bytes")
+        if peak_mem is not None:
+            adapter_data[adapter].append((worker_count, peak_mem / (1024 * 1024)))
+
+    if not adapter_data:
+        return
+
+    first_run_summary = runs[0]["summary"] if runs else {}
+    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    xlabel = "Readers" if is_readers else "Writers"
+    title = f"Peak Memory by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(8, 5))
+    for adapter, points in sorted(adapter_data.items()):
+        points.sort()
+        ws = [p[0] for p in points]
+        mems = [p[1] for p in points]
+        color = get_adapter_color(adapter)
+        plt.plot(ws, mems, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    
+    plt.xscale("log")
+    plt.xlabel(f"{xlabel} [log]")
+    plt.ylabel("Peak Memory (MB)")
+    formatter = ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
     plt.title(title)
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -707,12 +911,32 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     <h2>Scaling</h2>
     <div class='row'>
       <div class='card'>
-        <h3>Throughput vs Writers</h3>
+        <h3>Throughput vs {worker_label}</h3>
         <img src='{workload_name}_scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>p99 Latency vs Writers</h3>
+        <h3>Startup Time vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_startup.png' width='560'>
+      </div>
+    </div>
+    <div class='row'>
+      <div class='card'>
+        <h3>p50 Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_p50.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>p99 Latency vs {worker_label}</h3>
         <img src='{workload_name}_scaling_p99.png' width='560'>
+      </div>
+    </div>
+    <div class='row'>
+      <div class='card'>
+        <h3>Peak CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Peak Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
       </div>
     </div>"""
 
@@ -894,12 +1118,32 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
             scaling_plots = f"""
       <div class='row'>
         <div class='card'>
-          <h3>Throughput Scaling</h3>
+          <h3>Throughput</h3>
           <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='460'>
         </div>
         <div class='card'>
-          <h3>p99 Latency Scaling</h3>
+          <h3>Startup Time</h3>
+          <img src='{workload_name}/{workload_name}_scaling_startup.png' width='460'>
+        </div>
+      </div>
+      <div class='row'>
+        <div class='card'>
+          <h3>p50 Latency</h3>
+          <img src='{workload_name}/{workload_name}_scaling_p50.png' width='460'>
+        </div>
+        <div class='card'>
+          <h3>p99 Latency</h3>
           <img src='{workload_name}/{workload_name}_scaling_p99.png' width='460'>
+        </div>
+      </div>
+      <div class='row'>
+        <div class='card'>
+          <h3>Peak CPU</h3>
+          <img src='{workload_name}/{workload_name}_scaling_peak_cpu.png' width='460'>
+        </div>
+        <div class='card'>
+          <h3>Peak Memory</h3>
+          <img src='{workload_name}/{workload_name}_scaling_peak_mem.png' width='460'>
         </div>
       </div>"""
 
@@ -1165,7 +1409,11 @@ def main():
 
             if len(writer_groups) > 1:
                 plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png")
+                plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png")
                 plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png")
+                plot_startup_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_startup.png")
+                plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png")
+                plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png")
 
             plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
             generate_workload_html(session_out_dir, workload_name, workload_runs, writer_groups)
