@@ -39,7 +39,7 @@ For convenience, a `Makefile` is provided to simplify common tasks.
 
 - **Build the CLI**: `make build`
 - **Setup Python Environment**: `make venv`
-- **Run a benchmark**: `make run smoke-test` (runs the `configs/smoke-test.yaml` workload)
+- **Run a benchmark**: `make run smoke-test`, `make smoke-test`, or `make configs/scaling/writers.yaml`
 - **Generate reports**: `make report`
 
 # CLI Commands
