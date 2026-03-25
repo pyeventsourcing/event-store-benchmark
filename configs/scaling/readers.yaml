@@ -10,6 +10,7 @@ operations:
   read:
     batch_size: 100
 setup:
-  prepopulate_events: 50000
-  prepopulate_streams: 5000
+  prepopulate_events: 5000
+  prepopulate_streams: 500
 stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
+#stores: [umadb]
