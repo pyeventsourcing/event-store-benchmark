@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter
 from scipy.ndimage import gaussian_filter1d
 
 try:
@@ -368,12 +369,15 @@ def plot_throughput_scaling(runs, out_path: Path):
     plt.yscale("log")
     plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("Throughput (events/sec) [log]")
-    formatter = plt.ScalarFormatter()
+    formatter = ScalarFormatter()
     formatter.set_scientific(False)
     plt.gca().xaxis.set_major_formatter(formatter)
     plt.gca().yaxis.set_major_formatter(formatter)
-    plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
-    plt.gca().yaxis.set_minor_formatter(plt.NullFormatter())
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
+    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
     plt.title(title)
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -416,12 +420,15 @@ def plot_p99_scaling(runs, out_path: Path):
     plt.yscale("log")
     plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("p99 Latency (ms) [log]")
-    formatter = plt.ScalarFormatter()
+    formatter = ScalarFormatter()
     formatter.set_scientific(False)
     plt.gca().xaxis.set_major_formatter(formatter)
     plt.gca().yaxis.set_major_formatter(formatter)
-    plt.gca().xaxis.set_minor_formatter(plt.NullFormatter())
-    plt.gca().yaxis.set_minor_formatter(plt.NullFormatter())
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    
+    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
     plt.title(title)
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)

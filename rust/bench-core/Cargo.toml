@@ -20,6 +20,7 @@ serde_yaml = "0.9"
 thiserror = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "process", "sync", "signal"] }
 tokio-util = { version = "0.7" }
+uuid = { version = "1.8", features = ["v4"] }
 bollard = "0.18"
 num_cpus = "1"
 tracing = "0.1"

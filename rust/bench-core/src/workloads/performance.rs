@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -131,6 +132,7 @@ fn default_read_batch() -> usize {
 pub struct PerformanceWorkload {
     config: PerformanceConfig,
     seed: u64,
+    stream_prefix: String,
 }
 
 impl PerformanceWorkload {
@@ -175,7 +177,8 @@ impl PerformanceWorkload {
             }
         }
 
-        Ok(Self { config, seed })
+        let stream_prefix = format!("stream-{}", Uuid::new_v4());
+        Ok(Self { config, seed, stream_prefix })
     }
 
     pub fn name(&self) -> &str {
@@ -228,11 +231,12 @@ impl PerformanceWorkload {
 
                 let adapter = store.create_adapter()?;
 
+                let stream_prefix = self.stream_prefix.clone();
                 setup_set.spawn(async move {
                     for stream_idx in start_stream..end_stream {
                         for _ in 0..events_per_stream {
                             let evt = EventData {
-                                stream: format!("stream-{}", stream_idx),
+                                stream: format!("{}{}", stream_prefix, stream_idx),
                                 event_type: "setup".to_string(),
                                 payload: vec![0u8; event_size],
                                 tags: vec![],
@@ -452,7 +456,7 @@ impl PerformanceWorkload {
             let worker_counter = worker_counters[i].clone();
             let has_stopped = has_stopped.clone();
             let cancel_token = cancel_token.clone();
-
+            let stream_prefix = self.stream_prefix.clone();
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
                 let use_heavy_tail = config.streams.distribution.to_lowercase() == "zipf";
@@ -468,7 +472,7 @@ impl PerformanceWorkload {
                     };
 
                     let req = ReadRequest {
-                        stream: format!("stream-{}", stream_idx),
+                        stream: format!("{}{}", stream_prefix, stream_idx),
                         from_offset: None,
                         limit: Some(read_cfg.batch_size as u64),
                     };
