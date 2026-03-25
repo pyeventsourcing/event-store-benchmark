@@ -23,10 +23,11 @@ git clone https://github.com/pyeventsourcing/event-store-benchmark.git
 
 For convenience, a `Makefile` is provided to simplify common tasks.
 
-- **Build the benchmark tool**: `make build`
 - **Make a Python virtual environment**: `make venv`
+- **Build the benchmark tool**: `make build`
 - **Run a benchmark**: `make configs/smoke-test.yaml`
-- **Generate reports**: `make report`
+- **Generate HTML reports**: `make report`
+- **Read HTML reports**: Open `results/published/index.html` in your brower
 
 See `./configs` for a collection of workload configurations.
 
