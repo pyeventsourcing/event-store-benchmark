@@ -177,7 +177,7 @@ impl PerformanceWorkload {
             }
         }
 
-        let stream_prefix = format!("stream-{}", Uuid::new_v4());
+        let stream_prefix = format!("stream-{}-", Uuid::new_v4());
         Ok(Self { config, seed, stream_prefix })
     }
 
@@ -206,10 +206,10 @@ impl PerformanceWorkload {
             );
             let setup_start = Instant::now();
 
+            let total_events = setup_config.prepopulate_events;
             let num_streams = setup_config
                 .prepopulate_streams
-                .unwrap_or(self.config.streams.count);
-            let total_events = setup_config.prepopulate_events;
+                .unwrap_or(total_events);
             let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;
 
             // Prepopulate events across streams concurrently
