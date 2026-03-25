@@ -236,10 +236,9 @@ impl PerformanceWorkload {
                         let stream_name = format!("{}{}", stream_prefix, stream_idx);
                         for _ in 0..events_per_stream {
                             let evt = EventData {
-                                stream: stream_name.clone(),
-                                event_type: "setup".to_string(),
                                 payload: vec![0u8; event_size],
-                                tags: vec![],
+                                event_type: "setup".to_string(),
+                                tags: vec![stream_name.clone()],
                             };
                             adapter.append(evt).await?;
                         }
@@ -337,10 +336,9 @@ impl PerformanceWorkload {
                 // Tight loop with minimal overhead
                 while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
                     let evt = EventData {
-                        stream: stream.clone(),
-                        event_type: event_type.clone(),
                         payload: payload.clone(),
-                        tags: vec![],
+                        event_type: event_type.clone(),
+                        tags: vec![stream.clone()],
                     };
 
                     let operation_started = Instant::now();
@@ -621,10 +619,9 @@ impl PerformanceWorkload {
                     if should_write {
                         if let Some(write_cfg) = write_cfg {
                             let evt = EventData {
-                                stream: format!("stream-{}", stream_idx),
-                                event_type: "test".to_string(),
                                 payload: vec![0u8; write_cfg.event_size_bytes],
-                                tags: vec![],
+                                event_type: "test".to_string(),
+                                tags: vec![format!("stream-{}", stream_idx)],
                             };
                             if adapter.append(evt).await.is_ok() {
                                 events_written += 1;

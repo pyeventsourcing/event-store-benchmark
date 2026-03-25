@@ -100,7 +100,7 @@ impl EventStoreAdapter for AxonServerAdapter {
         // This is a limitation of the axonserver_client API design.
         let mut client = self.client.clone();
 
-        let mut tags: Vec<Tag> = evt
+        let tags: Vec<Tag> = evt
             .tags
             .iter()
             .map(|t| Tag {
@@ -108,11 +108,6 @@ impl EventStoreAdapter for AxonServerAdapter {
                 value: Vec::new().into(),
             })
             .collect();
-        // Add a stream tag so we can filter by stream on read.
-        tags.push(Tag {
-            key: b"stream".to_vec().into(),
-            value: evt.stream.as_bytes().to_vec().into(),
-        });
 
         let event = Event {
             identifier: uuid::Uuid::new_v4().to_string(),
@@ -138,8 +133,8 @@ impl EventStoreAdapter for AxonServerAdapter {
             tags_and_names: Some(TagsAndNamesCriterion {
                 name: vec![],
                 tag: vec![Tag {
-                    key: b"stream".to_vec().into(),
-                    value: req.stream.as_bytes().to_vec().into(),
+                    key: req.stream.as_bytes().to_vec().into(),
+                    value: Vec::new().into(),
                 }],
             }),
         };

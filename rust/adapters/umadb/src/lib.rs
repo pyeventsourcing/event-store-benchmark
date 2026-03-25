@@ -100,7 +100,7 @@ impl EventStoreAdapter for UmaDbAdapter {
     async fn append(&self, evt: EventData) -> Result<()> {
         let dcb_evt = DCBEvent {
             event_type: evt.event_type,
-            tags: vec![format!("stream:{}", evt.stream)],
+            tags: evt.tags,
             data: evt.payload,
             uuid: None,
         };
@@ -112,7 +112,7 @@ impl EventStoreAdapter for UmaDbAdapter {
         let query = DCBQuery {
             items: vec![DCBQueryItem {
                 types: vec![],
-                tags: vec![format!("stream:{}", req.stream)],
+                tags: vec![req.stream],
             }],
         };
         let mut rr = self

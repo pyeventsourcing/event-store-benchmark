@@ -104,7 +104,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
             kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4());
         let options = AppendToStreamOptions::default();
         self.client
-            .append_to_stream(evt.stream, &options, event)
+            .append_to_stream(evt.tags[0].as_str(), &options, event)
             .await?;
         Ok(())
     }

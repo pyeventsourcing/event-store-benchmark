@@ -113,7 +113,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
         });
         let event = EventCandidate::builder()
             .source("https://bench.eventsourcingdb.io".to_string())
-            .subject(format!("/{}", evt.stream))
+            .subject(format!("/{}", evt.tags[0]))
             .ty(if evt.event_type.contains('.') {
                 evt.event_type
             } else {

@@ -12,9 +12,8 @@ pub struct ConnectionParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventData {
-    pub stream: String,
-    pub event_type: String,
     pub payload: Vec<u8>,
+    pub event_type: String,
     #[serde(default)]
     pub tags: Vec<String>,
 }
