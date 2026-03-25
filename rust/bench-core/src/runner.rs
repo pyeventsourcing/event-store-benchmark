@@ -13,12 +13,37 @@ pub async fn execute_run(
     cancel_token: CancellationToken,
 ) -> Result<RunMetrics> {
     // Start store container
-    println!("Pulling {} image...", store.name());
-    tokio::select! {
-        res = store.pull() => res?,
-        _ = cancel_token.cancelled() => {
-            println!("Interrupted while pulling image.");
-            anyhow::bail!("Interrupted");
+    let store_name = store.name();
+    if !crate::is_image_pulled(store_name) {
+        println!("Pulling {} image...", store_name);
+        let mut last_err = None;
+        let max_retries = 3;
+        for attempt in 1..=(max_retries + 1) {
+            let res = tokio::select! {
+                res = store.pull() => res,
+                _ = cancel_token.cancelled() => {
+                    println!("Interrupted while pulling image.");
+                    anyhow::bail!("Interrupted");
+                }
+            };
+
+            match res {
+                Ok(_) => {
+                    crate::mark_image_pulled(store_name);
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    if attempt <= max_retries {
+                        println!("Failed to pull {} image (attempt {}/{}): {}. Retrying in 5s...", store_name, attempt, max_retries + 1, e);
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            return Err(e);
         }
     }
 

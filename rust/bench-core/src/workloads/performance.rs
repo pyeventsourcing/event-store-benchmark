@@ -206,7 +206,7 @@ impl PerformanceWorkload {
                 .prepopulate_streams
                 .unwrap_or(setup_config.prepopulate_events);
             println!(
-                "Running setup phase: prepopulating {} events over {}...",
+                "Running setup phase: prepopulating {} events in {} streams...",
                 total_events, num_streams
             );
             let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;

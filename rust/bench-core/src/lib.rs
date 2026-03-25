@@ -7,7 +7,7 @@ pub mod system_info;
 pub mod workloads;
 
 pub use adapter::{EventStoreAdapter, StoreDataDir, StoreManager, StoreManagerFactory};
-pub use common::{SetupConfig};
+pub use common::{is_image_pulled, mark_image_pulled, SetupConfig};
 pub use metrics::{LatencyStats, ThroughputSample, RunMetrics, Summary};
 pub use metrics::{SessionMetadata, EnvironmentInfo, RunManifest};
 pub use metrics::{OsInfo, CpuInfo, MemoryInfo, DiskInfo, ContainerRuntimeInfo};
