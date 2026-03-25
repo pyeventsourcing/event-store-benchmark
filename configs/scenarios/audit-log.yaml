@@ -7,6 +7,3 @@ concurrency:
 operations:
   write:
     event_size_bytes: 256  # Typical audit entry
-streams:
-  distribution: uniform  # Distributed across many entities
-  count: 20000

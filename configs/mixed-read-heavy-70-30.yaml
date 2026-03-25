@@ -12,9 +12,6 @@ operations:
   read:
     batch_size: 50
     probability: 0.7  # 70% reads
-streams:
-  distribution: zipf  # Typical CQRS read-model scenario with hot aggregates
-  count: 10000
 setup:
   prepopulate_events: 20000
   prepopulate_streams: 5000

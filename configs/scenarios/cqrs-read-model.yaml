@@ -12,9 +12,6 @@ operations:
   read:
     batch_size: 50
     probability: 0.85  # 85% reads (queries)
-streams:
-  distribution: zipf  # Popular aggregates accessed frequently
-  count: 10000
 setup:
   prepopulate_events: 30000
   prepopulate_streams: 8000

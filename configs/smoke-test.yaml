@@ -7,7 +7,4 @@ concurrency:
 operations:
   write:
     event_size_bytes: 256
-streams:
-  distribution: uniform
-  count: 100
 stores: [umadb, dummy]

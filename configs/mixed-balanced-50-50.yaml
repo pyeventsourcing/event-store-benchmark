@@ -12,9 +12,6 @@ operations:
   read:
     batch_size: 50
     probability: 0.5  # 50% reads
-streams:
-  distribution: uniform
-  count: 10000
 setup:
   prepopulate_events: 10000
   prepopulate_streams: 5000

@@ -218,9 +218,6 @@ concurrency:
 operations:
   write:
     event_size_bytes: 256
-streams:
-  distribution: uniform
-  count: 100
 stores: [umadb, dummy]
 ```
 
@@ -237,9 +234,6 @@ concurrency:
 operations:
   write:
     event_size_bytes: 256
-streams:
-  distribution: uniform
-  count: 10000
 stores: [umadb, kurrentdb, axonserver, eventsourcingdb]
 ```
 
@@ -258,9 +252,6 @@ operations:
     event_size_bytes: 256
   read:
     batch_size: 100
-streams:
-  distribution: uniform
-  count: 5000
 setup:
   prepopulate_events: 50000
   prepopulate_streams: 5000

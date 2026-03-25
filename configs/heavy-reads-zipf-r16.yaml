@@ -7,9 +7,6 @@ concurrency:
 operations:
   read:
     batch_size: 100
-streams:
-  distribution: zipf  # Popular streams accessed frequently
-  count: 5000
 setup:
   prepopulate_events: 50000
   prepopulate_streams: 5000

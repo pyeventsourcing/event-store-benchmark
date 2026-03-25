@@ -7,6 +7,3 @@ concurrency:
 operations:
   write:
     event_size_bytes: 128  # Small events for high throughput
-streams:
-  distribution: uniform
-  count: 50000  # Many streams

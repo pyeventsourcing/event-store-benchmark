@@ -9,9 +9,6 @@ operations:
     # Note: event_size_bytes sweep not yet implemented
     # This is a template for future sweep support
     event_size_bytes: 256
-streams:
-  distribution: uniform
-  count: 10000
 
 # TODO: Implement event size sweep
 # event_sizes: [128, 256, 512, 1024, 4096]

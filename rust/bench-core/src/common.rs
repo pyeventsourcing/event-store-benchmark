@@ -1,12 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// Stream distribution configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamsConfig {
-    pub distribution: String, // e.g., "zipf", "uniform"
-    pub count: u64,
-}
-
 /// Setup/prepopulation configuration for workloads that need data seeding
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupConfig {

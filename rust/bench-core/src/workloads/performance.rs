@@ -1,5 +1,5 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
-use crate::common::{SetupConfig, StreamsConfig};
+use crate::common::{SetupConfig};
 use crate::metrics::{LatencyRecorder, ThroughputSample};
 use anyhow::Result;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -18,7 +18,6 @@ pub struct PerformanceConfig {
     pub duration_seconds: u64,
     pub concurrency: ConcurrencyConfig,
     pub operations: OperationConfig,
-    pub streams: StreamsConfig,
     #[serde(default)]
     pub setup: Option<SetupConfig>,
 }
@@ -200,16 +199,16 @@ impl PerformanceWorkload {
     /// Prepare the workload (e.g., prepopulate data for read workloads)
     pub async fn prepare(&self, store: &dyn StoreManager) -> Result<()> {
         if let Some(setup_config) = &self.config.setup {
-            println!(
-                "Running setup phase: prepopulating {} events...",
-                setup_config.prepopulate_events
-            );
             let setup_start = Instant::now();
 
             let total_events = setup_config.prepopulate_events;
             let num_streams = setup_config
                 .prepopulate_streams
-                .unwrap_or(total_events);
+                .unwrap_or(setup_config.prepopulate_events);
+            println!(
+                "Running setup phase: prepopulating {} events over {}...",
+                total_events, num_streams
+            );
             let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;
 
             // Prepopulate events across streams concurrently
@@ -234,9 +233,10 @@ impl PerformanceWorkload {
                 let stream_prefix = self.stream_prefix.clone();
                 setup_set.spawn(async move {
                     for stream_idx in start_stream..end_stream {
+                        let stream_name = format!("{}{}", stream_prefix, stream_idx);
                         for _ in 0..events_per_stream {
                             let evt = EventData {
-                                stream: format!("{}{}", stream_prefix, stream_idx),
+                                stream: stream_name.clone(),
                                 event_type: "setup".to_string(),
                                 payload: vec![0u8; event_size],
                                 tags: vec![],
@@ -457,19 +457,18 @@ impl PerformanceWorkload {
             let has_stopped = has_stopped.clone();
             let cancel_token = cancel_token.clone();
             let stream_prefix = self.stream_prefix.clone();
+            let prepopulated_streams = if let Some(setup) = config.setup {
+                setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
+            } else {
+                1
+            };
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
-                let use_heavy_tail = config.streams.distribution.to_lowercase() == "zipf";
-                let hot_set = 100_u64.min(config.streams.count.max(1));
                 let mut rec = LatencyRecorder::new();
                 let mut total_events_read = 0u64;
 
                 while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
-                    let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
-                        rng.gen_range(0..hot_set)
-                    } else {
-                        rng.gen_range(0..config.streams.count)
-                    };
+                    let stream_idx = rng.gen_range(0..prepopulated_streams);
 
                     let req = ReadRequest {
                         stream: format!("{}{}", stream_prefix, stream_idx),
@@ -595,21 +594,20 @@ impl PerformanceWorkload {
 
             set.spawn(async move {
                 let mut rng = StdRng::seed_from_u64(seed);
-                let use_heavy_tail = config.streams.distribution.to_lowercase() == "zipf";
-                let hot_set = 100_u64.min(config.streams.count.max(1));
                 let mut rec = LatencyRecorder::new();
                 let mut events_written = 0u64;
                 let mut events_read = 0u64;
+                let prepopulated_streams = if let Some(setup) = config.setup {
+                    setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
+                } else {
+                    1
+                };
 
                 let write_cfg = config.operations.write.as_ref();
                 let read_cfg = config.operations.read.as_ref();
 
                 while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
-                    let stream_idx = if use_heavy_tail && rng.gen_bool(0.2) {
-                        rng.gen_range(0..hot_set)
-                    } else {
-                        rng.gen_range(0..config.streams.count)
-                    };
+                    let stream_idx = rng.gen_range(0..prepopulated_streams);
 
                     // Decide operation based on worker type and probability
                     let should_write = if is_writer {

@@ -513,7 +513,7 @@ def plot_startup_scaling(runs, out_path: Path):
     first_run_summary = runs[0]["summary"] if runs else {}
     is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
-    title = f"Startup Time by {xlabel[:-1]} Count"
+    title = f"Startup Times"
 
     plt.figure(figsize=(8, 5))
     for adapter, points in sorted(adapter_data.items()):
@@ -915,7 +915,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <img src='{workload_name}_scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Startup Time vs {worker_label}</h3>
+        <h3>Startup Times</h3>
         <img src='{workload_name}_scaling_startup.png' width='560'>
       </div>
     </div>

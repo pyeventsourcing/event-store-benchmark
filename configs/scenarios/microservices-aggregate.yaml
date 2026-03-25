@@ -7,6 +7,3 @@ concurrency:
 operations:
   write:
     event_size_bytes: 512  # Medium events (commands, domain events)
-streams:
-  distribution: zipf  # Hot aggregates pattern
-  count: 5000

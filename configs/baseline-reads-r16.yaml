@@ -7,9 +7,6 @@ concurrency:
 operations:
   read:
     batch_size: 100
-streams:
-  distribution: uniform
-  count: 1000
 setup:
   prepopulate_events: 10000
   prepopulate_streams: 1000
