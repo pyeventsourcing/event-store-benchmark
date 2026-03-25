@@ -97,14 +97,14 @@ pub struct UmaDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
-    async fn append(&self, evt: EventData) -> Result<()> {
-        let dcb_evt = DCBEvent {
+    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+        let dcb_events: Vec<DCBEvent> = events.into_iter().map(|evt| DCBEvent {
             event_type: evt.event_type,
             tags: evt.tags,
             data: evt.payload,
             uuid: None,
-        };
-        let _pos: u64 = self.client.append(vec![dcb_evt], None, None).await?;
+        }).collect();
+        let _pos: u64 = self.client.append(dcb_events, None, None).await?;
         Ok(())
     }
 

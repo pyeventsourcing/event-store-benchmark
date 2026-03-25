@@ -52,7 +52,7 @@ pub struct DummyAdapter;
 
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
-    async fn append(&self, _evt: EventData) -> Result<()> {
+    async fn append(&self, _events: Vec<EventData>) -> Result<()> {
         precise_delay(Duration::from_micros(5000)).await;
         Ok(())
     }

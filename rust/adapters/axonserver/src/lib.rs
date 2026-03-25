@@ -94,34 +94,37 @@ impl AxonServerAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
-    async fn append(&self, evt: EventData) -> Result<()> {
+    async fn append(&self, events: Vec<EventData>) -> Result<()> {
         // Note: AxonServerClient requires &mut self for operations,
         // but we need &self for the trait. We'll need to clone the client.
         // This is a limitation of the axonserver_client API design.
         let mut client = self.client.clone();
 
-        let tags: Vec<Tag> = evt
-            .tags
-            .iter()
-            .map(|t| Tag {
-                key: t.as_bytes().to_vec().into(),
-                value: Vec::new().into(),
-            })
-            .collect();
+        let tagged_events: Vec<TaggedEvent> = events.into_iter().map(|evt| {
+            let tags: Vec<Tag> = evt
+                .tags
+                .iter()
+                .map(|t| Tag {
+                    key: t.as_bytes().to_vec().into(),
+                    value: Vec::new().into(),
+                })
+                .collect();
 
-        let event = Event {
-            identifier: uuid::Uuid::new_v4().to_string(),
-            timestamp: now_millis(),
-            name: evt.event_type,
-            version: String::new(),
-            payload: evt.payload.into(),
-            metadata: Default::default(),
-        };
-        let tagged = TaggedEvent {
-            event: Some(event),
-            tag: tags,
-        };
-        client.append(vec![tagged]).await?;
+            let event = Event {
+                identifier: uuid::Uuid::new_v4().to_string(),
+                timestamp: now_millis(),
+                name: evt.event_type,
+                version: String::new(),
+                payload: evt.payload.into(),
+                metadata: Default::default(),
+            };
+            TaggedEvent {
+                event: Some(event),
+                tag: tags,
+            }
+        }).collect();
+
+        client.append(tagged_events).await?;
         Ok(())
     }
 

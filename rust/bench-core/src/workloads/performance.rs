@@ -234,14 +234,15 @@ impl PerformanceWorkload {
                 setup_set.spawn(async move {
                     for stream_idx in start_stream..end_stream {
                         let stream_name = format!("{}{}", stream_prefix, stream_idx);
+                        let mut events = Vec::with_capacity(events_per_stream as usize);
                         for _ in 0..events_per_stream {
-                            let evt = EventData {
+                            events.push(EventData {
                                 payload: vec![0u8; event_size],
                                 event_type: "setup".to_string(),
                                 tags: vec![stream_name.clone()],
-                            };
-                            adapter.append(evt).await?;
+                            });
                         }
+                        adapter.append(events).await?;
                     }
                     Ok::<(), anyhow::Error>(())
                 });
@@ -343,7 +344,7 @@ impl PerformanceWorkload {
 
                     let operation_started = Instant::now();
 
-                    if adapter.append(evt).await.is_ok() {
+                    if adapter.append(vec![evt]).await.is_ok() {
                         local_count += 1;
 
                         // Update shared counter on every operation for maximum throughput accuracy
@@ -623,7 +624,7 @@ impl PerformanceWorkload {
                                 event_type: "test".to_string(),
                                 tags: vec![format!("stream-{}", stream_idx)],
                             };
-                            if adapter.append(evt).await.is_ok() {
+                            if adapter.append(vec![evt]).await.is_ok() {
                                 events_written += 1;
                                 worker_counter.store(events_written, Ordering::Relaxed);
                             }

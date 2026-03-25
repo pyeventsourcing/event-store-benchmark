@@ -105,24 +105,27 @@ impl EventsourcingDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for EventsourcingDbAdapter {
-    async fn append(&self, evt: EventData) -> Result<()> {
-        let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
-            json!({"raw": serde_json::Value::String(
-                String::from_utf8_lossy(&evt.payload).to_string()
-            )})
-        });
-        let event = EventCandidate::builder()
-            .source("https://bench.eventsourcingdb.io".to_string())
-            .subject(format!("/{}", evt.tags[0]))
-            .ty(if evt.event_type.contains('.') {
-                evt.event_type
-            } else {
-                format!("io.eventsourcingdb.bench.{}", evt.event_type)
-            })
-            .data(data)
-            .build();
+    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+        let candidates: Vec<EventCandidate> = events.into_iter().map(|evt| {
+            let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
+                json!({"raw": serde_json::Value::String(
+                    String::from_utf8_lossy(&evt.payload).to_string()
+                )})
+            });
+            EventCandidate::builder()
+                .source("https://bench.eventsourcingdb.io".to_string())
+                .subject(format!("/{}", evt.tags[0]))
+                .ty(if evt.event_type.contains('.') {
+                    evt.event_type
+                } else {
+                    format!("io.eventsourcingdb.bench.{}", evt.event_type)
+                })
+                .data(data)
+                .build()
+        }).collect();
+
         self.client
-            .write_events(vec![event], vec![])
+            .write_events(candidates, vec![])
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(())

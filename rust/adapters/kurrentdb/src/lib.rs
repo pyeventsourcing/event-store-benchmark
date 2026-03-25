@@ -99,12 +99,17 @@ impl KurrentDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for KurrentDbAdapter {
-    async fn append(&self, evt: EventData) -> Result<()> {
-        let event =
-            kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4());
+    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+        if events.is_empty() {
+            return Ok(());
+        }
+        let stream_name = events[0].tags[0].clone();
+        let k_events: Vec<kurrentdb::EventData> = events.into_iter().map(|evt| {
+            kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4())
+        }).collect();
         let options = AppendToStreamOptions::default();
         self.client
-            .append_to_stream(evt.tags[0].as_str(), &options, event)
+            .append_to_stream(stream_name, &options, k_events)
             .await?;
         Ok(())
     }
