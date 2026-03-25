@@ -327,7 +327,6 @@ impl PerformanceWorkload {
                 let size = write_cfg.event_size_bytes;
 
                 // Pre-allocate strings outside loop
-                let stream = "bench-stream".to_string();
                 let event_type = "test".to_string();
                 let payload = vec![0u8; size];
 
@@ -335,15 +334,17 @@ impl PerformanceWorkload {
                 let mut rec = LatencyRecorder::new();
 
                 // Tight loop with minimal overhead
+                let mut stream_name = format!("stream-{}-", Uuid::new_v4());
+                let stream_len = 10;
+                let mut stream_position = 0;
                 while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
                     let evt = EventData {
                         payload: payload.clone(),
-                        event_type: event_type.clone(),
-                        tags: vec![stream.clone()],
+                        event_type: format!("{}-{}", event_type.clone(), stream_position),
+                        tags: vec![stream_name.clone()],
                     };
 
                     let operation_started = Instant::now();
-
                     if adapter.append(vec![evt]).await.is_ok() {
                         local_count += 1;
 
@@ -353,6 +354,14 @@ impl PerformanceWorkload {
 
                         // Record latency sample
                         rec.record(operation_started.elapsed());
+
+                        // Increment stream position, maybe reset and change name.
+                        stream_position += 1;
+                        if stream_position == stream_len {
+                            stream_name = format!("stream-{}-", Uuid::new_v4());
+                            stream_position = 0;
+                        }
+
                     }
                 }
 
