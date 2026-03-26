@@ -21,15 +21,20 @@ Clone the `event-store-benchmark` repository from GitHub.
 git clone https://github.com/pyeventsourcing/event-store-benchmark.git
 ```
 
+Install the Rust toolchain (you will need `cargo`), the protobuf compiler, and Python 3.11+.
+
+Then, create a Python virtual environment for report generation, and build the benchmark tool.
+
 For convenience, a `Makefile` is provided to simplify common tasks.
 
+- **Print available Makefile targets**: `make help`
 - **Make a Python virtual environment**: `make venv`
 - **Build the benchmark tool**: `make build`
-- **Run a benchmark**: `make configs/smoke-test.yaml`
+- **Run the 'smoke test' workload**: `make run-smoke-test`
+- **Run the 'scaling readers' workload**: `make scaling-readers`
+- **Run the 'scaling writers' workload**: `make scaling-writers`
 - **Generate HTML reports**: `make report`
 - **Read HTML reports**: Open `results/published/index.html` in your brower
-
-See `./configs` for a collection of workload configurations.
 
 
 # Why This Exists
