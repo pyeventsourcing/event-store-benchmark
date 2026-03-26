@@ -7,27 +7,22 @@ A rigorous, reproducible, open-source benchmark framework for evaluating event s
 
 This project exists to define a **credible performance standard** for event stores — one that measures real-world behavior under realistic workloads, not synthetic best-case scenarios.
 
-This project is implemented with Rust and Python:
-
-* **es-bench** — workload execution implemented in Rust 
-* **report_generator.py** — analysis and visualization in Python
-
+This project is implemented with Rust and Python.
 
 # Quick Start
 
-Clone the `event-store-benchmark` repository from GitHub.
+Clone the project repository from GitHub.
 
 ```bash
 git clone https://github.com/pyeventsourcing/event-store-benchmark.git
 ```
 
-Install the Rust toolchain (you will need `cargo`), the protobuf compiler, and Python 3.11+.
+Install the Rust toolchain, the protobuf compiler, and Python 3.11+.
 
-Then, create a Python virtual environment for report generation, and build the benchmark tool.
+Then, create a Python virtual environment (for report generation) and build the benchmark tool.
 
 For convenience, a `Makefile` is provided to simplify common tasks.
 
-- **Print available Makefile targets**: `make help`
 - **Make a Python virtual environment**: `make venv`
 - **Build the benchmark tool**: `make build`
 - **Run the 'smoke test' workload**: `make run-smoke-test`
@@ -35,6 +30,7 @@ For convenience, a `Makefile` is provided to simplify common tasks.
 - **Run the 'scaling writers' workload**: `make run-scaling-writers`
 - **Generate HTML reports**: `make report`
 - **Read HTML reports**: Open `results/published/index.html` in your brower
+- **Print available Makefile targets**: `make help`
 
 
 # Why This Exists
@@ -160,7 +156,7 @@ trait StoreManager {
 
 trait EventStoreAdapter {
     /// Append an event
-    async fn append(&self, evt: EventData) -> anyhow::Result<()>;
+    async fn append(&self, events: Vec<EventData>) -> anyhow::Result<()>;
 
     /// Read events
     async fn read(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
