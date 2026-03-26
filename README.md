@@ -31,8 +31,8 @@ For convenience, a `Makefile` is provided to simplify common tasks.
 - **Make a Python virtual environment**: `make venv`
 - **Build the benchmark tool**: `make build`
 - **Run the 'smoke test' workload**: `make run-smoke-test`
-- **Run the 'scaling readers' workload**: `make scaling-readers`
-- **Run the 'scaling writers' workload**: `make scaling-writers`
+- **Run the 'scaling readers' workload**: `make run-scaling-readers`
+- **Run the 'scaling writers' workload**: `make run-scaling-writers`
 - **Generate HTML reports**: `make report`
 - **Read HTML reports**: Open `results/published/index.html` in your brower
 
