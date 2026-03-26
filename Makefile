@@ -1,3 +1,7 @@
+CONTAINER_DATA_DIR ?= ./container-data
+PYTHON ?= python3
+SEED ?= 42
+
 .PHONY: build
 .PHONY: venv
 .PHONY: report
@@ -24,13 +28,13 @@ build:
 
 # Create Python virtual environment and install dependencies
 venv:
-	python3 -m venv ./.venv
+	$(PYTHON) -m venv ./.venv
 	./.venv/bin/pip install -r ./python/requirements.txt
 
 
 # Generate report from raw results
 report:
-	./.venv/bin/python3 python/report_generator.py --raw results/raw --out results/published
+	./.venv/bin/python python/report_generator.py --raw results/raw --out results/published
 
 # Run the smoke-test workload
 run-smoke-test:
@@ -46,6 +50,6 @@ run-scaling-writers:
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE
-	./target/release/es-bench run --config $@ --seed 42 --data-dir=./container-data
+	./target/release/es-bench run --config $@ --seed $(SEED) --data-dir=$(CONTAINER_DATA_DIR)
 
 FORCE:
