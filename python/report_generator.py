@@ -5,11 +5,9 @@ from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter
-from scipy.ndimage import gaussian_filter1d
 
 try:
     from hdrh.histogram import HdrHistogram
