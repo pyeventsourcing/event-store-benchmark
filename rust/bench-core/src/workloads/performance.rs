@@ -136,9 +136,7 @@ pub struct PerformanceWorkload {
 }
 
 impl PerformanceWorkload {
-    pub fn from_yaml(yaml_config: &str, seed: u64) -> Result<Self> {
-        let config: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
-
+    pub fn from_config(config: PerformanceConfig, seed: u64) -> Result<Self> {
         // Validate mode-specific config
         match config.mode {
             PerformanceMode::Write => {
@@ -183,10 +181,6 @@ impl PerformanceWorkload {
 
     pub fn name(&self) -> &str {
         &self.config.name
-    }
-
-    pub fn duration_seconds(&self) -> u64 {
-        self.config.duration_seconds
     }
 
     /// Prepare the workload (e.g., prepopulate data for read workloads)

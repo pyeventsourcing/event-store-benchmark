@@ -109,7 +109,7 @@ pub async fn execute_run(
         let throughput = (count_delta as f64) / duration.max(0.001);
         (duration, throughput)
     } else {
-        (workload.duration_seconds() as f64, 0.0)
+        (0.0, 0.0)
     };
 
     // Collect container metrics
@@ -146,7 +146,7 @@ pub async fn execute_run(
         container: container_metrics,
     };
 
-    let metrics = RunResults {
+    let run_results = RunResults {
         summary,
         throughput_samples: workload_results.throughput_samples,
         latency_histogram: workload_results.latency_histogram,
@@ -155,7 +155,7 @@ pub async fn execute_run(
     // Stop container
     store.stop().await?;
 
-    Ok(metrics)
+    Ok(run_results)
 }
 
 // Performance workload is handled directly in the match above now

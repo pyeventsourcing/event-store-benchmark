@@ -137,13 +137,6 @@ impl LatencyRecorder {
     }
 }
 
-pub fn now_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis()
-}
-
 // New metadata structures for session-based results
 
 #[derive(Debug, Clone, Serialize)]

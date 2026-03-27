@@ -27,13 +27,6 @@ pub enum Workload {
 }
 
 impl Workload {
-    pub fn duration_seconds(&self) -> u64 {
-        match self {
-            Workload::Performance(w) => w.duration_seconds(),
-            _ => 0,
-        }
-    }
-
     pub async fn execute(
         &self,
         store: &dyn StoreManager,
@@ -70,7 +63,8 @@ impl WorkloadFactory {
 
         match workload_type {
             "performance" => {
-                let workload = PerformanceWorkload::from_yaml(yaml_config, seed)?;
+                let config: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
+                let workload = PerformanceWorkload::from_config(config, seed)?;
                 Ok(Workload::Performance(workload))
             }
             "durability" => {
@@ -155,9 +149,8 @@ impl WorkloadFactory {
         let expanded_configs = config.expand_sweep();
 
         let mut workloads = Vec::new();
-        for expanded_config in expanded_configs {
-            let yaml = serde_yaml::to_string(&expanded_config)?;
-            let workload = PerformanceWorkload::from_yaml(&yaml, seed)?;
+        for config in expanded_configs {
+            let workload = PerformanceWorkload::from_config(config, seed)?;
             workloads.push(Workload::Performance(workload));
         }
 
