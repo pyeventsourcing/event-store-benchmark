@@ -269,7 +269,7 @@ impl PerformanceWorkload {
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
     ) -> Result<WorkloadResults> {
-        let mut results = match self.config.mode {
+        match self.config.mode {
             PerformanceMode::Write => {
                 self.execute_write_workload(store, cancel_token)
                     .await
@@ -282,14 +282,7 @@ impl PerformanceWorkload {
                 self.execute_mixed_workload(store, cancel_token)
                     .await
             }
-        }?;
-
-        results.workload_name = self.config.name.clone();
-        results.store_name = store.name().to_string();
-        results.writers = self.writers();
-        results.readers = self.readers();
-
-        Ok(results)
+        }
     }
 
     async fn execute_write_workload(
@@ -345,19 +338,19 @@ impl PerformanceWorkload {
         has_stopped.store(true, Ordering::Relaxed);
 
         // Collect results
-        let mut all_latencies = LatencyRecorder::new();
+        let mut latency_histogram = LatencyRecorder::new();
         while let Some(worker_result) = worker_tasks.join_next().await {
             let worker_latencies = worker_result.expect("worker result");
-            all_latencies.hist.add(&worker_latencies.hist).unwrap();
+            latency_histogram.hist.add(&worker_latencies.hist).unwrap();
         }
-        Ok(WorkloadResults {
-            workload_name: String::new(),
-            store_name: String::new(),
-            writers: 0,
-            readers: 0,
-            latency_histogram: all_latencies,
+        Ok(WorkloadResults::new(
+            self.config.name.clone(),
+            store.name().to_string(),
+            self.writers(),
+            self.readers(),
             throughput_samples,
-        })
+            latency_histogram,
+        ))
     }
 
     fn spawn_writer_task(
@@ -480,14 +473,14 @@ impl PerformanceWorkload {
             latency_histogram.hist.add(&worker_latencies.hist)?;
         }
 
-        Ok(WorkloadResults {
-            workload_name: String::new(),
-            store_name: String::new(),
-            writers: 0,
-            readers: 0,
-            latency_histogram,
+        Ok(WorkloadResults::new(
+            self.config.name.clone(),
+            store.name().to_string(),
+            self.writers(),
+            self.readers(),
             throughput_samples,
-        })
+            latency_histogram,
+        ))
     }
 
     fn spawn_reader_task(worker_tasks: &mut JoinSet<LatencyRecorder>, adapter: Arc<dyn EventStoreAdapter>, read_cfg: ReadOpConfig, seed: u64, worker_counter: Arc<AtomicU64>, has_stopped: Arc<AtomicBool>, cancel_token: CancellationToken, stream_prefix: String, prepopulated_streams: u64) {
@@ -649,14 +642,14 @@ impl PerformanceWorkload {
             latency_histogram.hist.add(&worker_latencies.hist)?;
         }
 
-        Ok(WorkloadResults {
-            workload_name: String::new(),
-            store_name: String::new(),
-            writers: 0,
-            readers: 0,
-            latency_histogram,
+        Ok(WorkloadResults::new(
+            self.config.name.clone(),
+            store.name().to_string(),
+            self.writers(),
+            self.readers(),
             throughput_samples,
-        })
+            latency_histogram,
+        ))
     }
 
     fn spawn_throughput_sampler(

@@ -65,6 +65,26 @@ pub struct WorkloadResults {
     pub latency_histogram: LatencyRecorder,
 }
 
+impl WorkloadResults {
+    pub fn new(
+        workload_name: String,
+        store_name: String,
+        writers: usize,
+        readers: usize,
+        throughput_samples: Vec<ThroughputSample>,
+        latency_histogram: LatencyRecorder,
+    ) -> Self {
+        Self {
+            workload_name,
+            store_name,
+            writers,
+            readers,
+            throughput_samples,
+            latency_histogram,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct LatencyRecorder {
     pub hist: Histogram<u64>,
