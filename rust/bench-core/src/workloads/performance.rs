@@ -269,7 +269,7 @@ impl PerformanceWorkload {
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
     ) -> Result<WorkloadResults> {
-        match self.config.mode {
+        let mut results = match self.config.mode {
             PerformanceMode::Write => {
                 self.execute_write_workload(store, cancel_token)
                     .await
@@ -282,7 +282,14 @@ impl PerformanceWorkload {
                 self.execute_mixed_workload(store, cancel_token)
                     .await
             }
-        }
+        }?;
+
+        results.workload_name = self.config.name.clone();
+        results.store_name = store.name().to_string();
+        results.writers = self.writers();
+        results.readers = self.readers();
+
+        Ok(results)
     }
 
     async fn execute_write_workload(
@@ -344,6 +351,10 @@ impl PerformanceWorkload {
             all_latencies.hist.add(&worker_latencies.hist).unwrap();
         }
         Ok(WorkloadResults {
+            workload_name: String::new(),
+            store_name: String::new(),
+            writers: 0,
+            readers: 0,
             latency_histogram: all_latencies,
             throughput_samples,
         })
@@ -470,6 +481,10 @@ impl PerformanceWorkload {
         }
 
         Ok(WorkloadResults {
+            workload_name: String::new(),
+            store_name: String::new(),
+            writers: 0,
+            readers: 0,
             latency_histogram,
             throughput_samples,
         })
@@ -635,6 +650,10 @@ impl PerformanceWorkload {
         }
 
         Ok(WorkloadResults {
+            workload_name: String::new(),
+            store_name: String::new(),
+            writers: 0,
+            readers: 0,
             latency_histogram,
             throughput_samples,
         })

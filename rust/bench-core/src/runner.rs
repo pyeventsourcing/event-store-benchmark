@@ -136,10 +136,10 @@ pub async fn execute_run(
     }
 
     let summary = Summary {
-        workload: workload.name().to_string(),
-        adapter: store.name().to_string(),
-        writers: workload.writers(),
-        readers: workload.readers(),
+        workload: workload_results.workload_name,
+        adapter: workload_results.store_name,
+        writers: workload_results.writers,
+        readers: workload_results.readers,
         duration_s: dur_s,
         throughput_eps,
         latency: workload_results.latency_histogram.to_stats(),

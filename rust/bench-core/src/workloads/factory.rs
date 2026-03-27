@@ -27,29 +27,6 @@ pub enum Workload {
 }
 
 impl Workload {
-    pub fn name(&self) -> &str {
-        match self {
-            Workload::Performance(w) => w.name(),
-            Workload::Durability(w) => w.name(),
-            Workload::Consistency(w) => w.name(),
-            Workload::Operational(w) => w.name(),
-        }
-    }
-
-    pub fn writers(&self) -> usize {
-        match self {
-            Workload::Performance(w) => w.writers(),
-            _ => 0,
-        }
-    }
-
-    pub fn readers(&self) -> usize {
-        match self {
-            Workload::Performance(w) => w.readers(),
-            _ => 0,
-        }
-    }
-
     pub fn duration_seconds(&self) -> u64 {
         match self {
             Workload::Performance(w) => w.duration_seconds(),

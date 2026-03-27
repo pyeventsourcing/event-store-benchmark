@@ -57,6 +57,10 @@ pub struct RunMetrics {
 
 #[derive(Debug, Clone)]
 pub struct WorkloadResults {
+    pub workload_name: String,
+    pub store_name: String,
+    pub writers: usize,
+    pub readers: usize,
     pub throughput_samples: Vec<ThroughputSample>,
     pub latency_histogram: LatencyRecorder,
 }
