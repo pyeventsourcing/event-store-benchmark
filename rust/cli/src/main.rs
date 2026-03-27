@@ -215,7 +215,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             // Create store directory
             let store_results_path = workload_results_path.join(store_name);
             fs::create_dir_all(&store_results_path)?;
-            
+
             // Execute the run
             let result = execute_run(store_manager, &workload, cancel_token.clone()).await;
             
@@ -243,9 +243,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             fs::write(store_results_path.join("throughput.jsonl"), throughput_lines)?;
 
             // Write metadata with sample rate
-            let metadata = serde_json::json!({
-                "sample_rate": result.sample_rate,
-            });
+            let metadata = serde_json::json!({});
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
             fs::write(store_results_path.join("run.meta.json"), metadata_json)?;
 

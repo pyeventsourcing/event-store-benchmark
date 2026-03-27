@@ -145,7 +145,7 @@ def plot_latency_cdf_from_json(latency_file: Path, out_path: Path):
     return True
 
 
-def compute_throughput_timeseries(throughput_samples: pd.DataFrame, bin_size_ms: int = 500, sample_rate: int = 1):
+def compute_throughput_timeseries(throughput_samples: pd.DataFrame):
     """Compute throughput time series from throughput samples.
 
     The format has samples with (elapsed_s, count) where count is cumulative.
@@ -154,8 +154,6 @@ def compute_throughput_timeseries(throughput_samples: pd.DataFrame, bin_size_ms:
 
     Args:
         throughput_samples: DataFrame with 'elapsed_s' (time from start) and 'count' (cumulative count)
-        bin_size_ms: Not used (kept for compatibility)
-        sample_rate: Not used (kept for compatibility)
 
     Returns:
         dict with 'time_s', 'throughput_eps', and 'throughput_eps_smooth' arrays
@@ -193,9 +191,9 @@ def compute_throughput_timeseries(throughput_samples: pd.DataFrame, bin_size_ms:
     }
 
 
-def plot_throughput(throughput_samples: pd.DataFrame, out_path: Path, data_path: Path = None, sample_rate: int = 1):
+def plot_throughput(throughput_samples: pd.DataFrame, out_path: Path, data_path: Path = None):
     """Plot throughput over time with both raw and smoothed data."""
-    result = compute_throughput_timeseries(throughput_samples, bin_size_ms=500, sample_rate=sample_rate)
+    result = compute_throughput_timeseries(throughput_samples)
 
     if result is None:
         return
@@ -270,8 +268,8 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
     # Store data for all adapters if data_path provided
     all_data = {}
 
-    for label, samples_df, sample_rate in run_data:
-        result = compute_throughput_timeseries(samples_df, bin_size_ms=500, sample_rate=sample_rate)
+    for label, samples_df in run_data:
+        result = compute_throughput_timeseries(samples_df)
 
         if result is None:
             continue
@@ -1327,9 +1325,6 @@ def main():
             writers = run["summary"].get("writers", 0)
             readers = run["summary"].get("readers", 0)
 
-            # Extract sample rate from metadata (default to 1 if not present)
-            sample_rate = run.get("meta", {}).get("sample_rate", 1)
-
             # Create nested structure: workload/report-adapter
             report_workload_name = re.sub(r'-w\d+-r\d+$', '', workload_name)
             workload_dir = session_out_dir / report_workload_name
@@ -1344,7 +1339,7 @@ def main():
             latency_file = run["path"] / "latency.json"
             plot_latency_cdf_from_json(latency_file, report_dir / "latency_cdf.png")
 
-            plot_throughput(throughput_df, report_dir / "throughput.png", report_dir / "throughput_data.json", sample_rate=sample_rate)
+            plot_throughput(throughput_df, report_dir / "throughput.png", report_dir / "throughput_data.json")
             generate_html(report_dir, run)
 
         # Generate per-workload consolidated reports for this session
@@ -1367,9 +1362,8 @@ def main():
                 readers = run["summary"].get("readers", 0)
                 wc = readers if is_readers else writers
                 adapter = run["summary"]["adapter"]
-                sample_rate = run.get("meta", {}).get("sample_rate", 1)
                 latency_file = run["path"] / "latency.json"
-                writer_groups[wc].append((adapter, run["_throughput_df"], sample_rate, latency_file))
+                writer_groups[wc].append((adapter, run["_throughput_df"], latency_file))
                 adapters_set.add(adapter)
                 writer_counts_set.add(wc)
                 all_adapters.add(adapter)
@@ -1379,7 +1373,7 @@ def main():
 
             for wc, run_data in sorted(writer_groups.items()):
                 # Plot latency comparison using JSON percentiles
-                latency_run_data = [(adapter, latency_file) for adapter, _, _, latency_file in run_data]
+                latency_run_data = [(adapter, latency_file) for adapter, _, latency_file in run_data]
                 plot_comparison_latency_cdf(
                     latency_run_data,
                     f"Latency CDF — {wc} {worker_label}(s)",
@@ -1387,7 +1381,7 @@ def main():
                 )
 
                 # Plot throughput comparison
-                throughput_run_data = [(adapter, throughput_df, sample_rate) for adapter, throughput_df, sample_rate, _ in run_data]
+                throughput_run_data = [(adapter, throughput_df) for adapter, throughput_df, _ in run_data]
                 plot_comparison_throughput(
                     throughput_run_data,
                     f"Throughput — {wc} {worker_label}(s)",

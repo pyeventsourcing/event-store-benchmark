@@ -4,12 +4,13 @@ use crate::metrics::{LatencyRecorder, ThroughputSample};
 use anyhow::Result;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
+use crate::EventStoreAdapter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
@@ -313,65 +314,23 @@ impl PerformanceWorkload {
             .map(|_| Arc::new(AtomicU64::new(0)))
             .collect();
 
-        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let has_stopped = Arc::new(AtomicBool::new(false));
         
-        // Spawn writer tasks first
+        // Spawn writer tasks
         for (i, adapter) in writer_adapters.into_iter().enumerate() {
-            let write_cfg = write_config.clone();
-            let worker_counter = worker_counters[i].clone();
-            let has_stopped = has_stopped.clone();
-            let cancel_token = cancel_token.clone();
-
-            worker_tasks.spawn(async move {
-                let mut local_count = 0u64;
-                let size = write_cfg.event_size_bytes;
-
-                // Pre-allocate strings outside loop
-                let event_type = "test".to_string();
-                let payload = vec![0u8; size];
-
-                // Sampling for latency measurement (1 in every N operations)
-                let mut latencies = LatencyRecorder::new();
-
-                // Tight loop with minimal overhead
-                let mut stream_name = format!("stream-{}-", Uuid::new_v4());
-                let stream_len = 10;
-                let mut stream_position = 0;
-                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
-                    let evt = EventData {
-                        payload: payload.clone(),
-                        event_type: format!("{}-{}", event_type.clone(), stream_position),
-                        tags: vec![stream_name.clone()],
-                    };
-
-                    let operation_started = Instant::now();
-                    if adapter.append(vec![evt]).await.is_ok() {
-                        local_count += 1;
-
-                        // Update shared counter on every operation for maximum throughput accuracy
-                        // (atomic store is ~0.5ns, negligible compared to append latency)
-                        worker_counter.store(local_count, Ordering::Relaxed);
-
-                        // Record latency sample
-                        latencies.record(operation_started.elapsed());
-
-                        // Increment stream position, maybe reset and change name.
-                        stream_position += 1;
-                        if stream_position == stream_len {
-                            stream_name = format!("stream-{}-", Uuid::new_v4());
-                            stream_position = 0;
-                        }
-
-                    }
-                }
-
-                latencies
-            });
+            Self::spawn_writer_task(
+                &mut worker_tasks,
+                adapter,
+                write_config.clone(),
+                worker_counters[i].clone(),
+                has_stopped.clone(),
+                cancel_token.clone(),
+            );
         }
 
-        // Spawn throughput sampling task that waits for warmup, then samples
+        // Spawn throughput sampling task
         let throughput_samples = self.spawn_throughput_sampler(
-            worker_counters.clone(),
+            worker_counters,
             cancel_token,
         ).await.expect("throughput samples");
 
@@ -385,6 +344,58 @@ impl PerformanceWorkload {
             all_latencies.hist.add(&worker_latencies.hist).unwrap();
         }
         Ok((all_latencies, throughput_samples))
+    }
+
+    fn spawn_writer_task(
+        worker_tasks: &mut JoinSet<LatencyRecorder>,
+        adapter: Arc<dyn EventStoreAdapter>,
+        write_cfg: WriteOpConfig,
+        worker_counter: Arc<AtomicU64>,
+        has_stopped: Arc<AtomicBool>,
+        cancel_token: CancellationToken
+    ) {
+        worker_tasks.spawn(async move {
+            let mut total_events = 0u64;
+            let size = write_cfg.event_size_bytes;
+
+            // Pre-allocate strings outside loop
+            let event_type = "test".to_string();
+            let payload = vec![0u8; size];
+
+            // Sampling for latency measurement
+            let mut latencies = LatencyRecorder::new();
+
+            // Tight loop with minimal overhead
+            let mut stream_name = format!("stream-{}-", Uuid::new_v4());
+            let stream_len = 10;
+            let mut stream_position = 0;
+            while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
+                let evt = EventData {
+                    payload: payload.clone(),
+                    event_type: format!("{}-{}", event_type.clone(), stream_position),
+                    tags: vec![stream_name.clone()],
+                };
+
+                let operation_started = Instant::now();
+                if adapter.append(vec![evt]).await.is_ok() {
+                    // Update counter
+                    total_events += 1;
+                    worker_counter.store(total_events, Ordering::Relaxed);
+
+                    // Record latency sample
+                    latencies.record(operation_started.elapsed());
+
+                    // Increment stream position, maybe reset and change name.
+                    stream_position += 1;
+                    if stream_position == stream_len {
+                        stream_name = format!("stream-{}-", Uuid::new_v4());
+                        stream_position = 0;
+                    }
+                }
+            }
+
+            latencies
+        });
     }
 
     async fn execute_read_workload(
@@ -416,49 +427,27 @@ impl PerformanceWorkload {
             .map(|_| Arc::new(AtomicU64::new(0)))
             .collect();
 
-        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let has_stopped = Arc::new(AtomicBool::new(false));
+
+        let prepopulated_streams = if let Some(setup) = self.config.clone().setup {
+            setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
+        } else {
+            1
+        };
 
         // Spawn reader tasks
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
-            let config = self.config.clone();
-            let read_cfg = read_config.clone();
-            let seed = self.seed + (i as u64);
-            let worker_counter = worker_counters[i].clone();
-            let has_stopped = has_stopped.clone();
-            let cancel_token = cancel_token.clone();
-            let stream_prefix = self.stream_prefix.clone();
-            let prepopulated_streams = if let Some(setup) = config.setup {
-                setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
-            } else {
-                1
-            };
-            worker_tasks.spawn(async move {
-                let mut rng = StdRng::seed_from_u64(seed);
-                let mut latencies = LatencyRecorder::new();
-                let mut total_events_read = 0u64;
-
-                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
-                    let stream_idx = rng.gen_range(0..prepopulated_streams);
-
-                    let req = ReadRequest {
-                        stream: format!("{}{}", stream_prefix, stream_idx),
-                        from_offset: None,
-                        limit: Some(read_cfg.batch_size as u64),
-                    };
-
-                    let operation_started = Instant::now();
-                    let result = adapter.read(req).await;
-
-                    if let Ok(events) = result {
-                        total_events_read += events.len() as u64;
-                        worker_counter.store(total_events_read, Ordering::Relaxed);
-                    }
-
-                    // Record latency for all operations
-                    latencies.record(operation_started.elapsed());
-                }
-                latencies
-            });
+            Self::spawn_reader_task(
+                &mut worker_tasks,
+                adapter,
+                read_config.clone(),
+                self.seed + (i as u64),
+                worker_counters[i].clone(),
+                has_stopped.clone(),
+                cancel_token.clone(),
+                self.stream_prefix.clone(),
+                prepopulated_streams,
+            );
         }
 
         // Spawn throughput sampling task that waits for warmup, then samples
@@ -478,6 +467,36 @@ impl PerformanceWorkload {
         }
 
         Ok((all_latencies, throughput_samples))
+    }
+
+    fn spawn_reader_task(worker_tasks: &mut JoinSet<LatencyRecorder>, adapter: Arc<dyn EventStoreAdapter>, read_cfg: ReadOpConfig, seed: u64, worker_counter: Arc<AtomicU64>, has_stopped: Arc<AtomicBool>, cancel_token: CancellationToken, stream_prefix: String, prepopulated_streams: u64) {
+        worker_tasks.spawn(async move {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut latencies = LatencyRecorder::new();
+            let mut total_events_read = 0u64;
+
+            while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
+                let stream_idx = rng.gen_range(0..prepopulated_streams);
+
+                let req = ReadRequest {
+                    stream: format!("{}{}", stream_prefix, stream_idx),
+                    from_offset: None,
+                    limit: Some(read_cfg.batch_size as u64),
+                };
+
+                let operation_started = Instant::now();
+                let result = adapter.read(req).await;
+
+                if let Ok(events) = result {
+                    total_events_read += events.len() as u64;
+                    worker_counter.store(total_events_read, Ordering::Relaxed);
+                }
+
+                // Record latency for all operations
+                latencies.record(operation_started.elapsed());
+            }
+            latencies
+        });
     }
 
     async fn execute_mixed_workload(

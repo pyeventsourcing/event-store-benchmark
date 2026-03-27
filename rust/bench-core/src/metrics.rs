@@ -54,8 +54,6 @@ pub struct Summary {
 pub struct RunMetrics {
     pub summary: Summary,
     pub throughput_samples: Vec<ThroughputSample>,
-    #[serde(default = "default_sample_rate")]
-    pub sample_rate: u64,
     #[serde(skip)]  // Don't serialize histogram to JSON
     pub latency_histogram: LatencyRecorder,
 }

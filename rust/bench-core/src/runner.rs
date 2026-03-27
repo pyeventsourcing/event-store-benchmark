@@ -87,7 +87,7 @@ pub async fn execute_run(
         res = async {
             match workload {
                 Workload::Performance(perf_workload) => {
-                    execute_performance_workload(store.as_ref(), perf_workload, cancel_token.clone()).await
+                    execute_performance_workload(perf_workload, store.as_ref(), cancel_token.clone()).await
                 }
                 Workload::Durability(dur_workload) => {
                     anyhow::bail!("Durability workloads not yet implemented: {}", dur_workload.name());
@@ -164,7 +164,6 @@ pub async fn execute_run(
     let metrics = RunMetrics {
         summary,
         throughput_samples,
-        sample_rate: 100, // 1-in-100 sampling
         latency_histogram: overall,
     };
 
@@ -175,15 +174,12 @@ pub async fn execute_run(
 }
 
 async fn execute_performance_workload(
-    store: &dyn StoreManager,
     workload: &PerformanceWorkload,
+    store: &dyn StoreManager,
     cancel_token: CancellationToken,
 ) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, Vec<crate::metrics::ThroughputSample>)> {
     // Prepare the workload
     workload.prepare(store).await?;
-
-    // Warmup and cooldown durations
-    let duration_seconds = workload.duration_seconds();
 
     // Execute the workload
     let (all_latencies, throughput_samples) = workload
@@ -192,7 +188,7 @@ async fn execute_performance_workload(
 
     Ok((
         workload.name().to_string(),
-        duration_seconds,
+        workload.duration_seconds(),
         workload.writers(),
         workload.readers(),
         all_latencies,
