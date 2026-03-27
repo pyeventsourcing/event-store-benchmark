@@ -48,7 +48,7 @@ pub struct Summary {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct RunMetrics {
+pub struct RunResults {
     pub summary: Summary,
     pub throughput_samples: Vec<ThroughputSample>,
     #[serde(skip)]  // Don't serialize histogram to JSON

@@ -229,7 +229,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             }
             fs::write(store_results_path.join("throughput.jsonl"), throughput_lines)?;
 
-            // Write metadata with sample rate
+            // Write metadata (work in progress)
             let metadata = serde_json::json!({});
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
             fs::write(store_results_path.join("run.meta.json"), metadata_json)?;

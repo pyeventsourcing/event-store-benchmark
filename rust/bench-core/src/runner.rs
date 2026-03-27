@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{RunMetrics, Summary};
+use crate::metrics::{RunResults, Summary};
 use crate::workloads::Workload;
 use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
@@ -11,7 +11,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<RunMetrics> {
+) -> Result<RunResults> {
     // Start store container
     let store_name = store.name();
     if !crate::is_image_pulled(store_name) {
@@ -146,7 +146,7 @@ pub async fn execute_run(
         container: container_metrics,
     };
 
-    let metrics = RunMetrics {
+    let metrics = RunResults {
         summary,
         throughput_samples: workload_results.throughput_samples,
         latency_histogram: workload_results.latency_histogram,

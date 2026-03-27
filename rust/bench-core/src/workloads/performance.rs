@@ -185,14 +185,6 @@ impl PerformanceWorkload {
         &self.config.name
     }
 
-    pub fn writers(&self) -> usize {
-        self.config.concurrency.writers.first()
-    }
-
-    pub fn readers(&self) -> usize {
-        self.config.concurrency.readers.first()
-    }
-
     pub fn duration_seconds(&self) -> u64 {
         self.config.duration_seconds
     }
@@ -346,8 +338,8 @@ impl PerformanceWorkload {
         Ok(WorkloadResults::new(
             self.config.name.clone(),
             store.name().to_string(),
-            self.writers(),
-            self.readers(),
+            self.config.concurrency.writers.first(),
+            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))
@@ -476,8 +468,8 @@ impl PerformanceWorkload {
         Ok(WorkloadResults::new(
             self.config.name.clone(),
             store.name().to_string(),
-            self.writers(),
-            self.readers(),
+            self.config.concurrency.writers.first(),
+            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))
@@ -645,8 +637,8 @@ impl PerformanceWorkload {
         Ok(WorkloadResults::new(
             self.config.name.clone(),
             store.name().to_string(),
-            self.writers(),
-            self.readers(),
+            self.config.concurrency.writers.first(),
+            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))
