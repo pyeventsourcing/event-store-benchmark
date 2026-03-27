@@ -37,15 +37,6 @@ enum Commands {
     },
     /// List available store adapters
     ListStores,
-    /// Generate analytics report from session data
-    Report {
-        /// Path to sessions directory (default: results/raw/sessions)
-        #[arg(long, default_value = "results/raw/sessions")]
-        sessions: PathBuf,
-        /// Output directory for report (default: results/published)
-        #[arg(long, default_value = "results/published")]
-        output: PathBuf,
-    },
 }
 
 fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
@@ -88,10 +79,6 @@ fn main() -> Result<()> {
         }
         Commands::Run { config, seed, data_dir } => {
             rt.block_on(async { run_benchmark(&config, seed, data_dir, cancel_token).await })?;
-            Ok(())
-        }
-        Commands::Report { sessions, output } => {
-            generate_report(&sessions, &output)?;
             Ok(())
         }
     }
@@ -265,8 +252,3 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     Ok(())
 }
 
-fn generate_report(sessions_path: &PathBuf, output_path: &PathBuf) -> Result<()> {
-    let generator = analytics::ReportGenerator::new(sessions_path, output_path);
-    generator.generate()?;
-    Ok(())
-}

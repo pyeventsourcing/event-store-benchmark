@@ -6,12 +6,11 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
-base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 criterion = { version = "0.5", default-features = false }
 futures = "0.3"
-hdrhistogram = { version = "7", features = ["serialization"] }
+hdrhistogram = { version = "7" }
 humantime-serde = "1.1"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }

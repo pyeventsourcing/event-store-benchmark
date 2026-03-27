@@ -2,6 +2,6 @@
 members = [
     "bench-core",
     "adapters/umadb",
-    "cli", "analytics",
+    "cli",
 ]
 resolver = "2"

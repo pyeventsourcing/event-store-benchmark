@@ -1,9 +1,6 @@
-use base64::Engine;
 use hdrhistogram::Histogram;
-use hdrhistogram::serialization::{Serializer, V2Serializer};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::Write;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Throughput time-series sample: elapsed time from workload start and cumulative operation count
@@ -80,19 +77,6 @@ impl LatencyRecorder {
             p99_ms: self.hist.value_at_quantile(0.99) as f64 / 1000.0,
             p999_ms: self.hist.value_at_quantile(0.999) as f64 / 1000.0,
         }
-    }
-
-    /// Serialize histogram to a writer using HdrHistogram V2 format
-    pub fn serialize_to_writer<W: Write>(&self, writer: &mut W) -> anyhow::Result<()> {
-        V2Serializer::new().serialize(&self.hist, writer)?;
-        Ok(())
-    }
-
-    /// Serialize histogram to a base64-encoded string (for Python compatibility)
-    pub fn serialize_to_base64(&self) -> anyhow::Result<String> {
-        let mut vec = Vec::new();
-        self.serialize_to_writer(&mut vec)?;
-        Ok(base64::engine::general_purpose::STANDARD.encode(&vec))
     }
 
     /// Export histogram percentile data as JSON for analysis
