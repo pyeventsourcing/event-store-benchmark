@@ -159,9 +159,9 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         println!("Running {} workload variants", workloads.len());
     }
 
-    // Create session directory
-    let session_dir = PathBuf::from("results/raw/sessions").join(&session_id);
-    fs::create_dir_all(&session_dir)?;
+    // Create session results directory
+    let session_results_path = PathBuf::from("results/raw/sessions").join(&session_id);
+    fs::create_dir_all(&session_results_path)?;
 
     // Write session metadata
     let session_metadata = SessionMetadata {
@@ -176,14 +176,14 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     };
 
     let session_json = serde_json::to_string_pretty(&session_metadata)?;
-    fs::write(session_dir.join("session.json"), session_json)?;
+    fs::write(session_results_path.join("session.json"), session_json)?;
 
     // Write environment info
     let environment_json = serde_json::to_string_pretty(&environment_info)?;
-    fs::write(session_dir.join("environment.json"), environment_json)?;
+    fs::write(session_results_path.join("environment.json"), environment_json)?;
 
     // Copy config file to session directory
-    fs::copy(config_path, session_dir.join("config.yaml"))?;
+    fs::copy(config_path, session_results_path.join("config.yaml"))?;
 
     // Run each workload variant
     for workload in workloads {
@@ -193,8 +193,8 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         };
 
         // Create workload directory
-        let workload_dir = session_dir.join(workload_name);
-        fs::create_dir_all(&workload_dir)?;
+        let workload_results_path = session_results_path.join(workload_name);
+        fs::create_dir_all(&workload_results_path)?;
 
         // Run workload for each store
         for store_name in &stores_to_run {
@@ -213,9 +213,9 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             let store_manager = store_factory.create_store_manager(data_dir.clone())?;
 
             // Create store directory
-            let store_dir = workload_dir.join(store_name);
-            fs::create_dir_all(&store_dir)?;
-
+            let store_results_path = workload_results_path.join(store_name);
+            fs::create_dir_all(&store_results_path)?;
+            
             // Execute the run
             let result = execute_run(store_manager, &workload, cancel_token.clone()).await;
             
@@ -232,7 +232,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
 
             // Write summary
             let summary_json = serde_json::to_string_pretty(&result.summary)?;
-            fs::write(store_dir.join("summary.json"), summary_json)?;
+            fs::write(store_results_path.join("summary.json"), summary_json)?;
 
             // Write throughput time-series samples
             let mut throughput_lines = String::new();
@@ -240,19 +240,19 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
                 throughput_lines.push_str(&serde_json::to_string(&sample)?);
                 throughput_lines.push('\n');
             }
-            fs::write(store_dir.join("throughput.jsonl"), throughput_lines)?;
+            fs::write(store_results_path.join("throughput.jsonl"), throughput_lines)?;
 
             // Write metadata with sample rate
             let metadata = serde_json::json!({
                 "sample_rate": result.sample_rate,
             });
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
-            fs::write(store_dir.join("run.meta.json"), metadata_json)?;
+            fs::write(store_results_path.join("run.meta.json"), metadata_json)?;
 
             // Write histogram as JSON percentile data
             let percentile_json = result.latency_histogram.to_percentile_json();
             fs::write(
-                store_dir.join("latency.json"),
+                store_results_path.join("latency.json"),
                 serde_json::to_string_pretty(&percentile_json)?
             )?;
 
@@ -263,7 +263,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         }
     }
 
-    println!("\n✓ Session complete: {}", session_dir.display());
+    println!("\n✓ Session complete: {}", session_results_path.display());
     Ok(())
 }
 

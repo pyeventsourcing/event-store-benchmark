@@ -66,10 +66,12 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn stop(&mut self) -> Result<()> {
+        println!("Stopping container");
         if let Some(container) = self.container.take() {
             container.stop().await?;
         }
         self.data_dir.cleanup()?;
+        println!("Stopped container");
         Ok(())
     }
 

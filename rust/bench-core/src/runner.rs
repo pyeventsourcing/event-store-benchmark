@@ -107,7 +107,7 @@ pub async fn execute_run(
         }
     };
 
-    let (workload_name, duration_seconds, writers, readers, overall, events_written, events_read, throughput_samples) = match workload_res {
+    let (workload_name, duration_seconds, writers, readers, overall, throughput_samples) = match workload_res {
         Ok(vals) => vals,
         Err(e) => {
             // Ensure container is stopped on error/interruption
@@ -124,8 +124,7 @@ pub async fn execute_run(
         let throughput = (count_delta as f64) / duration.max(0.001);
         (duration, throughput)
     } else {
-        let total_ops = events_written + events_read;
-        (duration_seconds as f64, (total_ops as f64) / (duration_seconds as f64).max(0.001))
+        (duration_seconds as f64, 0.0)
     };
 
     // Collect container metrics
@@ -156,8 +155,6 @@ pub async fn execute_run(
         adapter: store.name().to_string(),
         writers,
         readers,
-        events_written,
-        events_read,
         duration_s: dur_s,
         throughput_eps,
         latency: overall.to_stats(),
@@ -181,7 +178,7 @@ async fn execute_performance_workload(
     store: &dyn StoreManager,
     workload: &PerformanceWorkload,
     cancel_token: CancellationToken,
-) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, u64, u64, Vec<crate::metrics::ThroughputSample>)> {
+) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, Vec<crate::metrics::ThroughputSample>)> {
     // Prepare the workload
     workload.prepare(store).await?;
 
@@ -189,7 +186,7 @@ async fn execute_performance_workload(
     let duration_seconds = workload.duration_seconds();
 
     // Execute the workload
-    let (overall, events_written, events_read, throughput_samples) = workload
+    let (all_latencies, throughput_samples) = workload
         .execute(store, cancel_token)
         .await?;
 
@@ -198,9 +195,7 @@ async fn execute_performance_workload(
         duration_seconds,
         workload.writers(),
         workload.readers(),
-        overall,
-        events_written,
-        events_read,
+        all_latencies,
         throughput_samples,
     ))
 }

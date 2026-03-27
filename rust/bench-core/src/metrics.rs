@@ -43,8 +43,6 @@ pub struct Summary {
     pub adapter: String,
     pub writers: usize,
     pub readers: usize,
-    pub events_written: u64,
-    pub events_read: u64,
     pub duration_s: f64,
     pub throughput_eps: f64,
     pub latency: LatencyStats,

@@ -41,6 +41,7 @@ impl Image for UmaDb {
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stdout("UmaDB started")]
+        // vec![]
     }
 
     fn mounts(&self) -> impl IntoIterator<Item = &Mount> {
