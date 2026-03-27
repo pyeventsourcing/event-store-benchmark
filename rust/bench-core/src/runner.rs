@@ -1,6 +1,6 @@
 use crate::adapter::StoreManager;
 use crate::metrics::{RunMetrics, Summary};
-use crate::workloads::{Workload, PerformanceWorkload};
+use crate::workloads::Workload;
 use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
 use anyhow::Result;
@@ -84,22 +84,7 @@ pub async fn execute_run(
 
     // Extract workload details and execute based on type
     let workload_res = tokio::select! {
-        res = async {
-            match workload {
-                Workload::Performance(perf_workload) => {
-                    execute_performance_workload(perf_workload, store.as_ref(), cancel_token.clone()).await
-                }
-                Workload::Durability(dur_workload) => {
-                    anyhow::bail!("Durability workloads not yet implemented: {}", dur_workload.name());
-                }
-                Workload::Consistency(cons_workload) => {
-                    anyhow::bail!("Consistency workloads not yet implemented: {}", cons_workload.name());
-                }
-                Workload::Operational(op_workload) => {
-                    anyhow::bail!("Operational workloads not yet implemented: {}", op_workload.name());
-                }
-            }
-        } => res,
+        res = workload.execute(store.as_ref(), cancel_token.clone()) => res,
         _ = cancel_token.cancelled() => {
             println!("Interrupted during workload execution.");
             store.stop().await.ok();
@@ -107,8 +92,8 @@ pub async fn execute_run(
         }
     };
 
-    let (workload_name, duration_seconds, writers, readers, overall, throughput_samples) = match workload_res {
-        Ok(vals) => vals,
+    let workload_results = match workload_res {
+        Ok(res) => res,
         Err(e) => {
             // Ensure container is stopped on error/interruption
             store.stop().await.ok();
@@ -116,15 +101,15 @@ pub async fn execute_run(
         }
     };
 
-    let (dur_s, throughput_eps) = if throughput_samples.len() >= 2 {
-        let first_sample = throughput_samples.first().unwrap();
-        let last_sample = throughput_samples.last().unwrap();
+    let (dur_s, throughput_eps) = if workload_results.throughput_samples.len() >= 2 {
+        let first_sample = workload_results.throughput_samples.first().unwrap();
+        let last_sample = workload_results.throughput_samples.last().unwrap();
         let duration = last_sample.elapsed_s - first_sample.elapsed_s;
         let count_delta = last_sample.count - first_sample.count;
         let throughput = (count_delta as f64) / duration.max(0.001);
         (duration, throughput)
     } else {
-        (duration_seconds as f64, 0.0)
+        (workload.duration_seconds() as f64, 0.0)
     };
 
     // Collect container metrics
@@ -151,20 +136,20 @@ pub async fn execute_run(
     }
 
     let summary = Summary {
-        workload: workload_name,
+        workload: workload.name().to_string(),
         adapter: store.name().to_string(),
-        writers,
-        readers,
+        writers: workload.writers(),
+        readers: workload.readers(),
         duration_s: dur_s,
         throughput_eps,
-        latency: overall.to_stats(),
+        latency: workload_results.latency_histogram.to_stats(),
         container: container_metrics,
     };
 
     let metrics = RunMetrics {
         summary,
-        throughput_samples,
-        latency_histogram: overall,
+        throughput_samples: workload_results.throughput_samples,
+        latency_histogram: workload_results.latency_histogram,
     };
 
     // Stop container
@@ -173,25 +158,4 @@ pub async fn execute_run(
     Ok(metrics)
 }
 
-async fn execute_performance_workload(
-    workload: &PerformanceWorkload,
-    store: &dyn StoreManager,
-    cancel_token: CancellationToken,
-) -> Result<(String, u64, usize, usize, crate::metrics::LatencyRecorder, Vec<crate::metrics::ThroughputSample>)> {
-    // Prepare the workload
-    workload.prepare(store).await?;
-
-    // Execute the workload
-    let (all_latencies, throughput_samples) = workload
-        .execute(store, cancel_token)
-        .await?;
-
-    Ok((
-        workload.name().to_string(),
-        workload.duration_seconds(),
-        workload.writers(),
-        workload.readers(),
-        all_latencies,
-        throughput_samples,
-    ))
-}
+// Performance workload is handled directly in the match above now

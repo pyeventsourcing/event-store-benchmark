@@ -1,6 +1,9 @@
 use anyhow::Result;
 use serde_yaml::Value;
+use tokio_util::sync::CancellationToken;
 
+use crate::adapter::StoreManager;
+use crate::metrics::WorkloadResults;
 use super::performance::{PerformanceWorkload, PerformanceConfig};
 use super::durability::DurabilityWorkload;
 use super::consistency::ConsistencyWorkload;
@@ -21,6 +24,57 @@ pub enum Workload {
     Durability(DurabilityWorkload),
     Consistency(ConsistencyWorkload),
     Operational(OperationalWorkload),
+}
+
+impl Workload {
+    pub fn name(&self) -> &str {
+        match self {
+            Workload::Performance(w) => w.name(),
+            Workload::Durability(w) => w.name(),
+            Workload::Consistency(w) => w.name(),
+            Workload::Operational(w) => w.name(),
+        }
+    }
+
+    pub fn writers(&self) -> usize {
+        match self {
+            Workload::Performance(w) => w.writers(),
+            _ => 0,
+        }
+    }
+
+    pub fn readers(&self) -> usize {
+        match self {
+            Workload::Performance(w) => w.readers(),
+            _ => 0,
+        }
+    }
+
+    pub fn duration_seconds(&self) -> u64 {
+        match self {
+            Workload::Performance(w) => w.duration_seconds(),
+            _ => 0,
+        }
+    }
+
+    pub async fn execute(
+        &self,
+        store: &dyn StoreManager,
+        cancel_token: CancellationToken,
+    ) -> Result<WorkloadResults> {
+        match self {
+            Workload::Performance(w) => w.execute(store, cancel_token).await,
+            Workload::Durability(w) => {
+                anyhow::bail!("Durability workloads not yet implemented: {}", w.name());
+            }
+            Workload::Consistency(w) => {
+                anyhow::bail!("Consistency workloads not yet implemented: {}", w.name());
+            }
+            Workload::Operational(w) => {
+                anyhow::bail!("Operational workloads not yet implemented: {}", w.name());
+            }
+        }
+    }
 }
 
 /// Factory for creating workload instances from YAML configuration

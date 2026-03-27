@@ -1,6 +1,6 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyRecorder, ThroughputSample};
+use crate::metrics::{LatencyRecorder, ThroughputSample, WorkloadResults};
 use anyhow::Result;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -268,7 +268,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<(LatencyRecorder, Vec<ThroughputSample>)> {
+    ) -> Result<WorkloadResults> {
         match self.config.mode {
             PerformanceMode::Write => {
                 self.execute_write_workload(store, cancel_token)
@@ -289,7 +289,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<(LatencyRecorder, Vec<ThroughputSample>)> {
+    ) -> Result<WorkloadResults> {
         let writers = self.config.concurrency.writers.first();
         println!("Creating {} writer clients...", writers);
 
@@ -343,7 +343,10 @@ impl PerformanceWorkload {
             let worker_latencies = worker_result.expect("worker result");
             all_latencies.hist.add(&worker_latencies.hist).unwrap();
         }
-        Ok((all_latencies, throughput_samples))
+        Ok(WorkloadResults {
+            latency_histogram: all_latencies,
+            throughput_samples,
+        })
     }
 
     fn spawn_writer_task(
@@ -402,7 +405,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<(LatencyRecorder, Vec<ThroughputSample>)> {
+    ) -> Result<WorkloadResults> {
         let readers = self.config.concurrency.readers.first();
         println!("Creating {} reader clients...", readers);
 
@@ -460,13 +463,16 @@ impl PerformanceWorkload {
         has_stopped.store(true, Ordering::Relaxed);
 
         // Collect results from reader tasks
-        let mut all_latencies = LatencyRecorder::new();
+        let mut latency_histogram = LatencyRecorder::new();
         while let Some(worker_result) = worker_tasks.join_next().await {
             let worker_latencies = worker_result.expect("join");
-            all_latencies.hist.add(&worker_latencies.hist)?;
+            latency_histogram.hist.add(&worker_latencies.hist)?;
         }
 
-        Ok((all_latencies, throughput_samples))
+        Ok(WorkloadResults {
+            latency_histogram,
+            throughput_samples,
+        })
     }
 
     fn spawn_reader_task(worker_tasks: &mut JoinSet<LatencyRecorder>, adapter: Arc<dyn EventStoreAdapter>, read_cfg: ReadOpConfig, seed: u64, worker_counter: Arc<AtomicU64>, has_stopped: Arc<AtomicBool>, cancel_token: CancellationToken, stream_prefix: String, prepopulated_streams: u64) {
@@ -503,7 +509,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<(LatencyRecorder, Vec<ThroughputSample>)> {
+    ) -> Result<WorkloadResults> {
         let writers = self.config.concurrency.writers.first();
         let readers = self.config.concurrency.readers.first();
         let total_workers = writers + readers;
@@ -622,13 +628,16 @@ impl PerformanceWorkload {
         has_stopped.store(true, Ordering::Relaxed);
 
         // Collect results from worker tasks
-        let mut all_latencies = LatencyRecorder::new();
+        let mut latency_histogram = LatencyRecorder::new();
         while let Some(worker_result) = worker_tasks.join_next().await {
             let worker_latencies = worker_result.expect("join");
-            all_latencies.hist.add(&worker_latencies.hist)?;
+            latency_histogram.hist.add(&worker_latencies.hist)?;
         }
 
-        Ok((all_latencies, throughput_samples))
+        Ok(WorkloadResults {
+            latency_histogram,
+            throughput_samples,
+        })
     }
 
     fn spawn_throughput_sampler(

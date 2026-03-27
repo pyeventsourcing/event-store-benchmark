@@ -55,6 +55,12 @@ pub struct RunMetrics {
     pub latency_histogram: LatencyRecorder,
 }
 
+#[derive(Debug, Clone)]
+pub struct WorkloadResults {
+    pub throughput_samples: Vec<ThroughputSample>,
+    pub latency_histogram: LatencyRecorder,
+}
+
 #[derive(Clone, Debug)]
 pub struct LatencyRecorder {
     pub hist: Histogram<u64>,
