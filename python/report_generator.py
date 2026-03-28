@@ -929,18 +929,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     <h2>Scaling</h2>
     <div class='row'>
       <div class='card'>
-        <h3>Startup Times</h3>
-        <img src='{workload_name}_scaling_startup.png' width='560'>
-      </div>
-      <div class='card'>
         <h3>Throughput vs {worker_label}</h3>
         <img src='{workload_name}_scaling_throughput.png' width='560'>
-      </div>
-    </div>
-    <div class='row'>
-      <div class='card'>
-        <h3>p50 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p50.png' width='560'>
       </div>
       <div class='card'>
         <h3>p99 Latency vs {worker_label}</h3>
@@ -949,12 +939,22 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     </div>
     <div class='row'>
       <div class='card'>
-        <h3>Peak CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
+        <h3>p50 Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_p50.png' width='560'>
       </div>
+      <div class='card'>
+        <h3>Startup Times</h3>
+        <img src='{workload_name}_scaling_startup.png' width='560'>
+      </div>
+    </div>
+    <div class='row'>
       <div class='card'>
         <h3>Peak Memory vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_mem.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Peak CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
       </div>
     </div>"""
 
@@ -1136,18 +1136,8 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
             scaling_plots = f"""
       <div class='row'>
         <div class='card'>
-          <h3>Startup Times</h3>
-          <img src='{workload_name}/{workload_name}_scaling_startup.png' width='460'>
-        </div>
-        <div class='card'>
           <h3>Throughput</h3>
           <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='460'>
-        </div>
-      </div>
-      <div class='row'>
-        <div class='card'>
-          <h3>p50 Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_p50.png' width='460'>
         </div>
         <div class='card'>
           <h3>p99 Latency</h3>
@@ -1156,13 +1146,23 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       </div>
       <div class='row'>
         <div class='card'>
-          <h3>Peak Memory</h3>
-          <img src='{workload_name}/{workload_name}_scaling_peak_mem.png' width='460'>
+          <h3>p50 Latency</h3>
+          <img src='{workload_name}/{workload_name}_scaling_p50.png' width='460'>
         </div>
+        <div class='card'>
+          <h3>Startup Times</h3>
+          <img src='{workload_name}/{workload_name}_scaling_startup.png' width='460'>
+        </div>
+      <div class='row'>
         <div class='card'>
           <h3>Peak CPU</h3>
           <img src='{workload_name}/{workload_name}_scaling_peak_cpu.png' width='460'>
         </div>
+        <div class='card'>
+          <h3>Peak Memory</h3>
+          <img src='{workload_name}/{workload_name}_scaling_peak_mem.png' width='460'>
+        </div>
+      </div>
       </div>"""
 
         workload_sections += f"""
