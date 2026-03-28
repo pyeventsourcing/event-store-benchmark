@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{Summary, WorkloadResults};
+use crate::metrics::{WorkloadResults};
 use crate::workloads::Workload;
 use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
@@ -11,7 +11,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(ContainerMetrics, WorkloadResults, Summary)> {
+) -> Result<(ContainerMetrics, WorkloadResults)> {
     // Start store container
     let store_name = store.name();
     if !crate::is_image_pulled(store_name) {
@@ -101,16 +101,14 @@ pub async fn execute_run(
         }
     };
 
-    let (dur_s, throughput_eps) = if workload_results.throughput_samples.len() >= 2 {
+    if workload_results.throughput_samples.len() >= 2 {
         let first_sample = workload_results.throughput_samples.first().unwrap();
         let last_sample = workload_results.throughput_samples.last().unwrap();
         let duration = last_sample.elapsed_s - first_sample.elapsed_s;
         let count_delta = last_sample.count - first_sample.count;
         let throughput = (count_delta as f64) / duration.max(0.001);
-        (duration, throughput)
-    } else {
-        (0.0, 0.0)
-    };
+        println!("Duration: {:.2}s, Throughput: {:.2} eps", duration, throughput);
+    }
 
     // Collect container metrics
     let mut container_metrics = ContainerMetrics {
@@ -135,16 +133,10 @@ pub async fn execute_run(
         }
     }
 
-    let summary = Summary {
-        duration_s: dur_s,
-        throughput_eps,
-        latency: workload_results.latency_histogram.to_stats(),
-    };
-
     // Stop container
     store.stop().await?;
 
-    Ok((container_metrics, workload_results, summary))
+    Ok((container_metrics, workload_results))
 }
 
 // Performance workload is handled directly in the match above now

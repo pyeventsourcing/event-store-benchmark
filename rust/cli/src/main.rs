@@ -200,7 +200,6 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             let (
                 container_metrics,
                 workload_results,
-                summary,
             ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
                 Ok(res) => res,
                 Err(e) => {
@@ -223,10 +222,6 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
             fs::write(store_results_path.join("run.meta.json"), metadata_json)?;
 
-            // Write summary
-            let summary_json = serde_json::to_string_pretty(&summary)?;
-            fs::write(store_results_path.join("summary.json"), summary_json)?;
-
             // Write container metrics
             let container_json = serde_json::to_string_pretty(&container_metrics)?;
             fs::write(store_results_path.join("container.json"), container_json)?;
@@ -235,8 +230,8 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             workload_results.write_to_dir(&store_results_path)?;
 
             println!(
-                "✓ {} completed: {:.2} events/sec",
-                store_name, summary.throughput_eps
+                "✓ {} completed",
+                store_name
             );
         }
     }

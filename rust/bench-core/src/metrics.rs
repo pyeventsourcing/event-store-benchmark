@@ -13,14 +13,6 @@ pub struct ThroughputSample {
     pub count: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct LatencyStats {
-    pub p50_ms: f64,
-    pub p95_ms: f64,
-    pub p99_ms: f64,
-    pub p999_ms: f64,
-}
-
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ContainerMetrics {
     /// Container image size in bytes
@@ -35,13 +27,6 @@ pub struct ContainerMetrics {
     pub avg_memory_bytes: Option<u64>,
     /// Peak memory usage in bytes during run
     pub peak_memory_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Summary {
-    pub duration_s: f64,
-    pub throughput_eps: f64,
-    pub latency: LatencyStats,
 }
 
 #[derive(Debug, Clone)]
@@ -107,14 +92,6 @@ impl LatencyRecorder {
     pub fn record(&mut self, dur: Duration) {
         let us = dur.as_micros() as u64;
         let _ = self.hist.record(us.max(1));
-    }
-    pub fn to_stats(&self) -> LatencyStats {
-        LatencyStats {
-            p50_ms: self.hist.value_at_quantile(0.50) as f64 / 1000.0,
-            p95_ms: self.hist.value_at_quantile(0.95) as f64 / 1000.0,
-            p99_ms: self.hist.value_at_quantile(0.99) as f64 / 1000.0,
-            p999_ms: self.hist.value_at_quantile(0.999) as f64 / 1000.0,
-        }
     }
 
     /// Export histogram percentile data as JSON for analysis

@@ -48,46 +48,42 @@ def load_session_runs(session_dir: Path, load_samples: bool = True):
             continue
 
         # In the new format, each run directory has subdirectories for adapters
-        # Each adapter directory contains summary.json and workload.json
+        # Each adapter directory contains container.json and workload.json
         for adapter_path in sorted(run_path.iterdir()):
             if not adapter_path.is_dir():
                 continue
 
-            summary_file = adapter_path / "summary.json"
             workload_file = adapter_path / "workload.json"
             meta_file = adapter_path / "run.meta.json"
 
-            if summary_file.exists():
-                with open(summary_file) as f:
-                    summary = json.load(f)
+            container_file = adapter_path / "container.json"
+            container_data = {}
+            if container_file.exists():
+                with open(container_file) as f:
+                    container_data = json.load(f)
+            
+            meta = {}
+            if meta_file.exists():
+                with open(meta_file) as f:
+                    meta = json.load(f)
 
-                # Load container metrics if available
-                container_file = adapter_path / "container.json"
-                if container_file.exists():
-                    with open(container_file) as f:
-                        summary["container"] = json.load(f)
-                
-                meta = {}
-                if meta_file.exists():
-                    with open(meta_file) as f:
-                        meta = json.load(f)
+            throughput_samples = []
+            latency_data = {}
+            workload_name = "N/A"
+            adapter = "N/A"
+            writers = 0
+            readers = 0
+            if workload_file.exists():
+                with open(workload_file) as f:
+                    workload_data = json.load(f)
+                    throughput_samples = workload_data.get("throughput_samples", [])
+                    latency_data = workload_data.get("latency", {})
+                    workload_name = workload_data.get("workload_name", "N/A")
+                    adapter = workload_data.get("store_name", "N/A")
+                    writers = workload_data.get("writers", 0)
+                    readers = workload_data.get("readers", 0)
 
-                throughput_samples = []
-                latency_data = {}
-                workload_name = "N/A"
-                adapter = "N/A"
-                writers = 0
-                readers = 0
-                if workload_file.exists():
-                    with open(workload_file) as f:
-                        workload_data = json.load(f)
-                        throughput_samples = workload_data["throughput_samples"]
-                        latency_data = workload_data["latency"]
-                        workload_name = workload_data["workload_name"]
-                        adapter = workload_data["store_name"]
-                        writers = workload_data["writers"]
-                        readers = workload_data["readers"]
-
+            if workload_file.exists():
                 runs.append({
                     "session_id": session_dir.name,
                     "session_dir": session_dir,
@@ -96,7 +92,7 @@ def load_session_runs(session_dir: Path, load_samples: bool = True):
                     "adapter": adapter,
                     "writers": writers,
                     "readers": readers,
-                    "summary": summary,
+                    "container": container_data,
                     "meta": meta,
                     "throughput_samples": throughput_samples,
                     "latency": latency_data,
@@ -519,8 +515,7 @@ def plot_startup_scaling(runs, out_path: Path):
         writers = run["writers"]
         readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        s = run["summary"]
-        container = s.get("container", {})
+        container = run.get("container", {})
         startup = container.get("startup_time_s")
         if startup is not None:
             adapter_data[adapter].append((worker_count, startup))
@@ -570,8 +565,7 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
         writers = run["writers"]
         readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        s = run["summary"]
-        container = s.get("container", {})
+        container = run.get("container", {})
         peak_cpu = container.get("peak_cpu_percent")
         if peak_cpu is not None:
             adapter_data[adapter].append((worker_count, peak_cpu))
@@ -621,8 +615,7 @@ def plot_peak_mem_scaling(runs, out_path: Path):
         writers = run["writers"]
         readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        s = run["summary"]
-        container = s.get("container", {})
+        container = run.get("container", {})
         peak_mem = container.get("peak_memory_bytes")
         if peak_mem is not None:
             adapter_data[adapter].append((worker_count, peak_mem / (1024 * 1024)))
@@ -671,8 +664,7 @@ def plot_container_metrics(runs, out_path: Path):
 
     for run in runs:
         adapter = run["adapter"]
-        s = run["summary"]
-        container = s.get("container", {})
+        container = run.get("container", {})
 
         # Only include if we have meaningful data
         if not (container.get("image_size_bytes") or container.get("peak_cpu_percent")):
@@ -791,7 +783,6 @@ def plot_container_metrics(runs, out_path: Path):
 
 
 def generate_html(report_dir: Path, run):
-    summary = run["summary"]
     workload_name = run["workload_name"]
     latency_img = report_dir / "latency_cdf.png"
     throughput_img = report_dir / "throughput.png"
@@ -841,7 +832,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         return (writers, readers, adapter)
 
     for run in sorted(runs, key=row_key):
-        s = run["summary"]
         adapter = run["adapter"]
         writers = run["writers"]
         readers = run["readers"]
@@ -856,7 +846,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
             worker_display = f"{writers}w/{readers}r"
 
         # Get container metrics
-        container = s.get("container", {})
+        container = run.get("container", {})
         startup_time = f"{container.get('startup_time_s', 0):.1f}s" if container.get("startup_time_s") else "N/A"
         image_size_mb = f"{container.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if container.get("image_size_bytes") else "N/A"
 
@@ -1373,6 +1363,7 @@ def main():
                     else:
                         run["_throughput_eps"] = 0
                 else:
+                    # Should not happen with valid data, but provide defaults
                     run["_duration_s"] = 0
                     run["_throughput_eps"] = 0
             else:

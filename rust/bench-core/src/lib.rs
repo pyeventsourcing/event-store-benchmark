@@ -10,7 +10,7 @@ pub mod workloads;
 pub use adapter::{EventStoreAdapter, StoreDataDir, StoreManager, StoreManagerFactory};
 pub use retry::wait_for_ready;
 pub use common::{is_image_pulled, mark_image_pulled, SetupConfig};
-pub use metrics::{LatencyStats, ThroughputSample, Summary};
+pub use metrics::{ThroughputSample};
 pub use metrics::{SessionMetadata, EnvironmentInfo, RunManifest};
 pub use metrics::{OsInfo, CpuInfo, MemoryInfo, DiskInfo, ContainerRuntimeInfo};
 pub use runner::execute_run;
