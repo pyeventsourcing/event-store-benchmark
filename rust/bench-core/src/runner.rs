@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{RunResults, Summary};
+use crate::metrics::{Summary, WorkloadResults};
 use crate::workloads::Workload;
 use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
@@ -11,7 +11,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<RunResults> {
+) -> Result<(ContainerMetrics, WorkloadResults, Summary)> {
     // Start store container
     let store_name = store.name();
     if !crate::is_image_pulled(store_name) {
@@ -136,26 +136,15 @@ pub async fn execute_run(
     }
 
     let summary = Summary {
-        workload: workload_results.workload_name,
-        adapter: workload_results.store_name,
-        writers: workload_results.writers,
-        readers: workload_results.readers,
         duration_s: dur_s,
         throughput_eps,
         latency: workload_results.latency_histogram.to_stats(),
-        container: container_metrics,
-    };
-
-    let run_results = RunResults {
-        summary,
-        throughput_samples: workload_results.throughput_samples,
-        latency_histogram: workload_results.latency_histogram,
     };
 
     // Stop container
     store.stop().await?;
 
-    Ok(run_results)
+    Ok((container_metrics, workload_results, summary))
 }
 
 // Performance workload is handled directly in the match above now

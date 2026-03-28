@@ -9,15 +9,6 @@ use super::durability::DurabilityWorkload;
 use super::consistency::ConsistencyWorkload;
 use super::operational::OperationalWorkload;
 
-/// The workload types available in the benchmark suite
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkloadType {
-    Performance,
-    Durability,
-    Consistency,
-    Operational,
-}
-
 /// Represents a workload that can be executed
 pub enum Workload {
     Performance(PerformanceWorkload),
@@ -27,6 +18,30 @@ pub enum Workload {
 }
 
 impl Workload {
+    pub fn type_str(&self) -> Result<&str> {
+        match self {
+            Workload::Performance(_) => Ok("performance"),
+            Workload::Durability(_) => Ok("durability"),
+            Workload::Consistency(_) => Ok("consistency"),
+            Workload::Operational(_) => Ok("operational"),
+        }
+    }
+
+    pub fn name(&self) -> Result<&str> {
+        match self {
+            Workload::Performance(w) => Ok(w.name()),
+            Workload::Durability(w) => {
+                anyhow::bail!("Durability workloads not yet implemented: {}", w.name());
+            }
+            Workload::Consistency(w) => {
+                anyhow::bail!("Consistency workloads not yet implemented: {}", w.name());
+            }
+            Workload::Operational(w) => {
+                anyhow::bail!("Operational workloads not yet implemented: {}", w.name());
+            }
+        }
+    }
+
     pub async fn execute(
         &self,
         store: &dyn StoreManager,

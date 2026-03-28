@@ -48,18 +48,24 @@ def load_session_runs(session_dir: Path, load_samples: bool = True):
             continue
 
         # In the new format, each run directory has subdirectories for adapters
-        # Each adapter directory contains summary.json and throughput.jsonl
+        # Each adapter directory contains summary.json and workload.json
         for adapter_path in sorted(run_path.iterdir()):
             if not adapter_path.is_dir():
                 continue
 
             summary_file = adapter_path / "summary.json"
-            throughput_file = adapter_path / "throughput.jsonl"
+            workload_file = adapter_path / "workload.json"
             meta_file = adapter_path / "run.meta.json"
 
             if summary_file.exists():
                 with open(summary_file) as f:
                     summary = json.load(f)
+
+                # Load container metrics if available
+                container_file = adapter_path / "container.json"
+                if container_file.exists():
+                    with open(container_file) as f:
+                        summary["container"] = json.load(f)
                 
                 meta = {}
                 if meta_file.exists():
@@ -67,18 +73,33 @@ def load_session_runs(session_dir: Path, load_samples: bool = True):
                         meta = json.load(f)
 
                 throughput_samples = []
-                if load_samples and throughput_file.exists():
-                    with open(throughput_file) as f:
-                        for line in f:
-                            throughput_samples.append(json.loads(line))
+                latency_data = {}
+                workload_name = "N/A"
+                adapter = "N/A"
+                writers = 0
+                readers = 0
+                if workload_file.exists():
+                    with open(workload_file) as f:
+                        workload_data = json.load(f)
+                        throughput_samples = workload_data["throughput_samples"]
+                        latency_data = workload_data["latency"]
+                        workload_name = workload_data["workload_name"]
+                        adapter = workload_data["store_name"]
+                        writers = workload_data["writers"]
+                        readers = workload_data["readers"]
 
                 runs.append({
                     "session_id": session_dir.name,
                     "session_dir": session_dir,
                     "path": adapter_path,
+                    "workload_name": workload_name,
+                    "adapter": adapter,
+                    "writers": writers,
+                    "readers": readers,
                     "summary": summary,
                     "meta": meta,
                     "throughput_samples": throughput_samples,
+                    "latency": latency_data,
                 })
     return runs
 
@@ -102,23 +123,16 @@ def load_runs(raw_dir: Path, load_samples: bool = True):
     return runs
 
 
-def load_latency_percentiles(file_path: Path):
-    """Load latency percentile data from JSON file."""
-    if not file_path.exists():
+def load_latency_percentiles(run):
+    """Load latency percentile data from a run object."""
+    if not run or "latency" not in run:
         return None
-
-    try:
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-            return data.get("percentiles", [])
-    except Exception as e:
-        print(f"Warning: Failed to load latency percentiles from {file_path}: {e}")
-        return None
+    return run["latency"].get("percentiles", [])
 
 
-def plot_latency_cdf_from_json(latency_file: Path, out_path: Path):
-    """Plot latency CDF from JSON percentile file."""
-    percentiles_data = load_latency_percentiles(latency_file)
+def plot_latency_cdf_from_json(run, out_path: Path):
+    """Plot latency CDF from run latency data."""
+    percentiles_data = load_latency_percentiles(run)
 
     if percentiles_data is None or len(percentiles_data) == 0:
         return False
@@ -224,14 +238,14 @@ def plot_comparison_latency_cdf(run_data, title, out_path: Path):
     """Plot latency CDF comparing stores for a specific writer count.
 
     Args:
-        run_data: List of (adapter_name, latency_file_path) tuples
+        run_data: List of (adapter_name, run) tuples
         title: Plot title
         out_path: Output path for the plot
     """
     plt.figure(figsize=(8, 5))
 
-    for adapter_name, latency_file in run_data:
-        percentiles_data = load_latency_percentiles(latency_file)
+    for adapter_name, run in run_data:
+        percentiles_data = load_latency_percentiles(run)
 
         if percentiles_data is None or len(percentiles_data) == 0:
             continue
@@ -310,21 +324,27 @@ def plot_throughput_scaling(runs, out_path: Path):
     adapter_data = defaultdict(list)
 
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
 
-        # Use pre-computed throughput from summary
-        throughput = s.get("throughput_eps", 0)
+        throughput = 0
+        if "throughput_samples" in run and run["throughput_samples"]:
+            df = pd.DataFrame(run["throughput_samples"])
+            if len(df) >= 2:
+                df = df.sort_values("elapsed_s")
+                duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
+                total_count = df["count"].iloc[-1] - df["count"].iloc[0]
+                if duration > 0:
+                    throughput = total_count / duration
 
         if throughput > 0:
             adapter_data[adapter].append((worker_count, throughput))
 
     # Determine label based on the workload type
-    first_run_summary = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Throughput by {xlabel[:-1]} Count"
 
@@ -356,8 +376,8 @@ def plot_throughput_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -369,17 +389,24 @@ def plot_p50_scaling(runs, out_path: Path):
     """Plot p50 latency vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        p50 = s["latency"]["p50_ms"]
-        adapter_data[adapter].append((worker_count, p50))
+        
+        p50 = 0
+        percentiles_data = run.get("latency", {}).get("percentiles", [])
+        for p in percentiles_data:
+            if p["percentile"] == 50.0:
+                p50 = p["latency_us"] / 1000.0
+                break
+        
+        if p50 > 0:
+            adapter_data[adapter].append((worker_count, p50))
 
     # Determine label based on workload type
-    first_run_summary_p50 = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary_p50.get("readers", 0) > 0 and first_run_summary_p50.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"p50 Latency by {xlabel[:-1]} Count"
 
@@ -412,8 +439,8 @@ def plot_p50_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -425,17 +452,24 @@ def plot_p99_scaling(runs, out_path: Path):
     """Plot p99 latency vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        p99 = s["latency"]["p99_ms"]
-        adapter_data[adapter].append((worker_count, p99))
+
+        p99 = 0
+        percentiles_data = run.get("latency", {}).get("percentiles", [])
+        for p in percentiles_data:
+            if p["percentile"] == 99.0:
+                p99 = p["latency_us"] / 1000.0
+                break
+
+        if p99 > 0:
+            adapter_data[adapter].append((worker_count, p99))
 
     # Determine label based on workload type
-    first_run_summary_p99 = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary_p99.get("readers", 0) > 0 and first_run_summary_p99.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"p99 Latency by {xlabel[:-1]} Count"
 
@@ -468,8 +502,8 @@ def plot_p99_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -481,11 +515,11 @@ def plot_startup_scaling(runs, out_path: Path):
     """Plot startup time vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
+        s = run["summary"]
         container = s.get("container", {})
         startup = container.get("startup_time_s")
         if startup is not None:
@@ -494,8 +528,8 @@ def plot_startup_scaling(runs, out_path: Path):
     if not adapter_data:
         return
 
-    first_run_summary = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Startup Times"
 
@@ -519,8 +553,8 @@ def plot_startup_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -532,11 +566,11 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
     """Plot peak CPU usage vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
+        s = run["summary"]
         container = s.get("container", {})
         peak_cpu = container.get("peak_cpu_percent")
         if peak_cpu is not None:
@@ -545,8 +579,8 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
     if not adapter_data:
         return
 
-    first_run_summary = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Peak CPU by {xlabel[:-1]} Count"
 
@@ -570,8 +604,8 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -583,11 +617,11 @@ def plot_peak_mem_scaling(runs, out_path: Path):
     """Plot peak memory usage vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
-        s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
         worker_count = writers if writers > 0 else readers
+        s = run["summary"]
         container = s.get("container", {})
         peak_mem = container.get("peak_memory_bytes")
         if peak_mem is not None:
@@ -596,8 +630,8 @@ def plot_peak_mem_scaling(runs, out_path: Path):
     if not adapter_data:
         return
 
-    first_run_summary = runs[0]["summary"] if runs else {}
-    is_readers = first_run_summary.get("readers", 0) > 0 and first_run_summary.get("writers", 0) == 0
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Peak Memory by {xlabel[:-1]} Count"
 
@@ -621,8 +655,8 @@ def plot_peak_mem_scaling(runs, out_path: Path):
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     all_worker_counts = sorted({
-        (s["summary"].get("writers", 0) if s["summary"].get("writers", 0) > 0
-         else s["summary"].get("readers", 0)) for s in runs
+        (s.get("writers", 0) if s.get("writers", 0) > 0
+         else s.get("readers", 0)) for s in runs
     })
     plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
     plt.tight_layout()
@@ -636,8 +670,8 @@ def plot_container_metrics(runs, out_path: Path):
     adapter_data = {}
 
     for run in runs:
+        adapter = run["adapter"]
         s = run["summary"]
-        adapter = s["adapter"]
         container = s.get("container", {})
 
         # Only include if we have meaningful data
@@ -758,6 +792,7 @@ def plot_container_metrics(runs, out_path: Path):
 
 def generate_html(report_dir: Path, run):
     summary = run["summary"]
+    workload_name = run["workload_name"]
     latency_img = report_dir / "latency_cdf.png"
     throughput_img = report_dir / "throughput.png"
 
@@ -766,7 +801,7 @@ def generate_html(report_dir: Path, run):
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Workload Report — {summary['adapter']} / {summary['workload']}</title>
+  <title>Workload Report — {run['adapter']} / {workload_name}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2 {{ margin-top: 1.2rem; }}
@@ -776,8 +811,8 @@ def generate_html(report_dir: Path, run):
 </head>
 <body>
   <h1>Benchmark Report</h1>
-  <p><b>Adapter:</b> {summary['adapter']} &nbsp; | &nbsp; <b>Workload:</b> {summary['workload']}</p>
-  <p><b>Duration:</b> {summary['duration_s']:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {summary['throughput_eps']:.0f} eps</p>
+  <p><b>Adapter:</b> {run['adapter']} &nbsp; | &nbsp; <b>Workload:</b> {workload_name}</p>
+  <p><b>Duration:</b> {run.get('_duration_s', 0):.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.get('_throughput_eps', 0):.0f} eps</p>
   <div class='row'>
     <div class='card'>
       <h2>Latency CDF</h2>
@@ -800,17 +835,16 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     # Summary table
     summary_rows = ""
     def row_key(row):
-        s = row["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = row["adapter"]
+        writers = row["writers"]
+        readers = row["readers"]
         return (writers, readers, adapter)
 
     for run in sorted(runs, key=row_key):
         s = run["summary"]
-        adapter = s["adapter"]
-        writers = s.get("writers", 0)
-        readers = s.get("readers", 0)
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
 
         # Determine link format based on workload type
         report_link = f"../{workload_name}/report-{adapter}-r{readers:03d}-w{writers:03d}/index.html"
@@ -825,6 +859,16 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         container = s.get("container", {})
         startup_time = f"{container.get('startup_time_s', 0):.1f}s" if container.get("startup_time_s") else "N/A"
         image_size_mb = f"{container.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if container.get("image_size_bytes") else "N/A"
+
+        throughput_eps = run.get("_throughput_eps", 0)
+        p50 = 0
+        p99 = 0
+        percentiles_data = run.get("latency", {}).get("percentiles", [])
+        for p in percentiles_data:
+            if p["percentile"] == 50.0:
+                p50 = p["latency_us"] / 1000.0
+            elif p["percentile"] == 99.0:
+                p99 = p["latency_us"] / 1000.0
 
         # CPU metrics (avg / peak)
         avg_cpu = container.get("avg_cpu_percent")
@@ -849,10 +893,10 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <td><a href='{report_link}'>{adapter}</a></td>
         <td>{workload_name}</td>
         <td>{worker_display}</td>
-        <td>{s['duration_s']:.1f}s</td>
-        <td>{s['throughput_eps']:.0f}</td>
-        <td>{s['latency']['p50_ms']:.2f}</td>
-        <td>{s['latency']['p99_ms']:.2f}</td>
+        <td>{run.get('_duration_s', 0):.1f}s</td>
+        <td>{throughput_eps:.0f}</td>
+        <td>{p50:.2f}</td>
+        <td>{p99:.2f}</td>
         <td>{image_size_mb}</td>
         <td>{startup_time}</td>
         <td>{cpu_display}</td>
@@ -861,7 +905,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
 
     # Per-worker-count comparison sections
     # Determine if this is a readers or writers workload
-    first_run = runs[0]["summary"] if runs else {}
+    first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     worker_label = "Readers" if is_readers else "Writers"
     worker_suffix = "r" if is_readers else "w"
@@ -1274,7 +1318,7 @@ def main():
         # Group runs by workload within the session
         workload_groups = defaultdict(list)
         for run in runs:
-            full_workload_name = run["summary"]["workload"]
+            full_workload_name = run["workload_name"]
             workload_name = re.sub(r'-w\d+-r\d+$', '', full_workload_name)
             workload_groups[workload_name].append(run)
 
@@ -1287,14 +1331,14 @@ def main():
                 adapters_set = set()
                 writer_counts_set = set()
                 
-                first_run = workload_runs[0]["summary"] if workload_runs else {}
+                first_run = workload_runs[0] if workload_runs else {}
                 is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
 
                 for run in workload_runs:
-                    writers = run["summary"].get("writers", 0)
-                    readers = run["summary"].get("readers", 0)
+                    writers = run["writers"]
+                    readers = run["readers"]
                     wc = readers if is_readers else writers
-                    adapter = run["summary"]["adapter"]
+                    adapter = run["adapter"]
                     adapters_set.add(adapter)
                     writer_counts_set.add(wc)
                     all_adapters.add(adapter)
@@ -1315,13 +1359,32 @@ def main():
 
         # Generate individual reports for each run in this session
         for run in runs:
-            throughput_df = pd.DataFrame(run["throughput_samples"])
-            run["_throughput_df"] = throughput_df
-            adapter = run["summary"]["adapter"]
-            workload_name = run["summary"]["workload"]
+            # Calculate duration and throughput once per run
+            if "throughput_samples" in run and run["throughput_samples"]:
+                df = pd.DataFrame(run["throughput_samples"])
+                run["_throughput_df"] = df
+                if len(df) >= 2:
+                    df = df.sort_values("elapsed_s")
+                    duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
+                    total_count = df["count"].iloc[-1] - df["count"].iloc[0]
+                    run["_duration_s"] = duration
+                    if duration > 0:
+                        run["_throughput_eps"] = total_count / duration
+                    else:
+                        run["_throughput_eps"] = 0
+                else:
+                    run["_duration_s"] = 0
+                    run["_throughput_eps"] = 0
+            else:
+                run["_throughput_df"] = pd.DataFrame()
+                run["_duration_s"] = 0
+                run["_throughput_eps"] = 0
 
-            writers = run["summary"].get("writers", 0)
-            readers = run["summary"].get("readers", 0)
+            adapter = run["adapter"]
+            workload_name = run["workload_name"]
+
+            writers = run["writers"]
+            readers = run["readers"]
 
             # Create nested structure: workload/report-adapter
             report_workload_name = re.sub(r'-w\d+-r\d+$', '', workload_name)
@@ -1334,10 +1397,9 @@ def main():
             report_dir.mkdir(parents=True, exist_ok=True)
 
             # Plot latency from JSON percentiles
-            latency_file = run["path"] / "latency.json"
-            plot_latency_cdf_from_json(latency_file, report_dir / "latency_cdf.png")
+            plot_latency_cdf_from_json(run, report_dir / "latency_cdf.png")
 
-            plot_throughput(throughput_df, report_dir / "throughput.png", report_dir / "throughput_data.json")
+            plot_throughput(run["_throughput_df"], report_dir / "throughput.png", report_dir / "throughput_data.json")
             generate_html(report_dir, run)
 
         # Generate per-workload consolidated reports for this session
@@ -1350,18 +1412,17 @@ def main():
             adapters_set = set()
             writer_counts_set = set()
 
-            first_run = workload_runs[0]["summary"] if workload_runs else {}
+            first_run = workload_runs[0] if workload_runs else {}
             is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
             worker_label = "reader" if is_readers else "writer"
             worker_suffix = "r" if is_readers else "w"
 
             for run in workload_runs:
-                writers = run["summary"].get("writers", 0)
-                readers = run["summary"].get("readers", 0)
+                writers = run["writers"]
+                readers = run["readers"]
                 wc = readers if is_readers else writers
-                adapter = run["summary"]["adapter"]
-                latency_file = run["path"] / "latency.json"
-                writer_groups[wc].append((adapter, run["_throughput_df"], latency_file))
+                adapter = run["adapter"]
+                writer_groups[wc].append((adapter, run["_throughput_df"], run))
                 adapters_set.add(adapter)
                 writer_counts_set.add(wc)
                 all_adapters.add(adapter)
@@ -1371,7 +1432,7 @@ def main():
 
             for wc, run_data in sorted(writer_groups.items()):
                 # Plot latency comparison using JSON percentiles
-                latency_run_data = [(adapter, latency_file) for adapter, _, latency_file in run_data]
+                latency_run_data = [(adapter, run) for adapter, _, run in run_data]
                 plot_comparison_latency_cdf(
                     latency_run_data,
                     f"Latency CDF — {wc} {worker_label}(s)",

@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::Path;
+use anyhow::Result;
 use hdrhistogram::Histogram;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -36,23 +39,9 @@ pub struct ContainerMetrics {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Summary {
-    pub workload: String,
-    pub adapter: String,
-    pub writers: usize,
-    pub readers: usize,
     pub duration_s: f64,
     pub throughput_eps: f64,
     pub latency: LatencyStats,
-    #[serde(default)]
-    pub container: ContainerMetrics,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct RunResults {
-    pub summary: Summary,
-    pub throughput_samples: Vec<ThroughputSample>,
-    #[serde(skip)]  // Don't serialize histogram to JSON
-    pub latency_histogram: LatencyRecorder,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +71,25 @@ impl WorkloadResults {
             throughput_samples,
             latency_histogram,
         }
+    }
+
+    pub fn write_to_dir(&self, path: &Path) -> Result<()> {
+        let percentile_json = self.latency_histogram.to_percentile_json();
+        let workload_json = serde_json::json!({
+            "workload_name": self.workload_name,
+            "store_name": self.store_name,
+            "writers": self.writers,
+            "readers": self.readers,
+            "throughput_samples": self.throughput_samples,
+            "latency": percentile_json,
+        });
+
+        fs::write(
+            path.join("workload.json"),
+            serde_json::to_string_pretty(&workload_json)?,
+        )?;
+
+        Ok(())
     }
 }
 

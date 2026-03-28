@@ -174,10 +174,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
 
     // Run each workload variant
     for workload in workloads {
-        let workload_name = match &workload {
-            bench_core::Workload::Performance(w) => w.name(),
-            _ => "unknown",
-        };
+        let workload_name = &workload.name().expect("workload name");
 
         // Create workload directory
         let workload_results_path = session_results_path.join(workload_name);
@@ -199,14 +196,12 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             // Create store manager
             let store_manager = store_factory.create_store_manager(data_dir.clone())?;
 
-            // Create store directory
-            let store_results_path = workload_results_path.join(store_name);
-            fs::create_dir_all(&store_results_path)?;
-
             // Execute the run
-            let result = execute_run(store_manager, &workload, cancel_token.clone()).await;
-            
-            let result = match result {
+            let (
+                container_metrics,
+                workload_results,
+                summary,
+            ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
                 Ok(res) => res,
                 Err(e) => {
                     if cancel_token.is_cancelled() {
@@ -217,33 +212,31 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
                 }
             };
 
-            // Write summary
-            let summary_json = serde_json::to_string_pretty(&result.summary)?;
-            fs::write(store_results_path.join("summary.json"), summary_json)?;
+            // Create store results directory
+            let store_results_path = workload_results_path.join(store_name);
+            fs::create_dir_all(&store_results_path)?;
 
-            // Write throughput time-series samples
-            let mut throughput_lines = String::new();
-            for sample in result.throughput_samples {
-                throughput_lines.push_str(&serde_json::to_string(&sample)?);
-                throughput_lines.push('\n');
-            }
-            fs::write(store_results_path.join("throughput.jsonl"), throughput_lines)?;
-
-            // Write metadata (work in progress)
-            let metadata = serde_json::json!({});
+            // Write metadata
+            let metadata = serde_json::json!({
+                "type": &workload.type_str()?,
+            });
             let metadata_json = serde_json::to_string_pretty(&metadata)?;
             fs::write(store_results_path.join("run.meta.json"), metadata_json)?;
 
-            // Write histogram as JSON percentile data
-            let percentile_json = result.latency_histogram.to_percentile_json();
-            fs::write(
-                store_results_path.join("latency.json"),
-                serde_json::to_string_pretty(&percentile_json)?
-            )?;
+            // Write summary
+            let summary_json = serde_json::to_string_pretty(&summary)?;
+            fs::write(store_results_path.join("summary.json"), summary_json)?;
+
+            // Write container metrics
+            let container_json = serde_json::to_string_pretty(&container_metrics)?;
+            fs::write(store_results_path.join("container.json"), container_json)?;
+
+            // Write workload results (throughput and latency)
+            workload_results.write_to_dir(&store_results_path)?;
 
             println!(
                 "✓ {} completed: {:.2} events/sec",
-                store_name, result.summary.throughput_eps
+                store_name, summary.throughput_eps
             );
         }
     }
