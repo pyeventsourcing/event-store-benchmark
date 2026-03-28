@@ -507,43 +507,60 @@ def plot_p99_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_startup_scaling(runs, out_path: Path):
-    """Plot startup time vs worker count (writers or readers), one line per adapter."""
+def plot_p999_scaling(runs, out_path: Path):
+    """Plot p99.9 latency vs worker count (writers or readers), one line per adapter."""
     adapter_data = defaultdict(list)
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
         readers = run["readers"]
         worker_count = writers if writers > 0 else readers
-        container = run.get("container", {})
-        startup = container.get("startup_time_s")
-        if startup is not None:
-            adapter_data[adapter].append((worker_count, startup))
+
+        p999 = 0
+        percentiles_data = run.get("latency", {}).get("percentiles", [])
+        for p in percentiles_data:
+            if p["percentile"] == 99.9:
+                p999 = p["latency_us"] / 1000.0
+                break
+
+        if p999 > 0:
+            adapter_data[adapter].append((worker_count, p999))
 
     if not adapter_data:
         return
 
+    # Determine label based on workload type
     first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
-    title = f"Startup Times"
+    title = f"p99.9 Latency by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(8, 5))
     for adapter, points in sorted(adapter_data.items()):
         points.sort()
         ws = [p[0] for p in points]
-        startups = [p[1] for p in points]
+        p999s = [p[1] for p in points]
         color = get_adapter_color(adapter)
-        plt.plot(ws, startups, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+        plt.plot(ws, p999s, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
     
     plt.xscale("log")
+    plt.yscale("log")
     plt.xlabel(f"{xlabel} [log]")
-    plt.ylabel("Startup Time (s)")
-    formatter = ScalarFormatter()
-    formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.ylabel("p99.9 Latency (ms) [log]")
+    
+    # Use FormatStrFormatter for decimals on latency axis
+    formatter = FormatStrFormatter('%.1f')
+    plt.gca().yaxis.set_major_formatter(formatter)
+    
+    # Format x-axis (Writers/Readers count) as integers
+    x_formatter = ScalarFormatter()
+    x_formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(x_formatter)
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     
+    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
     plt.title(title)
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -943,8 +960,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <img src='{workload_name}_scaling_p50.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Startup Times</h3>
-        <img src='{workload_name}_scaling_startup.png' width='560'>
+        <h3>p99.9 Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_p999.png' width='560'>
       </div>
     </div>
     <div class='row'>
@@ -1443,7 +1460,7 @@ def main():
                 plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png")
                 plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png")
                 plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png")
-                plot_startup_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_startup.png")
+                plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png")
                 plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png")
                 plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png")
 
