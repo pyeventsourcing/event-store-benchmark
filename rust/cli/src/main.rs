@@ -98,16 +98,19 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         None
     };
 
+    // Generate session ID (ISO timestamp)
+    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+    println!("Session ID: {}", session_id);
+
+    // Create session results directory
+    let session_results_path = PathBuf::from("results/raw/sessions").join(&session_id);
+    fs::create_dir_all(&session_results_path)?;
+
+    // Copy config file to session directory
+    fs::copy(config_path, session_results_path.join("config.yaml"))?;
+
     // Read config file
     let config_yaml = fs::read_to_string(config_path)?;
-
-    // Extract workload name from config
-    let workload_name = WorkloadFactory::extract_workload_name(&config_yaml)?;
-    println!("Running workload: {}", workload_name);
-    
-    // Decide random seed.
-    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
-    println!("Seed: {}", actual_seed);
 
     // Collect environment info
     let data_dir_path = data_dir.as_ref().map(Path::new);
@@ -116,18 +119,13 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     // Get benchmark version (git commit)
     let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
 
-    // Detect if this is a sweep and expand if needed
-    let workloads = WorkloadFactory::generate_workloads(&config_yaml, actual_seed)?;
+    // Decide random seed.
+    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
+    println!("Seed: {}", actual_seed);
 
-    println!("Total runs to execute: {}", workloads.len());
-
-    // Generate session ID (ISO timestamp)
-    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
-    println!("Session ID: {}", session_id);
-
-    // Create session results directory
-    let session_results_path = PathBuf::from("results/raw/sessions").join(&session_id);
-    fs::create_dir_all(&session_results_path)?;
+    // Extract workload name from config
+    let workload_name = WorkloadFactory::extract_workload_name(&config_yaml)?;
+    println!("Running workload: {}", workload_name);
 
     // Write session metadata
     let session_metadata = SessionMetadata {
@@ -138,7 +136,6 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         config_file: config_path.to_string_lossy().to_string(),
         seed: actual_seed,
     };
-
     let session_json = serde_json::to_string_pretty(&session_metadata)?;
     fs::write(session_results_path.join("session.json"), session_json)?;
 
@@ -146,10 +143,9 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     let environment_json = serde_json::to_string_pretty(&environment_info)?;
     fs::write(session_results_path.join("environment.json"), environment_json)?;
 
-    // Copy config file to session directory
-    fs::copy(config_path, session_results_path.join("config.yaml"))?;
-
-    // Run each workload variant
+    // Generate and run workload variants
+    let workloads = WorkloadFactory::generate_workloads(&config_yaml, actual_seed)?;
+    println!("Total runs to execute: {}", workloads.len());
     for workload in workloads {
         let workload_name = &workload.name().expect("workload name");
         let store_name = workload.store_name()?;
@@ -184,7 +180,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             }
         };
 
-        // Create workload results directory (one per run now)
+        // Create workload results directory (one per run)
         let workload_results_path = session_results_path.join(workload_name);
         fs::create_dir_all(&workload_results_path)?;
 
