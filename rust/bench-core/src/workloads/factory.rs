@@ -115,6 +115,16 @@ impl WorkloadFactory {
             .ok_or_else(|| anyhow::anyhow!("Missing 'name' field in config"))
     }
 
+    /// Extract the workload name from YAML config
+    pub fn extract_workload_type(yaml_config: &str) -> Result<String> {
+        let value: Value = serde_yaml::from_str(yaml_config)?;
+        value
+            .get("workload_type")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| anyhow::anyhow!("Missing 'workload_type' field in config"))
+    }
+
     /// Extract the stores list from YAML config (if specified)
     pub fn extract_stores(yaml_config: &str) -> Result<Vec<String>> {
         let value: Value = serde_yaml::from_str(yaml_config)?;
@@ -138,10 +148,10 @@ impl WorkloadFactory {
     }
 
     /// Expand into multiple workloads (only supports performance workloads)
-    pub fn generate_workloads(yaml_config: &str, seed: u64) -> Result<Vec<Workload>> {
+    pub fn generate_workloads(yaml_config: &str, seed: u64) -> Result<(Vec<Workload>, String)> {
         let value: Value = serde_yaml::from_str(yaml_config)?;
 
-        // WIP - check we are dealing with performance workloads..
+        // Check we are dealing with performance workloads..
         let workload_type = value
             .get("workload_type")
             .and_then(|v| v.as_str())
@@ -152,16 +162,15 @@ impl WorkloadFactory {
         }
 
         // Construct a performance config.
-        let config: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
-        let stores = WorkloadFactory::extract_stores(yaml_config)?;
-        let expanded_configs = config.expand(&stores);
-
+        let unexpanded: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
         let mut workloads = Vec::new();
-        for config in expanded_configs {
-            let workload = PerformanceWorkload::from_config(config, seed)?;
-            workloads.push(Workload::Performance(workload));
+        for config in unexpanded.expand() {
+            workloads.push(
+                Workload::Performance(PerformanceWorkload::from_config(config, seed)?)
+            );
         }
 
-        Ok(workloads)
+        let json_config = serde_json::to_string_pretty(&unexpanded)?;
+        Ok((workloads, json_config))
     }
 }

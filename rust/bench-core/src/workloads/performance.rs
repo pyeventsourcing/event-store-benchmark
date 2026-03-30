@@ -32,12 +32,12 @@ impl PerformanceConfig {
     }
 
     /// Expand a sweep config into multiple single-value configs
-    pub fn expand(&self, stores: &[String]) -> Vec<Self> {
+    pub fn expand(&self) -> Vec<Self> {
         let writers_vec = self.concurrency.writers.as_vec();
         let readers_vec = self.concurrency.readers.as_vec();
 
         let mut configs = Vec::new();
-        for store in stores {
+        for store in self.stores.as_vec() {
             for &writers in &writers_vec {
                 for &readers in &readers_vec {
                     let mut new_config = self.clone();

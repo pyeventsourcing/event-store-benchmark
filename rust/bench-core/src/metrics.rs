@@ -13,6 +13,13 @@ pub struct ThroughputSample {
     pub count: u64,
 }
 
+/// Throughput time-series sample: elapsed time from workload start and cumulative operation count
+#[derive(Debug, Clone, Serialize)]
+pub struct LatencyPercentile {
+    pub percentile: f64,
+    pub latency_us: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ContainerMetrics {
     /// Container image size in bytes
@@ -53,20 +60,19 @@ impl WorkloadResults {
     }
 
     pub fn write_to_dir(&self, path: &Path) -> Result<()> {
-        let percentile_json = self.latency_histogram.to_percentile_json();
-        let mut workload_json = serde_json::json!({
-            "store_name": self.store_name,
-            "throughput_samples": self.throughput_samples,
-            "latency": percentile_json,
-        });
-
-        if let Some(obj) = workload_json.as_object_mut() {
-            obj.insert("config".to_string(), self.workload_config.clone());
-        }
+        fs::write(
+            path.join("config.json"),
+            serde_json::to_string_pretty(&self.workload_config)?,
+        )?;
 
         fs::write(
-            path.join("workload.json"),
-            serde_json::to_string_pretty(&workload_json)?,
+            path.join("throughput.json"),
+            serde_json::to_string_pretty(&self.throughput_samples)?,
+        )?;
+
+        fs::write(
+            path.join("latency.json"),
+            serde_json::to_string_pretty(&self.latency_histogram.to_percentiles())?,
         )?;
 
         Ok(())
@@ -89,31 +95,30 @@ impl LatencyRecorder {
         let _ = self.hist.record(us.max(1));
     }
 
-    /// Export histogram percentile data as JSON for analysis
-    pub fn to_percentile_json(&self) -> serde_json::Value {
+    /// Export histogram percentiles
+    pub fn to_percentiles(&self) -> Vec<LatencyPercentile> {
         let mut percentiles = Vec::new();
 
         // Sample key percentiles with fine granularity in the tail
         for p in 0..100 {
             let quantile = p as f64 / 100.0;
             let latency_us = self.hist.value_at_quantile(quantile);
-            percentiles.push(serde_json::json!({
-                "percentile": p as f64,
-                "latency_us": latency_us
-            }));
+            percentiles.push(LatencyPercentile{
+                percentile: p as f64,
+                latency_us
+            });
         }
 
         // Add fine-grained tail percentiles
         for p in [99.0, 99.5, 99.9, 99.99, 99.999] {
             let quantile = p / 100.0;
             let latency_us = self.hist.value_at_quantile(quantile);
-            percentiles.push(serde_json::json!({
-                "percentile": p,
-                "latency_us": latency_us
-            }));
+            percentiles.push(LatencyPercentile{
+                percentile: p,
+                latency_us: latency_us
+            });
         }
-
-        serde_json::json!({ "percentiles": percentiles })
+        percentiles
     }
 }
 
@@ -123,9 +128,8 @@ impl LatencyRecorder {
 pub struct SessionMetadata {
     pub session_id: String,
     pub benchmark_version: String,
-    pub workload_name: String,
-    pub workload_type: String,
     pub config_file: String,
+    pub workload_type: String,
     pub seed: u64,
 }
 
