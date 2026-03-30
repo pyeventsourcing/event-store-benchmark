@@ -330,6 +330,7 @@ impl PerformanceWorkload {
             latency_histogram.hist.add(&worker_latencies.hist).unwrap();
         }
         Ok(WorkloadResults::new(
+            serde_json::to_value(&self.config)?,
             self.config.name.clone(),
             store.name().to_string(),
             self.config.concurrency.writers.first(),
@@ -460,6 +461,7 @@ impl PerformanceWorkload {
         }
 
         Ok(WorkloadResults::new(
+            serde_json::to_value(&self.config)?,
             self.config.name.clone(),
             store.name().to_string(),
             self.config.concurrency.writers.first(),
@@ -629,6 +631,7 @@ impl PerformanceWorkload {
         }
 
         Ok(WorkloadResults::new(
+            serde_json::to_value(&self.config)?,
             self.config.name.clone(),
             store.name().to_string(),
             self.config.concurrency.writers.first(),

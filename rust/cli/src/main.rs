@@ -85,8 +85,6 @@ fn main() -> Result<()> {
 }
 
 async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Option<String>, cancel_token: CancellationToken) -> Result<()> {
-    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
-
     // Resolve data_dir to an absolute path if provided
     let data_dir = if let Some(path) = data_dir {
         let abs_path = fs::canonicalize(&path)
@@ -103,12 +101,12 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     // Read config file
     let config_yaml = fs::read_to_string(config_path)?;
 
-    // Extract workload name and stores from config
+    // Extract workload name from config
     let workload_name = WorkloadFactory::extract_workload_name(&config_yaml)?;
-    let stores_from_config = WorkloadFactory::extract_stores(&config_yaml)?;
+    println!("Running workload: {}", workload_name);
 
     // Determine which stores to run
-    let stores_to_run = if let Some(stores) = stores_from_config {
+    let stores_to_run = if let Some(stores) = WorkloadFactory::extract_stores(&config_yaml)? {
         stores
     } else {
         // Default to all stores
@@ -117,14 +115,11 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
             .map(|f| f.name().to_string())
             .collect()
     };
-
-    println!("Running workload: {}", workload_name);
     println!("Stores: {}", stores_to_run.join(", "));
-    println!("Seed: {}", actual_seed);
 
-    // Generate session ID (ISO timestamp)
-    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
-    println!("Session ID: {}", session_id);
+    // Decide random seed.
+    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
+    println!("Seed: {}", actual_seed);
 
     // Collect environment info
     let data_dir_path = data_dir.as_ref().map(Path::new);
@@ -145,6 +140,10 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     if is_sweep {
         println!("Running {} workload variants", workloads.len());
     }
+
+    // Generate session ID (ISO timestamp)
+    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+    println!("Session ID: {}", session_id);
 
     // Create session results directory
     let session_results_path = PathBuf::from("results/raw/sessions").join(&session_id);

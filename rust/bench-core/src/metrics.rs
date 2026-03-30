@@ -37,10 +37,12 @@ pub struct WorkloadResults {
     pub readers: usize,
     pub throughput_samples: Vec<ThroughputSample>,
     pub latency_histogram: LatencyRecorder,
+    pub workload_config: serde_json::Value,
 }
 
 impl WorkloadResults {
     pub fn new(
+        workload_config: serde_json::Value,
         workload_name: String,
         store_name: String,
         writers: usize,
@@ -49,6 +51,7 @@ impl WorkloadResults {
         latency_histogram: LatencyRecorder,
     ) -> Self {
         Self {
+            workload_config,
             workload_name,
             store_name,
             writers,
@@ -60,7 +63,7 @@ impl WorkloadResults {
 
     pub fn write_to_dir(&self, path: &Path) -> Result<()> {
         let percentile_json = self.latency_histogram.to_percentile_json();
-        let workload_json = serde_json::json!({
+        let mut workload_json = serde_json::json!({
             "workload_name": self.workload_name,
             "store_name": self.store_name,
             "writers": self.writers,
@@ -68,6 +71,10 @@ impl WorkloadResults {
             "throughput_samples": self.throughput_samples,
             "latency": percentile_json,
         });
+
+        if let Some(obj) = workload_json.as_object_mut() {
+            obj.insert("config".to_string(), self.workload_config.clone());
+        }
 
         fs::write(
             path.join("workload.json"),
