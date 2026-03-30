@@ -331,10 +331,7 @@ impl PerformanceWorkload {
         }
         Ok(WorkloadResults::new(
             serde_json::to_value(&self.config)?,
-            self.config.name.clone(),
             store.name().to_string(),
-            self.config.concurrency.writers.first(),
-            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))
@@ -462,10 +459,7 @@ impl PerformanceWorkload {
 
         Ok(WorkloadResults::new(
             serde_json::to_value(&self.config)?,
-            self.config.name.clone(),
             store.name().to_string(),
-            self.config.concurrency.writers.first(),
-            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))
@@ -632,10 +626,7 @@ impl PerformanceWorkload {
 
         Ok(WorkloadResults::new(
             serde_json::to_value(&self.config)?,
-            self.config.name.clone(),
             store.name().to_string(),
-            self.config.concurrency.writers.first(),
-            self.config.concurrency.readers.first(),
             throughput_samples,
             latency_histogram,
         ))

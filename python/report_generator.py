@@ -71,10 +71,10 @@ def load_session_runs(session_dir: Path, load_samples: bool = True):
                     workload_data = json.load(f)
                     throughput_samples = workload_data.get("throughput_samples", [])
                     latency_data = workload_data.get("latency", {})
-                    workload_name = workload_data.get("workload_name", "N/A")
+                    workload_name = workload_data["config"]["name"]
                     adapter = workload_data.get("store_name", "N/A")
-                    writers = workload_data.get("writers", 0)
-                    readers = workload_data.get("readers", 0)
+                    readers = workload_data["config"]["concurrency"]["readers"]
+                    writers = workload_data["config"]["concurrency"]["writers"]
 
             if workload_file.exists():
                 runs.append({

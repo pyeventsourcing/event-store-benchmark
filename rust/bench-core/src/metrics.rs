@@ -31,31 +31,22 @@ pub struct ContainerMetrics {
 
 #[derive(Debug, Clone)]
 pub struct WorkloadResults {
-    pub workload_name: String,
+    pub workload_config: serde_json::Value,
     pub store_name: String,
-    pub writers: usize,
-    pub readers: usize,
     pub throughput_samples: Vec<ThroughputSample>,
     pub latency_histogram: LatencyRecorder,
-    pub workload_config: serde_json::Value,
 }
 
 impl WorkloadResults {
     pub fn new(
         workload_config: serde_json::Value,
-        workload_name: String,
         store_name: String,
-        writers: usize,
-        readers: usize,
         throughput_samples: Vec<ThroughputSample>,
         latency_histogram: LatencyRecorder,
     ) -> Self {
         Self {
             workload_config,
-            workload_name,
             store_name,
-            writers,
-            readers,
             throughput_samples,
             latency_histogram,
         }
@@ -64,10 +55,7 @@ impl WorkloadResults {
     pub fn write_to_dir(&self, path: &Path) -> Result<()> {
         let percentile_json = self.latency_histogram.to_percentile_json();
         let mut workload_json = serde_json::json!({
-            "workload_name": self.workload_name,
             "store_name": self.store_name,
-            "writers": self.writers,
-            "readers": self.readers,
             "throughput_samples": self.throughput_samples,
             "latency": percentile_json,
         });
