@@ -127,8 +127,6 @@ pub struct SessionMetadata {
     pub workload_type: String,
     pub config_file: String,
     pub seed: u64,
-    pub stores_run: Vec<String>,
-    pub is_sweep: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

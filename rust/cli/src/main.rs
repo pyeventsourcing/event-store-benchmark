@@ -104,19 +104,7 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     // Extract workload name from config
     let workload_name = WorkloadFactory::extract_workload_name(&config_yaml)?;
     println!("Running workload: {}", workload_name);
-
-    // Determine which stores to run
-    let stores_to_run = if let Some(stores) = WorkloadFactory::extract_stores(&config_yaml)? {
-        stores
-    } else {
-        // Default to all stores
-        store_manager_factories()
-            .into_iter()
-            .map(|f| f.name().to_string())
-            .collect()
-    };
-    println!("Stores: {}", stores_to_run.join(", "));
-
+    
     // Decide random seed.
     let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
     println!("Seed: {}", actual_seed);
@@ -129,17 +117,9 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
 
     // Detect if this is a sweep and expand if needed
-    let is_sweep = WorkloadFactory::is_sweep(&config_yaml)?;
-    let workloads = if is_sweep {
-        WorkloadFactory::expand_sweep(&config_yaml, actual_seed)?
-    } else {
-        vec![WorkloadFactory::create_from_yaml(&config_yaml, actual_seed)?]
-    };
+    let workloads = WorkloadFactory::generate_workloads(&config_yaml, actual_seed)?;
 
-    println!("Sweep mode: {}", if is_sweep { "enabled" } else { "disabled" });
-    if is_sweep {
-        println!("Running {} workload variants", workloads.len());
-    }
+    println!("Total runs to execute: {}", workloads.len());
 
     // Generate session ID (ISO timestamp)
     let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
@@ -157,8 +137,6 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
         workload_type: "performance".to_string(), // TODO: Extract from workload
         config_file: config_path.to_string_lossy().to_string(),
         seed: actual_seed,
-        stores_run: stores_to_run.clone(),
-        is_sweep,
     };
 
     let session_json = serde_json::to_string_pretty(&session_metadata)?;
@@ -174,65 +152,61 @@ async fn run_benchmark(config_path: &PathBuf, seed: Option<u64>, data_dir: Optio
     // Run each workload variant
     for workload in workloads {
         let workload_name = &workload.name().expect("workload name");
+        let store_name = workload.store_name()?;
 
-        // Create workload directory
+        if cancel_token.is_cancelled() {
+            break;
+        }
+
+        println!("\n=== Running {} on {} ===", workload_name, store_name);
+
+        // Find store factory
+        let store_factory = store_manager_factories()
+            .into_iter()
+            .find(|f| f.name() == store_name)
+            .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store_name))?;
+
+        // Create store manager
+        let store_manager = store_factory.create_store_manager(data_dir.clone())?;
+
+        // Execute the run
+        let (
+            container_metrics,
+            workload_results,
+        ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
+            Ok(res) => res,
+            Err(e) => {
+                if cancel_token.is_cancelled() {
+                    println!("Run interrupted, skipping results for {}", store_name);
+                    continue;
+                }
+                return Err(e);
+            }
+        };
+
+        // Create workload results directory (one per run now)
         let workload_results_path = session_results_path.join(workload_name);
         fs::create_dir_all(&workload_results_path)?;
 
-        // Run workload for each store
-        for store_name in &stores_to_run {
-            if cancel_token.is_cancelled() {
-                break;
-            }
-            println!("\n=== Running {} on {} ===", workload_name, store_name);
+        // Write metadata
+        let metadata = serde_json::json!({
+            "type": &workload.type_str()?,
+            "store": store_name,
+        });
+        let metadata_json = serde_json::to_string_pretty(&metadata)?;
+        fs::write(workload_results_path.join("run.meta.json"), metadata_json)?;
 
-            // Find store factory
-            let store_factory = store_manager_factories()
-                .into_iter()
-                .find(|f| f.name() == store_name)
-                .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store_name))?;
+        // Write container metrics
+        let container_json = serde_json::to_string_pretty(&container_metrics)?;
+        fs::write(workload_results_path.join("container.json"), container_json)?;
 
-            // Create store manager
-            let store_manager = store_factory.create_store_manager(data_dir.clone())?;
+        // Write workload results (throughput and latency)
+        workload_results.write_to_dir(&workload_results_path)?;
 
-            // Execute the run
-            let (
-                container_metrics,
-                workload_results,
-            ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
-                Ok(res) => res,
-                Err(e) => {
-                    if cancel_token.is_cancelled() {
-                        println!("Run interrupted, skipping results for {}", store_name);
-                        continue;
-                    }
-                    return Err(e);
-                }
-            };
-
-            // Create store results directory
-            let store_results_path = workload_results_path.join(store_name);
-            fs::create_dir_all(&store_results_path)?;
-
-            // Write metadata
-            let metadata = serde_json::json!({
-                "type": &workload.type_str()?,
-            });
-            let metadata_json = serde_json::to_string_pretty(&metadata)?;
-            fs::write(store_results_path.join("run.meta.json"), metadata_json)?;
-
-            // Write container metrics
-            let container_json = serde_json::to_string_pretty(&container_metrics)?;
-            fs::write(store_results_path.join("container.json"), container_json)?;
-
-            // Write workload results (throughput and latency)
-            workload_results.write_to_dir(&store_results_path)?;
-
-            println!(
-                "✓ {} completed",
-                store_name
-            );
-        }
+        println!(
+            "✓ {} on {} completed",
+            workload_name, store_name
+        );
     }
 
     println!("\n✓ Session complete: {}", session_results_path.display());

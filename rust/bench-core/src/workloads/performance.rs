@@ -21,6 +21,7 @@ pub struct PerformanceConfig {
     pub operations: OperationConfig,
     #[serde(default)]
     pub setup: Option<SetupConfig>,
+    pub stores: StoreValue,
 }
 
 impl PerformanceConfig {
@@ -31,19 +32,22 @@ impl PerformanceConfig {
     }
 
     /// Expand a sweep config into multiple single-value configs
-    pub fn expand_sweep(&self) -> Vec<Self> {
+    pub fn expand(&self, stores: &[String]) -> Vec<Self> {
         let writers_vec = self.concurrency.writers.as_vec();
         let readers_vec = self.concurrency.readers.as_vec();
 
         let mut configs = Vec::new();
-        for &writers in &writers_vec {
-            for &readers in &readers_vec {
-                let mut new_config = self.clone();
-                new_config.concurrency.writers = ConcurrencyValue::Single(writers);
-                new_config.concurrency.readers = ConcurrencyValue::Single(readers);
-                // Add sweep suffix to name
-                new_config.name = format!("{}-w{}-r{}", self.name, writers, readers);
-                configs.push(new_config);
+        for store in stores {
+            for &writers in &writers_vec {
+                for &readers in &readers_vec {
+                    let mut new_config = self.clone();
+                    new_config.concurrency.writers = ConcurrencyValue::Single(writers);
+                    new_config.concurrency.readers = ConcurrencyValue::Single(readers);
+                    new_config.stores = StoreValue::Single(store.to_string());
+                    // Add sweep suffix to name
+                    new_config.name = format!("{}-{}-w{}-r{}", self.name, store, writers, readers);
+                    configs.push(new_config);
+                }
             }
         }
         configs
@@ -84,6 +88,35 @@ impl ConcurrencyValue {
 impl Default for ConcurrencyValue {
     fn default() -> Self {
         ConcurrencyValue::Single(0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StoreValue {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl StoreValue {
+    pub fn as_vec(&self) -> Vec<String> {
+        match self {
+            StoreValue::Single(v) => vec![v.clone()],
+            StoreValue::Multiple(v) => v.clone(),
+        }
+    }
+
+    pub fn first(&self) -> String {
+        match self {
+            StoreValue::Single(v) => v.clone(),
+            StoreValue::Multiple(v) => v.first().unwrap().clone(),
+        }
+    }
+}
+
+impl Default for StoreValue {
+    fn default() -> Self {
+        StoreValue::Single("default".to_string())
     }
 }
 
@@ -130,7 +163,7 @@ fn default_read_batch() -> usize {
 
 /// Performance workload - generic event store read/write patterns
 pub struct PerformanceWorkload {
-    config: PerformanceConfig,
+    pub config: PerformanceConfig,
     seed: u64,
     stream_prefix: String,
 }
@@ -181,6 +214,10 @@ impl PerformanceWorkload {
 
     pub fn name(&self) -> &str {
         &self.config.name
+    }
+
+    pub fn store_name(&self) -> String {
+        self.config.stores.first()
     }
 
     /// Prepare the workload (e.g., prepopulate data for read workloads)
