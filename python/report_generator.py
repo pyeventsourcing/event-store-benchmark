@@ -9,13 +9,6 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter
 
-try:
-    from hdrh.histogram import HdrHistogram
-    HDR_AVAILABLE = True
-except ImportError:
-    HDR_AVAILABLE = False
-    print("Warning: hdrhistogram library not installed. Run: pip install hdrhistogram")
-
 sns.set_theme(style="whitegrid")
 
 # Consistent color scheme for all adapters across all plots
@@ -870,12 +863,15 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         throughput_eps = run.get("_throughput_eps", 0)
         p50 = 0
         p99 = 0
+        p999 = 0
         percentiles_data = run.get("latency", {}).get("percentiles", [])
         for p in percentiles_data:
             if p["percentile"] == 50.0:
                 p50 = p["latency_us"] / 1000.0
             elif p["percentile"] == 99.0:
                 p99 = p["latency_us"] / 1000.0
+            elif p["percentile"] == 99.9:
+                p999 = p["latency_us"] / 1000.0
 
         # CPU metrics (avg / peak)
         avg_cpu = container.get("avg_cpu_percent")
@@ -898,12 +894,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         summary_rows += f"""
       <tr>
         <td><a href='{report_link}'>{adapter}</a></td>
-        <td>{workload_name}</td>
         <td>{worker_display}</td>
-        <td>{run.get('_duration_s', 0):.1f}s</td>
         <td>{throughput_eps:.0f}</td>
         <td>{p50:.2f}</td>
         <td>{p99:.2f}</td>
+        <td>{p999:.2f}</td>
         <td>{image_size_mb}</td>
         <td>{startup_time}</td>
         <td>{cpu_display}</td>
@@ -999,7 +994,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
   {comparison_sections}
   <h2>Summary</h2>
   <table>
-    <tr><th>Adapter</th><th>Workload</th><th>{worker_label}</th><th>Duration</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>Image (MB)</th><th>Startup</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
+    <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>Image (MB)</th><th>Startup</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
     {summary_rows}
   </table>
 </body>
@@ -1167,8 +1162,8 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
           <img src='{workload_name}/{workload_name}_scaling_p50.png' width='460'>
         </div>
         <div class='card'>
-          <h3>Startup Times</h3>
-          <img src='{workload_name}/{workload_name}_scaling_startup.png' width='460'>
+          <h3>p99.9 Latency</h3>
+          <img src='{workload_name}/{workload_name}_scaling_p999.png' width='460'>
         </div>
       <div class='row'>
         <div class='card'>
