@@ -6,10 +6,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter
-
-sns.set_theme(style="whitegrid")
 
 # Consistent color scheme for all adapters across all plots
 # Using standard data visualization colors for better clarity

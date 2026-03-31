@@ -1,6 +1,6 @@
-CONTAINER_DATA_DIR ?= ./container-data
 PYTHON ?= python3
-SEED ?= 42
+ESB_CONTAINER_DATA_DIR ?= ./container-data
+ESB_SEED ?= 42
 
 .PHONY: build
 .PHONY: venv
@@ -50,6 +50,6 @@ run-scaling-writers:
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE
-	./target/release/es-bench run --config $@ --seed $(SEED) --data-dir=$(CONTAINER_DATA_DIR)
+	./target/release/es-bench run --config $@ --seed $(ESB_SEED) --data-dir=$(ESB_CONTAINER_DATA_DIR)
 
 FORCE:
