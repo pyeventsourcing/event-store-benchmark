@@ -963,20 +963,50 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         f.write(html)
 
 
-def generate_top_level_index(out_base: Path, sessions_summaries):
+def generate_top_level_index(raw_base: Path, published_base: Path):
     """Generate top-level index.html that links to individual session reports."""
-    
+
+    # Collect summaries for published sessions from raw data
+    sessions_summaries = {}
+    published_session_ids = sorted([d.name for d in published_base.iterdir() if d.is_dir()])
+
+    for session_id in published_session_ids:
+        raw_session_dir = raw_base / session_id
+        if not raw_session_dir.exists():
+            continue
+
+        try:
+            # Load session info
+            session_info_file = raw_session_dir / "session.json"
+            session_info = {}
+            with open(session_info_file, "r") as f:
+                session_info = json.load(f)
+
+            # Load session config
+            session_config_file = raw_session_dir / "config.json"
+            session_config = {}
+            with open(session_config_file, "r") as f:
+                session_config = json.load(f)
+
+            stores = session_config.get("stores")
+
+            sessions_summaries[session_id] = {
+                'workload_name': session_config.get("name", "N/A"),
+                'benchmark_version': session_info.get('benchmark_version', 'N/A'),
+                'stores': stores,
+            }
+        except Exception as e:
+            print(f"Warning: Could not collect summary for session {session_id} from raw data: {e}")
+
     session_rows = ""
     for session_id, summary in sorted(sessions_summaries.items(), reverse=True):
-        workloads = ", ".join(sorted(summary['workloads']))
-        adapters = ", ".join(sorted(summary['adapters']))
+        stores = ", ".join(sorted(summary['stores']))
         
         session_rows += f"""
       <tr>
         <td><a href='{session_id}/index.html'>{session_id}</a></td>
         <td>{summary.get('workload_name', 'N/A')}</td>
-        <td>{workloads}</td>
-        <td>{adapters}</td>
+        <td>{stores}</td>
         <td>{summary.get('benchmark_version', 'N/A')}</td>
       </tr>"""
 
@@ -1000,13 +1030,13 @@ def generate_top_level_index(out_base: Path, sessions_summaries):
   <h1>Event Store Benchmark Suite</h1>
   <h2>Benchmark Sessions</h2>
   <table>
-    <tr><th>Session ID</th><th>Primary Workload</th><th>Logical Workloads</th><th>Adapters</th><th>Version</th></tr>
+    <tr><th>Session ID</th><th>Workload</th><th>Stores</th><th>Version</th></tr>
     {session_rows}
   </table>
 </body>
 </html>
 """
-    with open(out_base / "index.html", "w") as f:
+    with open(published_base / "index.html", "w") as f:
         f.write(html)
 
 
@@ -1217,10 +1247,7 @@ def main():
 
     if not unpublished_session_ids:
         print(f"No unpublished sessions found in {raw_base}")
-        return
-
-    sessions_summaries = {}
-
+    
     for session_id in unpublished_session_ids:
 
         print(f"Processing session: {session_id}")
@@ -1274,7 +1301,6 @@ def main():
         session_workload_name = session_config["name"]
 
         # Group runs by workload within the session
-        # TODO: This is currently unnecessary.
         workload_groups = defaultdict(list)
         runs = load_performance_runs(raw_session_dir)
         if not runs:
@@ -1283,42 +1309,6 @@ def main():
 
         for run in runs:
             workload_groups[session_workload_name].append(run)
-
-        # TODO: Reimplement report summary.
-        # # Skip remaining processing if session already published
-        # if skip_session:
-        #     # Still need to collect workload information for the top-level index
-        #     workload_summaries = {}
-        #     all_adapters = set()
-        #     for workload_name, workload_runs in workload_groups.items():
-        #         adapters_set = set()
-        #         writer_counts_set = set()
-        #
-        #         first_run = workload_runs[0] if workload_runs else {}
-        #         is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
-        #
-        #         for run in workload_runs:
-        #             writers = run["writers"]
-        #             readers = run["readers"]
-        #             wc = readers if is_readers else writers
-        #             adapter = run["adapter"]
-        #             adapters_set.add(adapter)
-        #             writer_counts_set.add(wc)
-        #             all_adapters.add(adapter)
-        #
-        #         workload_summaries[workload_name] = {
-        #             'run_count': len(workload_runs),
-        #             'adapters': adapters_set,
-        #             'writer_counts': writer_counts_set,
-        #         }
-        #
-        #     sessions_summaries[session_id] = {
-        #         'workload_name': session_workload_name,
-        #         'benchmark_version': session_info.get('benchmark_version') if session_info else 'N/A',
-        #         'workloads': list(workload_summaries.keys()),
-        #         'adapters': list(all_adapters),
-        #     }
-        #     continue
 
         # Generate individual reports for each run in this session
         for run in runs:
@@ -1435,17 +1425,9 @@ def main():
 
         # Generate session index
         generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
-        
-        # Collect session summary for top-level index
-        sessions_summaries[session_id] = {
-            'workload_name': session_workload_name,
-            'benchmark_version': session_info.get('benchmark_version') if session_info else 'N/A',
-            'workloads': list(workload_summaries.keys()),
-            'adapters': list(all_adapters),
-        }
 
     # Generate top-level index
-    generate_top_level_index(published_base, sessions_summaries)
+    generate_top_level_index(raw_base, published_base)
     print(f"\nTop-level index written to {published_base}/index.html")
 
 
