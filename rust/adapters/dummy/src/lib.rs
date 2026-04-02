@@ -1,3 +1,5 @@
+use std::collections::BinaryHeap;
+use std::cmp::Ordering;
 use std::hint::spin_loop;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -5,24 +7,102 @@ use bench_core::adapter::{
     EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreManager, StoreManagerFactory,
 };
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
-use lazy_static::lazy_static;
-use rayon::ThreadPoolBuilder;
+use std::sync::mpsc;
+use tokio::sync::oneshot;
 
-lazy_static! {
-    static ref DELAY_POOL: rayon::ThreadPool = ThreadPoolBuilder::new()
-        .num_threads(128)
-        .thread_name(|i| format!("dummy-delay-{}", i))
-        .build()
-        .expect("Failed to create delay thread pool");
+struct ScheduledRequest {
+    release_at: Instant,
+    tx: oneshot::Sender<()>,
 }
 
-pub struct DummyStoreManager {}
+impl PartialEq for ScheduledRequest {
+    fn eq(&self, other: &Self) -> bool {
+        self.release_at == other.release_at
+    }
+}
+
+impl Eq for ScheduledRequest {}
+
+impl PartialOrd for ScheduledRequest {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScheduledRequest {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse order for min-heap
+        other.release_at.cmp(&self.release_at)
+    }
+}
+
+pub struct Scheduler {
+    tx: mpsc::Sender<ScheduledRequest>,
+    delay: Duration,
+}
+
+impl Scheduler {
+    pub fn new() -> Arc<Self> {
+        let (tx, rx) = mpsc::channel::<ScheduledRequest>();
+        
+        std::thread::Builder::new()
+            .name("scheduler-thread".to_string())
+            .spawn(move || {
+                let mut heap = BinaryHeap::new();
+                
+                loop {
+                    // Try to drain new requests into the heap
+                    while let Ok(req) = rx.try_recv() {
+                        heap.push(req);
+                    }
+
+                    if let Some(req) = heap.peek() {
+                        let now = Instant::now();
+                        if now >= req.release_at {
+                            if let Some(req) = heap.pop() {
+                                let _ = req.tx.send(());
+                            }
+                            // Continue immediately to check for next due request
+                            continue;
+                        } else {
+                            // Spin tightly until the next request is due
+                            // This is high accuracy and low jitter
+                            spin_loop();
+                            continue;
+                        }
+                    }
+
+                    // Heap is empty, wait for a new request (blocking)
+                    match rx.recv() {
+                        Ok(req) => {
+                            heap.push(req);
+                        }
+                        Err(_) => break, // Channel closed
+                    }
+                }
+            })
+            .expect("failed to spawn scheduler thread");
+
+        Arc::new(Self { tx, delay: Duration::from_micros(10000) })
+    }
+
+    pub async fn wait(&self, release_at: Instant) {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx.send(ScheduledRequest { release_at, tx });
+        let _ = rx.await;
+    }
+}
+
+pub struct DummyStoreManager {
+    scheduler: Arc<Scheduler>,
+}
 
 impl DummyStoreManager {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            scheduler: Scheduler::new(),
+        }
     }
 }
 
@@ -44,23 +124,27 @@ impl StoreManager for DummyStoreManager {
         "dummy"
     }
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(DummyAdapter))
+        Ok(Arc::new(DummyAdapter {
+            scheduler: self.scheduler.clone(),
+        }))
     }
     async fn logs(&self) -> Result<String> {
         Ok(String::new())
     }
 }
 
-pub struct DummyAdapter;
+pub struct DummyAdapter {
+    scheduler: Arc<Scheduler>,
+}
 
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     async fn append(&self, _events: Vec<EventData>) -> Result<()> {
-        precise_delay(Duration::from_micros(5000)).await;
+        self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok(())
     }
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        precise_delay(Duration::from_micros(5000)).await;
+        self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok((0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {
                 offset: 0,
@@ -84,28 +168,4 @@ impl StoreManagerFactory for DummyFactory {
     ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(DummyStoreManager::new()))
     }
-}
-
-pub async fn precise_delay(delay: Duration) {
-    // Execute the blocking delay on our dedicated thread pool
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    DELAY_POOL.spawn(move || {
-        let start = Instant::now();
-        let target = start + delay;
-
-        let spin_threshold = Duration::from_micros(2000);
-
-        if delay > spin_threshold {
-            thread::sleep(delay - spin_threshold);
-        }
-
-        while Instant::now() < target {
-            spin_loop();
-        }
-
-        let _ = tx.send(());
-    });
-
-    let _ = rx.await;
 }
