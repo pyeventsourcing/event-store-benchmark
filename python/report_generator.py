@@ -678,7 +678,7 @@ def plot_peak_mem_scaling(runs, out_path: Path, get_store_rank=None):
     plt.close()
 
 
-def plot_container_metrics(runs, out_path: Path):
+def plot_container_metrics(runs, out_path: Path, get_store_rank=None):
     """Create a dramatic visualization of container resource usage."""
     # Collect data for each unique adapter (use dict to deduplicate and aggregate)
     adapter_data = {}
@@ -711,35 +711,40 @@ def plot_container_metrics(runs, out_path: Path):
     if not adapter_data:
         return
 
-    # Create a composite score for ordering (lower is better):
-    # Normalize each metric to 0-1 range, then compute weighted average
+    # Determine order of adapters
     adapters_list = list(adapter_data.keys())
+    if get_store_rank:
+        # Sort by store rank from config
+        adapters = sorted(adapters_list, key=get_store_rank)
+    else:
+        # Create a composite score for ordering (lower is better):
+        # Normalize each metric to 0-1 range, then compute weighted average
 
-    # Get raw values
-    raw_image = [adapter_data[a]["image_size"] for a in adapters_list]
-    raw_startup = [adapter_data[a]["startup_time"] / adapter_data[a]["count"] for a in adapters_list]
-    raw_cpu = [adapter_data[a]["peak_cpu"] for a in adapters_list]
-    raw_mem = [adapter_data[a]["peak_mem"] for a in adapters_list]
+        # Get raw values
+        raw_image = [adapter_data[a]["image_size"] for a in adapters_list]
+        raw_startup = [adapter_data[a]["startup_time"] / adapter_data[a]["count"] for a in adapters_list]
+        raw_cpu = [adapter_data[a]["peak_cpu"] for a in adapters_list]
+        raw_mem = [adapter_data[a]["peak_mem"] for a in adapters_list]
 
-    # Normalize to 0-1 range (avoiding division by zero)
-    def normalize(values):
-        max_val = max(values) if values else 1
-        return [v / max_val if max_val > 0 else 0 for v in values]
+        # Normalize to 0-1 range (avoiding division by zero)
+        def normalize(values):
+            max_val = max(values) if values else 1
+            return [v / max_val if max_val > 0 else 0 for v in values]
 
-    norm_image = normalize(raw_image)
-    norm_startup = normalize(raw_startup)
-    norm_cpu = normalize(raw_cpu)
-    norm_mem = normalize(raw_mem)
+        norm_image = normalize(raw_image)
+        norm_startup = normalize(raw_startup)
+        norm_cpu = normalize(raw_cpu)
+        norm_mem = normalize(raw_mem)
 
-    # Compute composite score (equal weights, lower is better)
-    composite_scores = []
-    for i, adapter in enumerate(adapters_list):
-        score = (norm_image[i] + norm_startup[i] + norm_cpu[i] + norm_mem[i]) / 4.0
-        composite_scores.append((adapter, score))
+        # Compute composite score (equal weights, lower is better)
+        composite_scores = []
+        for i, adapter in enumerate(adapters_list):
+            score = (norm_image[i] + norm_startup[i] + norm_cpu[i] + norm_mem[i]) / 4.0
+            composite_scores.append((adapter, score))
 
-    # Sort by composite score (best first)
-    composite_scores.sort(key=lambda x: x[1])
-    adapters = [x[0] for x in composite_scores]
+        # Sort by composite score (best first)
+        composite_scores.sort(key=lambda x: x[1])
+        adapters = [x[0] for x in composite_scores]
 
     # Extract ordered lists for plotting
     image_sizes = [adapter_data[a]["image_size"] for a in adapters]
@@ -1322,9 +1327,9 @@ def main():
     force_regenerate = args.force
     for raw_session_id in raw_session_ids:
         published_session_dir = published_base / raw_session_id
-        published_session_index = published_session_dir / "index.html"
+        # published_session_index = published_session_dir / "index.html"
         # Include if forced or not exists
-        if force_regenerate or not published_session_index.exists():
+        if force_regenerate or not published_session_dir.exists():
             unpublished_session_ids.append(raw_session_id)
 
     if not unpublished_session_ids:
@@ -1442,89 +1447,89 @@ def main():
             plot_throughput(run["_throughput_df"], report_dir / "throughput.png", report_dir / "throughput_data.json")
             generate_html(report_dir, run)
 
-    # Generate per-workload consolidated reports for this session
-    workload_summaries = {}
-    all_adapters = set()
+        # Generate per-workload consolidated reports for this session
+        workload_summaries = {}
+        all_adapters = set()
 
-    # Get store order from session_config
-    store_order = []
-    if session_config and "stores" in session_config:
-        stores_val = session_config["stores"]
-        if isinstance(stores_val, list):
-            store_order = stores_val
-        elif isinstance(stores_val, str):
-            store_order = [stores_val]
-    
-    store_order_map = {name: i for i, name in enumerate(store_order)}
+        # Get store order from session_config
+        store_order = []
+        if session_config and "stores" in session_config:
+            stores_val = session_config["stores"]
+            if isinstance(stores_val, list):
+                store_order = stores_val
+            elif isinstance(stores_val, str):
+                store_order = [stores_val]
 
-    def get_store_rank(adapter_name):
-        return store_order_map.get(adapter_name, 999)
+        store_order_map = {name: i for i, name in enumerate(store_order)}
 
-    for workload_name, workload_runs in workload_groups.items():
-        print(f"  Processing workload: {workload_name}")
+        def get_store_rank(adapter_name):
+            return store_order_map.get(adapter_name, 999)
 
-        writer_groups = defaultdict(list)
-        adapters_set = set()
-        writer_counts_set = set()
+        for workload_name, workload_runs in workload_groups.items():
+            print(f"  Processing workload: {workload_name}")
 
-        first_run = workload_runs[0] if workload_runs else {}
-        is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
-        worker_label = "reader" if is_readers else "writer"
-        worker_suffix = "r" if is_readers else "w"
+            writer_groups = defaultdict(list)
+            adapters_set = set()
+            writer_counts_set = set()
 
-        for run in workload_runs:
-            writers = run["writers"]
-            readers = run["readers"]
-            wc = readers if is_readers else writers
-            adapter = run["adapter"]
-            writer_groups[wc].append((adapter, run["_throughput_df"], run))
-            adapters_set.add(adapter)
-            writer_counts_set.add(wc)
-            all_adapters.add(adapter)
+            first_run = workload_runs[0] if workload_runs else {}
+            is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
+            worker_label = "reader" if is_readers else "writer"
+            worker_suffix = "r" if is_readers else "w"
 
-        workload_dir = published_session_dir / workload_name
-        workload_dir.mkdir(parents=True, exist_ok=True)
+            for run in workload_runs:
+                writers = run["writers"]
+                readers = run["readers"]
+                wc = readers if is_readers else writers
+                adapter = run["adapter"]
+                writer_groups[wc].append((adapter, run["_throughput_df"], run))
+                adapters_set.add(adapter)
+                writer_counts_set.add(wc)
+                all_adapters.add(adapter)
 
-        for wc, run_data in sorted(writer_groups.items()):
-            # Sort run_data by store order before plotting
-            run_data = sorted(run_data, key=lambda x: get_store_rank(x[0]))
-            
-            # Plot latency comparison using JSON percentiles
-            latency_run_data = [(adapter, run) for adapter, _, run in run_data]
-            plot_comparison_latency_cdf(
-                latency_run_data,
-                f"Latency CDF — {wc} {worker_label}(s)",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
-            )
+            workload_dir = published_session_dir / workload_name
+            workload_dir.mkdir(parents=True, exist_ok=True)
 
-            # Plot throughput comparison
-            throughput_run_data = [(adapter, throughput_df) for adapter, throughput_df, _ in run_data]
-            plot_comparison_throughput(
-                throughput_run_data,
-                f"Throughput — {wc} {worker_label}(s)",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
-                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
-            )
+            for wc, run_data in sorted(writer_groups.items()):
+                # Sort run_data by store order before plotting
+                run_data = sorted(run_data, key=lambda x: get_store_rank(x[0]))
 
-        if len(writer_groups) > 1:
-            plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png", get_store_rank)
-            plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png", get_store_rank)
-            plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png", get_store_rank)
-            plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png", get_store_rank)
-            plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png", get_store_rank)
-            plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png", get_store_rank)
+                # Plot latency comparison using JSON percentiles
+                latency_run_data = [(adapter, run) for adapter, _, run in run_data]
+                plot_comparison_latency_cdf(
+                    latency_run_data,
+                    f"Latency CDF — {wc} {worker_label}(s)",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
+                )
 
-        plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
-        generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config, get_store_rank)
+                # Plot throughput comparison
+                throughput_run_data = [(adapter, throughput_df) for adapter, throughput_df, _ in run_data]
+                plot_comparison_throughput(
+                    throughput_run_data,
+                    f"Throughput — {wc} {worker_label}(s)",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
+                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
+                )
 
-        workload_summaries[workload_name] = {
-            'run_count': len(workload_runs),
-            'adapters': adapters_set,
-            'writer_counts': writer_counts_set,
-        }
+            if len(writer_groups) > 1:
+                plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png", get_store_rank)
+                plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png", get_store_rank)
+                plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png", get_store_rank)
+                plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png", get_store_rank)
+                plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png", get_store_rank)
+                plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png", get_store_rank)
 
-    # Generate session index
-    generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
+            plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png", get_store_rank)
+            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config, get_store_rank)
+
+            workload_summaries[workload_name] = {
+                'run_count': len(workload_runs),
+                'adapters': adapters_set,
+                'writer_counts': writer_counts_set,
+            }
+
+        # Generate session index
+        generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
 
     # Generate top-level index
     generate_top_level_index(raw_base, published_base)
