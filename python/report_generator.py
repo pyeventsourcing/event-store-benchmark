@@ -887,12 +887,13 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         container = run.get("container", {})
         startup_time = f"{container.get('startup_time_s', 0):.1f}s" if container.get("startup_time_s") else "N/A"
         image_size_mb = f"{container.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if container.get("image_size_bytes") else "N/A"
-
+        
         throughput_eps = run.get("_throughput_eps", 0)
         p50 = 0
         p99 = 0
         p999 = 0
-        percentiles_data = run.get("latency", {}).get("percentiles", [])
+        percentiles_data = run.get("latency_percentiles", [])
+
         for p in percentiles_data:
             if p["percentile"] == 50.0:
                 p50 = p["latency_us"] / 1000.0
