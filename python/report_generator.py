@@ -364,6 +364,102 @@ def plot_throughput_scaling(runs, out_path: Path, get_store_rank=None):
     plt.close()
 
 
+def plot_latency_scaling(runs, out_path: Path, get_store_rank=None):
+    """Plot p50, p99, and p99.9 latency vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        adapter = run["adapter"]
+        writers = run["writers"]
+        readers = run["readers"]
+        worker_count = writers if writers > 0 else readers
+        
+        p50 = 0
+        p99 = 0
+        p999 = 0
+        percentiles_data = run.get("latency_percentiles")
+        if not percentiles_data:
+             percentiles_data = run.get("latency", {}).get("percentiles", [])
+             
+        for p in percentiles_data:
+            if p["percentile"] == 50.0:
+                p50 = p["latency_us"] / 1000.0
+            elif p["percentile"] == 99.0:
+                p99 = p["latency_us"] / 1000.0
+            elif p["percentile"] == 99.9:
+                p999 = p["latency_us"] / 1000.0
+        
+        if p50 > 0 or p99 > 0 or p999 > 0:
+            data[worker_count][adapter] = {"p50": p50, "p99": p99, "p999": p999}
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
+
+    # Determine label based on workload type
+    first_run = runs[0] if runs else {}
+    is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
+    xlabel = "Readers" if is_readers else "Writers"
+    title = f"Latency by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(12, 7))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+    
+    for i, adapter in enumerate(adapters):
+        p50_vals = np.array([data[wc].get(adapter, {}).get("p50", 0) for wc in worker_counts])
+        p99_vals = np.array([data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts])
+        p999_vals = np.array([data[wc].get(adapter, {}).get("p999", 0) for wc in worker_counts])
+        
+        offset = (i - (len(adapters) - 1) / 2) * width
+        color = get_adapter_color(adapter)
+        
+        # Plot stacked segments: p50 (lightest), p99 (medium), p99.9 (darkest)
+        # We use 'bottom' to stack them and different alphas to distinguish the segments.
+        plt.bar(x + offset, p50_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, p99_vals - p50_vals), width, bottom=p50_vals, color=color, alpha=0.6)
+        plt.bar(x + offset, np.maximum(0, p999_vals - p99_vals), width, bottom=p99_vals, color=color, alpha=0.3)
+
+    plt.yscale("log")
+    plt.ylabel("Latency (ms) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
+    formatter = FormatStrFormatter('%.1f')
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
+    
+    # Custom legend: showing adapters by color and percentiles by alpha
+    # Since we can't easily show both in one legend without duplicate entries, 
+    # we'll create a legend that shows all adapters with solid color, 
+    # and then some proxy entries for the p-values.
+    from matplotlib.lines import Line2D
+    
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    percentile_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='p50'),
+        Line2D([0], [0], color='gray', alpha=0.6, lw=4, label='p99'),
+        Line2D([0], [0], color='gray', alpha=0.3, lw=4, label='p99.9')
+    ]
+    
+    plt.legend(handles=adapter_handles + percentile_handles, ncol=2)
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_p50_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot p50 latency vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
@@ -974,18 +1070,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <img src='{workload_name}_scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>p50 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p50.png' width='560'>
-      </div>
-    </div>
-    <div class='row'>
-      <div class='card'>
-        <h3>p99 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p99.png' width='560'>
-      </div>
-      <div class='card'>
-        <h3>p99.9 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p999.png' width='560'>
+        <h3>Latency (p50, p99, p99.9) vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
     </div>
     <div class='row'>
@@ -1227,19 +1313,10 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
           <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='460'>
         </div>
         <div class='card'>
-          <h3>p99 Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_p99.png' width='460'>
+          <h3>Latency (p50, p99, p99.9)</h3>
+          <img src='{workload_name}/{workload_name}_scaling_latency.png' width='460'>
         </div>
       </div>
-      <div class='row'>
-        <div class='card'>
-          <h3>p50 Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_p50.png' width='460'>
-        </div>
-        <div class='card'>
-          <h3>p99.9 Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_p999.png' width='460'>
-        </div>
       <div class='row'>
         <div class='card'>
           <h3>Peak CPU</h3>
@@ -1514,9 +1591,7 @@ def main():
 
             if len(writer_groups) > 1:
                 plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png", get_store_rank)
-                plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png", get_store_rank)
-                plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png", get_store_rank)
-                plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png", get_store_rank)
+                plot_latency_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_latency.png", get_store_rank)
                 plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png", get_store_rank)
                 plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png", get_store_rank)
 
