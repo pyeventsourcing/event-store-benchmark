@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter
 
@@ -284,13 +285,11 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
 
 
 def plot_throughput_scaling(runs, out_path: Path):
-    """Plot throughput vs worker count (writers or readers), one line per adapter.
-
-    Uses the pre-computed throughput from the summary, which is based on the
-    actual test duration (not the response time span).
-    """
-    # Group by adapter → list of (worker_count, throughput)
-    adapter_data = defaultdict(list)
+    """Plot throughput vs worker count (writers or readers) using grouped bar charts."""
+    # Group by worker_count → adapter → throughput
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
 
     for run in runs:
         adapter = run["adapter"]
@@ -309,7 +308,15 @@ def plot_throughput_scaling(runs, out_path: Path):
                     throughput = total_count / duration
 
         if throughput > 0:
-            adapter_data[adapter].append((worker_count, throughput))
+            data[worker_count][adapter] = throughput
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     # Determine label based on the workload type
     first_run = runs[0] if runs else {}
@@ -317,46 +324,41 @@ def plot_throughput_scaling(runs, out_path: Path):
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Throughput by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        tps = [p[1] for p in points]
-        color = get_adapter_color(adapter)
+    plt.figure(figsize=(10, 6))
+    
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+    
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
 
-        # Plot with smoother line interpolation
-        plt.plot(ws, tps, marker="o", label=adapter, color=color,
-                linewidth=2.5, markersize=8, linestyle='-', alpha=0.9)
-
-    plt.xscale("log")
     plt.yscale("log")
-    plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("Throughput (events/sec) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
     formatter = ScalarFormatter()
     formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(formatter)
     plt.gca().yaxis.set_major_formatter(formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
-    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
-    plt.title(title)
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
 def plot_p50_scaling(runs, out_path: Path):
-    """Plot p50 latency vs worker count (writers or readers), one line per adapter."""
-    adapter_data = defaultdict(list)
+    """Plot p50 latency vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
@@ -365,13 +367,25 @@ def plot_p50_scaling(runs, out_path: Path):
         
         p50 = 0
         percentiles_data = run.get("latency_percentiles")
+        if not percentiles_data:
+             # Try latency/percentiles as fallback
+             percentiles_data = run.get("latency", {}).get("percentiles", [])
+             
         for p in percentiles_data:
             if p["percentile"] == 50.0:
                 p50 = p["latency_us"] / 1000.0
                 break
         
         if p50 > 0:
-            adapter_data[adapter].append((worker_count, p50))
+            data[worker_count][adapter] = p50
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -379,47 +393,39 @@ def plot_p50_scaling(runs, out_path: Path):
     xlabel = "Readers" if is_readers else "Writers"
     title = f"p50 Latency by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        p50s = [p[1] for p in points]
-        color = get_adapter_color(adapter)
-        plt.plot(ws, p50s, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.xlabel(f"{xlabel} [log]")
-    plt.ylabel("p50 Latency (ms) [log]")
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
     
-    # Use FormatStrFormatter for decimals on latency axis
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
+    plt.yscale("log")
+    plt.ylabel("p50 Latency (ms) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
     formatter = FormatStrFormatter('%.1f')
     plt.gca().yaxis.set_major_formatter(formatter)
-    
-    # Format x-axis (Writers/Readers count) as integers
-    x_formatter = ScalarFormatter()
-    x_formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(x_formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
-    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
-    plt.title(title)
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
 def plot_p99_scaling(runs, out_path: Path):
-    """Plot p99 latency vs worker count (writers or readers), one line per adapter."""
-    adapter_data = defaultdict(list)
+    """Plot p99 latency vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
@@ -428,13 +434,24 @@ def plot_p99_scaling(runs, out_path: Path):
 
         p99 = 0
         percentiles_data = run.get("latency_percentiles")
+        if not percentiles_data:
+             percentiles_data = run.get("latency", {}).get("percentiles", [])
+
         for p in percentiles_data:
             if p["percentile"] == 99.0:
                 p99 = p["latency_us"] / 1000.0
                 break
 
         if p99 > 0:
-            adapter_data[adapter].append((worker_count, p99))
+            data[worker_count][adapter] = p99
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -442,47 +459,39 @@ def plot_p99_scaling(runs, out_path: Path):
     xlabel = "Readers" if is_readers else "Writers"
     title = f"p99 Latency by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        p99s = [p[1] for p in points]
-        color = get_adapter_color(adapter)
-        plt.plot(ws, p99s, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.xlabel(f"{xlabel} [log]")
-    plt.ylabel("p99 Latency (ms) [log]")
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
     
-    # Use FormatStrFormatter for decimals on latency axis
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
+    plt.yscale("log")
+    plt.ylabel("p99 Latency (ms) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
     formatter = FormatStrFormatter('%.1f')
     plt.gca().yaxis.set_major_formatter(formatter)
-    
-    # Format x-axis (Writers/Readers count) as integers
-    x_formatter = ScalarFormatter()
-    x_formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(x_formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
-    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
-    plt.title(title)
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
 def plot_p999_scaling(runs, out_path: Path):
-    """Plot p99.9 latency vs worker count (writers or readers), one line per adapter."""
-    adapter_data = defaultdict(list)
+    """Plot p99.9 latency vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
@@ -491,16 +500,24 @@ def plot_p999_scaling(runs, out_path: Path):
 
         p999 = 0
         percentiles_data = run.get("latency_percentiles")
+        if not percentiles_data:
+             percentiles_data = run.get("latency", {}).get("percentiles", [])
+
         for p in percentiles_data:
             if p["percentile"] == 99.9:
                 p999 = p["latency_us"] / 1000.0
                 break
 
         if p999 > 0:
-            adapter_data[adapter].append((worker_count, p999))
+            data[worker_count][adapter] = p999
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
 
-    if not adapter_data:
+    if not data:
         return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -508,48 +525,39 @@ def plot_p999_scaling(runs, out_path: Path):
     xlabel = "Readers" if is_readers else "Writers"
     title = f"p99.9 Latency by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        p999s = [p[1] for p in points]
-        color = get_adapter_color(adapter)
-        plt.plot(ws, p999s, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
     
-    plt.xscale("log")
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
     plt.yscale("log")
-    plt.xlabel(f"{xlabel} [log]")
     plt.ylabel("p99.9 Latency (ms) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
     
-    # Use FormatStrFormatter for decimals on latency axis
     formatter = FormatStrFormatter('%.1f')
     plt.gca().yaxis.set_major_formatter(formatter)
-    
-    # Format x-axis (Writers/Readers count) as integers
-    x_formatter = ScalarFormatter()
-    x_formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(x_formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
-    # Ensure Y-axis has enough ticks/labels even for small ranges on log scale
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
-    plt.title(title)
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
 def plot_peak_cpu_scaling(runs, out_path: Path):
-    """Plot peak CPU usage vs worker count (writers or readers), one line per adapter."""
-    adapter_data = defaultdict(list)
+    """Plot peak CPU usage vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
@@ -558,48 +566,48 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
         container = run.get("container", {})
         peak_cpu = container.get("peak_cpu_percent")
         if peak_cpu is not None:
-            adapter_data[adapter].append((worker_count, peak_cpu))
+            data[worker_count][adapter] = peak_cpu
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
 
-    if not adapter_data:
+    if not data:
         return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Peak CPU by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        cpus = [p[1] for p in points]
-        color = get_adapter_color(adapter)
-        plt.plot(ws, cpus, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
     
-    plt.xscale("log")
-    plt.xlabel(f"{xlabel} [log]")
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
     plt.ylabel("Peak CPU (%)")
-    formatter = ScalarFormatter()
-    formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
+    plt.xlabel(xlabel)
     plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
 def plot_peak_mem_scaling(runs, out_path: Path):
-    """Plot peak memory usage vs worker count (writers or readers), one line per adapter."""
-    adapter_data = defaultdict(list)
+    """Plot peak memory usage vs worker count (writers or readers) using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
     for run in runs:
         adapter = run["adapter"]
         writers = run["writers"]
@@ -608,40 +616,37 @@ def plot_peak_mem_scaling(runs, out_path: Path):
         container = run.get("container", {})
         peak_mem = container.get("peak_memory_bytes")
         if peak_mem is not None:
-            adapter_data[adapter].append((worker_count, peak_mem / (1024 * 1024)))
+            data[worker_count][adapter] = peak_mem / (1024 * 1024)
+            all_adapters.add(adapter)
+            all_worker_counts.add(worker_count)
 
-    if not adapter_data:
+    if not data:
         return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters))
 
     first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
     xlabel = "Readers" if is_readers else "Writers"
     title = f"Peak Memory by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(8, 5))
-    for adapter, points in sorted(adapter_data.items()):
-        points.sort()
-        ws = [p[0] for p in points]
-        mems = [p[1] for p in points]
-        color = get_adapter_color(adapter)
-        plt.plot(ws, mems, marker="o", label=adapter, color=color, linewidth=2, markersize=8)
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
     
-    plt.xscale("log")
-    plt.xlabel(f"{xlabel} [log]")
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
     plt.ylabel("Peak Memory (MB)")
-    formatter = ScalarFormatter()
-    formatter.set_scientific(False)
-    plt.gca().xaxis.set_major_formatter(formatter)
-    plt.gca().xaxis.set_minor_formatter(NullFormatter())
-    
+    plt.xlabel(xlabel)
     plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    
     plt.legend()
-    plt.grid(True, which="both", ls=":", alpha=0.6)
-    all_worker_counts = sorted({
-        (s.get("writers", 0) if s.get("writers", 0) > 0
-         else s.get("readers", 0)) for s in runs
-    })
-    plt.xticks(all_worker_counts, labels=[str(x) for x in all_worker_counts])
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
@@ -811,7 +816,7 @@ def generate_html(report_dir: Path, run):
         f.write(html)
 
 
-def generate_workload_html(out_base: Path, workload_name: str, runs, writer_groups):
+def generate_workload_html(out_base: Path, workload_name: str, runs, writer_groups, workload_config=None):
     """Generate a consolidated report for a specific workload."""
     # Summary table
     summary_rows = ""
@@ -950,6 +955,15 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
       </div>
     </div>"""
 
+    config_section = ""
+    if workload_config:
+        config_json = json.dumps(workload_config, indent=2)
+        config_section = f"""
+    <h2>Workload Configuration</h2>
+    <div class='card'>
+      <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{config_json}</pre>
+    </div>"""
+
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -977,6 +991,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>Image (MB)</th><th>Startup</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
     {summary_rows}
   </table>
+  {config_section}
 </body>
 </html>
 """
@@ -1085,7 +1100,13 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
             fsync = env_info.get('disk', {}).get('fsync_latency')
             fsync_section = ""
             if fsync:
-                fsync_section = f"""
+                # Support both old _ms and new _us fields for compatibility
+                if 'avg_us' in fsync:
+                    fsync_section = f"""
+          <p><b>Fsync (avg/p99):</b> {fsync.get('avg_us', 0):.2f} / {fsync.get('p99_us', 0):.2f} μs</p>
+"""
+                else:
+                    fsync_section = f"""
           <p><b>Fsync (avg/p99):</b> {fsync.get('avg_ms', 0):.2f} / {fsync.get('p99_ms', 0):.2f} ms</p>
 """
             
@@ -1438,7 +1459,7 @@ def main():
                 plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png")
 
             plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
-            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups)
+            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config)
 
             workload_summaries[workload_name] = {
                 'run_count': len(workload_runs),

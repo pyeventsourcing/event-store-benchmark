@@ -19,13 +19,17 @@ pub struct PerformanceConfig {
     #[serde(default)]
     pub warmup_seconds: u64,
     pub duration_seconds: u64,
-    #[serde(default)]
+    #[serde(default = "default_samples_per_second")]
     pub samples_per_second: u64,
     pub concurrency: ConcurrencyConfig,
     pub operations: OperationConfig,
     #[serde(default)]
     pub setup: SetupConfig,
     pub stores: StoreValue,
+}
+
+pub fn default_samples_per_second() -> u64 {
+    1
 }
 
 impl PerformanceConfig {

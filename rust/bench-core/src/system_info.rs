@@ -125,18 +125,13 @@ fn collect_cpu_info() -> Result<CpuInfo> {
         let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
         let mut model = "unknown".to_string();
         let threads = num_cpus::get();
-        let mut cores = threads; // Fallback if we can't find physical cores
+        let cores = num_cpus::get_physical();
 
         for line in cpuinfo.lines() {
             if line.starts_with("model name") {
                 if let Some(value) = line.split(':').nth(1) {
                     model = value.trim().to_string();
-                }
-            } else if line.starts_with("cpu cores") {
-                 if let Some(value) = line.split(':').nth(1) {
-                    if let Ok(c) = value.trim().parse::<usize>() {
-                         cores = c;
-                    }
+                    break;
                 }
             }
         }
@@ -147,9 +142,10 @@ fn collect_cpu_info() -> Result<CpuInfo> {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let threads = num_cpus::get();
+        let cores = num_cpus::get_physical();
         Ok(CpuInfo {
             model: "unknown".to_string(),
-            cores: threads,
+            cores,
             threads,
         })
     }
@@ -307,19 +303,19 @@ fn measure_fsync_latency(path: &Path) -> Result<FsyncStats> {
 
     latencies.sort();
 
-    let min = latencies.first().unwrap().as_secs_f64() * 1000.0;
-    let max = latencies.last().unwrap().as_secs_f64() * 1000.0;
+    let min = latencies.first().unwrap().as_secs_f64() * 1_000_000.0;
+    let max = latencies.last().unwrap().as_secs_f64() * 1_000_000.0;
     let sum: Duration = latencies.iter().sum();
-    let avg = (sum.as_secs_f64() * 1000.0) / iterations as f64;
-    let p95 = latencies[(iterations * 95 / 100).min(iterations - 1)].as_secs_f64() * 1000.0;
-    let p99 = latencies[(iterations * 99 / 100).min(iterations - 1)].as_secs_f64() * 1000.0;
+    let avg = (sum.as_secs_f64() * 1_000_000.0) / iterations as f64;
+    let p95 = latencies[(iterations * 95 / 100).min(iterations - 1)].as_secs_f64() * 1_000_000.0;
+    let p99 = latencies[(iterations * 99 / 100).min(iterations - 1)].as_secs_f64() * 1_000_000.0;
 
     Ok(FsyncStats {
-        min_ms: min,
-        max_ms: max,
-        avg_ms: avg,
-        p95_ms: p95,
-        p99_ms: p99,
+        min_us: min,
+        max_us: max,
+        avg_us: avg,
+        p95_us: p95,
+        p99_us: p99,
     })
 }
 

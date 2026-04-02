@@ -8,7 +8,14 @@ cd "$TMPDIR"
 # CPU INFO
 # -------------------------
 CPU_MODEL=$(lscpu | grep "Model name" | cut -d: -f2 | xargs)
-CPU_CORES=$(nproc)
+CPU_CORES=$(grep -c ^processor /proc/cpuinfo)
+CPU_PHYSICAL_CORES=$(grep "cpu cores" /proc/cpuinfo | head -n 1 | cut -d: -f2 | xargs)
+CPU_SOCKETS=$(grep "physical id" /proc/cpuinfo | sort -u | wc -l)
+TOTAL_PHYSICAL_CORES=$((CPU_PHYSICAL_CORES * CPU_SOCKETS))
+# If we couldn't get physical cores, fallback to nproc
+if [ -z "$CPU_PHYSICAL_CORES" ] || [ "$TOTAL_PHYSICAL_CORES" -eq 0 ]; then
+    TOTAL_PHYSICAL_CORES=$(nproc)
+fi
 KERNEL=$(uname -r)
 
 # -------------------------
@@ -97,7 +104,8 @@ jq -n \
   --arg cpu_model "$CPU_MODEL" \
   --arg kernel "$KERNEL" \
   --arg fs_type "$FS_TYPE" \
-  --argjson cpu_cores "$CPU_CORES" \
+  --argjson cpu_cores "$TOTAL_PHYSICAL_CORES" \
+  --argjson cpu_threads "$CPU_CORES" \
   --argjson mem_total "$MEM_TOTAL_BYTES" \
   --argjson mem_available "$MEM_AVAILABLE_BYTES" \
   --argjson disk_size "$DISK_SIZE_BYTES" \
@@ -110,7 +118,8 @@ jq -n \
   '{
     cpu: {
       model: $cpu_model,
-      cores: $cpu_cores
+      cores: $cpu_cores,
+      threads: $cpu_threads
     },
     kernel: $kernel,
     memory: {
