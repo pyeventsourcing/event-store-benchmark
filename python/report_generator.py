@@ -284,7 +284,7 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
     plt.close()
 
 
-def plot_throughput_scaling(runs, out_path: Path):
+def plot_throughput_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot throughput vs worker count (writers or readers) using grouped bar charts."""
     # Group by worker_count → adapter → throughput
     data = defaultdict(dict)
@@ -316,7 +316,10 @@ def plot_throughput_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     # Determine label based on the workload type
     first_run = runs[0] if runs else {}
@@ -353,7 +356,7 @@ def plot_throughput_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_p50_scaling(runs, out_path: Path):
+def plot_p50_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot p50 latency vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
     all_adapters = set()
@@ -385,7 +388,10 @@ def plot_p50_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -420,7 +426,7 @@ def plot_p50_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_p99_scaling(runs, out_path: Path):
+def plot_p99_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot p99 latency vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
     all_adapters = set()
@@ -451,7 +457,10 @@ def plot_p99_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -486,7 +495,7 @@ def plot_p99_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_p999_scaling(runs, out_path: Path):
+def plot_p999_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot p99.9 latency vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
     all_adapters = set()
@@ -517,7 +526,10 @@ def plot_p999_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     # Determine label based on workload type
     first_run = runs[0] if runs else {}
@@ -552,7 +564,7 @@ def plot_p999_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_peak_cpu_scaling(runs, out_path: Path):
+def plot_peak_cpu_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot peak CPU usage vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
     all_adapters = set()
@@ -574,7 +586,10 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
@@ -602,7 +617,7 @@ def plot_peak_cpu_scaling(runs, out_path: Path):
     plt.close()
 
 
-def plot_peak_mem_scaling(runs, out_path: Path):
+def plot_peak_mem_scaling(runs, out_path: Path, get_store_rank=None):
     """Plot peak memory usage vs worker count (writers or readers) using grouped bar charts."""
     data = defaultdict(dict)
     all_adapters = set()
@@ -624,7 +639,10 @@ def plot_peak_mem_scaling(runs, out_path: Path):
         return
 
     worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters))
+    if get_store_rank:
+        adapters = sorted(list(all_adapters), key=get_store_rank)
+    else:
+        adapters = sorted(list(all_adapters))
 
     first_run = runs[0] if runs else {}
     is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
@@ -816,7 +834,7 @@ def generate_html(report_dir: Path, run):
         f.write(html)
 
 
-def generate_workload_html(out_base: Path, workload_name: str, runs, writer_groups, workload_config=None):
+def generate_workload_html(out_base: Path, workload_name: str, runs, writer_groups, workload_config=None, get_store_rank=None):
     """Generate a consolidated report for a specific workload."""
     # Summary table
     summary_rows = ""
@@ -824,7 +842,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         adapter = row["adapter"]
         writers = row["writers"]
         readers = row["readers"]
-        return (writers, readers, adapter)
+        rank = get_store_rank(adapter) if get_store_rank else 0
+        return (writers, readers, rank, adapter)
 
     for run in sorted(runs, key=row_key):
         adapter = run["adapter"]
@@ -1404,71 +1423,89 @@ def main():
             plot_throughput(run["_throughput_df"], report_dir / "throughput.png", report_dir / "throughput_data.json")
             generate_html(report_dir, run)
 
-        # Generate per-workload consolidated reports for this session
-        workload_summaries = {}
-        all_adapters = set()
-        for workload_name, workload_runs in workload_groups.items():
-            print(f"  Processing workload: {workload_name}")
+    # Generate per-workload consolidated reports for this session
+    workload_summaries = {}
+    all_adapters = set()
 
-            writer_groups = defaultdict(list)
-            adapters_set = set()
-            writer_counts_set = set()
+    # Get store order from session_config
+    store_order = []
+    if session_config and "stores" in session_config:
+        stores_val = session_config["stores"]
+        if isinstance(stores_val, list):
+            store_order = stores_val
+        elif isinstance(stores_val, str):
+            store_order = [stores_val]
+    
+    store_order_map = {name: i for i, name in enumerate(store_order)}
 
-            first_run = workload_runs[0] if workload_runs else {}
-            is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
-            worker_label = "reader" if is_readers else "writer"
-            worker_suffix = "r" if is_readers else "w"
+    def get_store_rank(adapter_name):
+        return store_order_map.get(adapter_name, 999)
 
-            for run in workload_runs:
-                writers = run["writers"]
-                readers = run["readers"]
-                wc = readers if is_readers else writers
-                adapter = run["adapter"]
-                writer_groups[wc].append((adapter, run["_throughput_df"], run))
-                adapters_set.add(adapter)
-                writer_counts_set.add(wc)
-                all_adapters.add(adapter)
+    for workload_name, workload_runs in workload_groups.items():
+        print(f"  Processing workload: {workload_name}")
 
-            workload_dir = published_session_dir / workload_name
-            workload_dir.mkdir(parents=True, exist_ok=True)
+        writer_groups = defaultdict(list)
+        adapters_set = set()
+        writer_counts_set = set()
 
-            for wc, run_data in sorted(writer_groups.items()):
-                # Plot latency comparison using JSON percentiles
-                latency_run_data = [(adapter, run) for adapter, _, run in run_data]
-                plot_comparison_latency_cdf(
-                    latency_run_data,
-                    f"Latency CDF — {wc} {worker_label}(s)",
-                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
-                )
+        first_run = workload_runs[0] if workload_runs else {}
+        is_readers = first_run.get("readers", 0) > 0 and first_run.get("writers", 0) == 0
+        worker_label = "reader" if is_readers else "writer"
+        worker_suffix = "r" if is_readers else "w"
 
-                # Plot throughput comparison
-                throughput_run_data = [(adapter, throughput_df) for adapter, throughput_df, _ in run_data]
-                plot_comparison_throughput(
-                    throughput_run_data,
-                    f"Throughput — {wc} {worker_label}(s)",
-                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
-                    workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
-                )
+        for run in workload_runs:
+            writers = run["writers"]
+            readers = run["readers"]
+            wc = readers if is_readers else writers
+            adapter = run["adapter"]
+            writer_groups[wc].append((adapter, run["_throughput_df"], run))
+            adapters_set.add(adapter)
+            writer_counts_set.add(wc)
+            all_adapters.add(adapter)
 
-            if len(writer_groups) > 1:
-                plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png")
-                plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png")
-                plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png")
-                plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png")
-                plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png")
-                plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png")
+        workload_dir = published_session_dir / workload_name
+        workload_dir.mkdir(parents=True, exist_ok=True)
 
-            plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
-            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config)
+        for wc, run_data in sorted(writer_groups.items()):
+            # Sort run_data by store order before plotting
+            run_data = sorted(run_data, key=lambda x: get_store_rank(x[0]))
+            
+            # Plot latency comparison using JSON percentiles
+            latency_run_data = [(adapter, run) for adapter, _, run in run_data]
+            plot_comparison_latency_cdf(
+                latency_run_data,
+                f"Latency CDF — {wc} {worker_label}(s)",
+                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png",
+            )
 
-            workload_summaries[workload_name] = {
-                'run_count': len(workload_runs),
-                'adapters': adapters_set,
-                'writer_counts': writer_counts_set,
-            }
+            # Plot throughput comparison
+            throughput_run_data = [(adapter, throughput_df) for adapter, throughput_df, _ in run_data]
+            plot_comparison_throughput(
+                throughput_run_data,
+                f"Throughput — {wc} {worker_label}(s)",
+                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png",
+                workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput_data.json",
+            )
 
-        # Generate session index
-        generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
+        if len(writer_groups) > 1:
+            plot_throughput_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_throughput.png", get_store_rank)
+            plot_p50_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p50.png", get_store_rank)
+            plot_p99_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p99.png", get_store_rank)
+            plot_p999_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_p999.png", get_store_rank)
+            plot_peak_cpu_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_cpu.png", get_store_rank)
+            plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png", get_store_rank)
+
+        plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png")
+        generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config, get_store_rank)
+
+        workload_summaries[workload_name] = {
+            'run_count': len(workload_runs),
+            'adapters': adapters_set,
+            'writer_counts': writer_counts_set,
+        }
+
+    # Generate session index
+    generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
 
     # Generate top-level index
     generate_top_level_index(raw_base, published_base)
