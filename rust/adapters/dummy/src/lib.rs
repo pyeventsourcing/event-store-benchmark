@@ -46,6 +46,9 @@ impl StoreManager for DummyStoreManager {
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(DummyAdapter))
     }
+    async fn logs(&self) -> Result<String> {
+        Ok(String::new())
+    }
 }
 
 pub struct DummyAdapter;

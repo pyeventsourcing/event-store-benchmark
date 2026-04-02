@@ -177,6 +177,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         let (
             container_metrics,
             workload_results,
+            container_logs,
         ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
             Ok(res) => res,
             Err(e) => {
@@ -198,6 +199,11 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
         // Write workload results
         workload_results.write_to_dir(&workload_results_path)?;
+
+        // Write container logs
+        if !container_logs.is_empty() {
+            fs::write(workload_results_path.join("container.log"), container_logs)?;
+        }
 
         println!(
             "✓ {} on {} completed",

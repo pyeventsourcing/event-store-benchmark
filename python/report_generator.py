@@ -65,6 +65,13 @@ def load_performance_run(run_dir: Path):
     with open(throughput_file) as f:
         throughput_data = json.load(f)
 
+    # Read container logs if available
+    container_logs = ""
+    logs_file = run_dir / "container.log"
+    if logs_file.exists():
+        with open(logs_file, "r", errors="replace") as f:
+            container_logs = f.read()
+
     return {
         "path": run_dir,
         "workload_name": config_data["name"],
@@ -74,6 +81,7 @@ def load_performance_run(run_dir: Path):
         "container": container_data,
         "throughput_samples": throughput_data,
         "latency_percentiles": latency_data,
+        "container_logs": container_logs,
     }
 
 
@@ -800,6 +808,16 @@ def generate_html(report_dir: Path, run):
     latency_img = report_dir / "latency_cdf.png"
     throughput_img = report_dir / "throughput.png"
 
+    logs_html = ""
+    if run.get("container_logs"):
+        logs_html = f"""
+  <div class='row'>
+    <div class='card' style='width: 100%;'>
+      <h2>Container Logs</h2>
+      <pre style='background: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; max-height: 500px; overflow-y: auto;'>{run['container_logs']}</pre>
+    </div>
+  </div>"""
+
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -809,7 +827,7 @@ def generate_html(report_dir: Path, run):
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2 {{ margin-top: 1.2rem; }}
-    .row {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
+    .row {{ display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }}
     .card {{ border: 1px solid #eee; border-radius: 8px; padding: 1rem; }}
   </style>
 </head>
@@ -827,6 +845,7 @@ def generate_html(report_dir: Path, run):
       <img src='{throughput_img.name}' width='560'>
     </div>
   </div>
+  {logs_html}
 </body>
 </html>
 """

@@ -11,7 +11,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(ContainerMetrics, WorkloadResults)> {
+) -> Result<(ContainerMetrics, WorkloadResults, String)> {
     // Start store container
     let store_name = store.name();
     if !crate::is_image_pulled(store_name) {
@@ -126,8 +126,17 @@ pub async fn execute_run(
         }
     }
 
+    // Get container logs before stopping
+    let logs = match store.logs().await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Failed to capture container logs: {}", e);
+            String::new()
+        }
+    };
+
     // Stop container
     store.stop().await?;
 
-    Ok((container_metrics, workload_results))
+    Ok((container_metrics, workload_results, logs))
 }

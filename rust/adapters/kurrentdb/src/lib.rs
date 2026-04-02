@@ -78,6 +78,21 @@ impl StoreManager for KurrentDbStoreManager {
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(KurrentDbAdapter::new(&self.uri.clone().unwrap())?))
     }
+
+    async fn logs(&self) -> Result<String> {
+        if let Some(container) = &self.container {
+            let stdout = container.stdout_to_vec().await?;
+            let stderr = container.stderr_to_vec().await?;
+            let mut logs = String::from_utf8_lossy(&stdout).to_string();
+            if !stderr.is_empty() {
+                logs.push_str("\n--- STDERR ---\n");
+                logs.push_str(&String::from_utf8_lossy(&stderr));
+            }
+            Ok(logs)
+        } else {
+            Ok(String::new())
+        }
+    }
 }
 
 // Lightweight adapter - just wraps a client

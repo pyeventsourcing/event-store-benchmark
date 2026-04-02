@@ -63,6 +63,9 @@ pub trait StoreManager: Send + Sync {
 
     /// Create a new adapter instance (client)
     fn create_adapter(&self) -> anyhow::Result<Arc<dyn EventStoreAdapter>>;
+
+    /// Get logs from the container
+    async fn logs(&self) -> anyhow::Result<String>;
 }
 
 /// Helper for managing store data directories
