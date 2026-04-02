@@ -1,14 +1,16 @@
 name: scaling-readers
 workload_type: performance
 mode: read
-duration_seconds: 6
+warmup_seconds: 10
+duration_seconds: 10
 concurrency:
   readers: [1, 2, 4, 8, 16, 32]
+  writers: 0
 operations:
   write:
     event_size_bytes: 256
   read:
-    batch_size: 100
+    limit: 10
 setup:
   prepopulate_events: 5000
   prepopulate_streams: 500
