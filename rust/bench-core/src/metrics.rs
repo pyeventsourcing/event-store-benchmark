@@ -4,7 +4,7 @@ use anyhow::Result;
 use hdrhistogram::Histogram;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::time::{Duration};
+use std::time::{Duration, Instant};
 
 /// Throughput time-series sample: elapsed time from workload start and cumulative operation count
 #[derive(Debug, Clone, Serialize)]
@@ -95,6 +95,51 @@ impl WorkloadResults {
 #[derive(Clone, Debug)]
 pub struct LatencyRecorder {
     pub hist: Histogram<u64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ThroughputRecorder {
+    pub counts: Vec<u64>,
+    pub samples_per_second: u64,
+    pub start_time: Instant,
+}
+
+impl ThroughputRecorder {
+    pub fn new(samples_per_second: u64, num_intervals: usize, start_time: Instant) -> Self {
+        Self {
+            counts: vec![0; num_intervals + 1],
+            samples_per_second,
+            start_time,
+        }
+    }
+
+    pub fn record(&mut self, now: Instant, count: u64) -> bool {
+        let elapsed = now.duration_since(self.start_time).as_secs_f64();
+        if elapsed > 0.0 {
+            let interval = (elapsed * self.samples_per_second as f64) as usize;
+            if interval < self.counts.len() {
+                self.counts[interval] += count;
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn to_samples(&self) -> Vec<ThroughputSample> {
+        let mut samples = Vec::with_capacity(self.counts.len());
+        let mut cumulative_count = 0;
+        for (i, &count) in self.counts.iter().enumerate() {
+            cumulative_count += count;
+            samples.push(ThroughputSample {
+                elapsed_s: i as f64 / self.samples_per_second as f64,
+                count: cumulative_count,
+            });
+        }
+        samples
+    }
 }
 
 impl LatencyRecorder {
