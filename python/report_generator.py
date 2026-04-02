@@ -974,14 +974,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <img src='{workload_name}_scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>p99 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p99.png' width='560'>
+        <h3>p50 Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_p50.png' width='560'>
       </div>
     </div>
     <div class='row'>
       <div class='card'>
-        <h3>p50 Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_p50.png' width='560'>
+        <h3>p99 Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_p99.png' width='560'>
       </div>
       <div class='card'>
         <h3>p99.9 Latency vs {worker_label}</h3>
@@ -990,12 +990,12 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
     </div>
     <div class='row'>
       <div class='card'>
-        <h3>Peak Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
-      </div>
-      <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Peak Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
       </div>
     </div>"""
 
