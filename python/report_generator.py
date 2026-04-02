@@ -135,17 +135,39 @@ def compute_throughput_timeseries(throughput_samples: pd.DataFrame):
     # Calculate throughput (events per second) for each interval
     eps = count_diffs / time_diffs
 
-    # Time points (use the end time of each interval)
-    time_s = df["elapsed_s"].iloc[1:]
-
     # Apply moving average smoothing (window size 3 for 1-second samples)
     window_size = min(3, len(eps))
     eps_smooth = eps.rolling(window=window_size, center=True, min_periods=1).mean()
 
+    # Time points (use the end time of each interval)
+    time_s = df["elapsed_s"].iloc[1:]
+
+    # Add a point at t=0 with 0 throughput to make the stepwise plot look better if it starts from 0
+    # and we want to see the first interval.
+    # However, if we use steps-pre, the value at t1 will be used for [t0, t1].
+    # If the first sample is at t0=0, then the first interval is [0, t1].
+    
+    # We should ensure we have a point at the very beginning of the first interval if we want to show it.
+    # df["elapsed_s"].iloc[0] is typically 0.
+    t0 = df["elapsed_s"].iloc[0]
+    
+    extended_time_s = pd.concat([pd.Series([t0]), time_s])
+    # The throughput for the "point" at t0 doesn't really matter for steps-pre 
+    # as long as we have the value at t1.
+    # But for plotting purposes, we'll repeat the first eps value or use 0.
+    # Actually, with steps-pre, the value at index i is used for interval [i-1, i].
+    # So if we have:
+    # time: [0, 1, 2]
+    # eps:  [?, 100, 200]
+    # Matplotlib with steps-pre will plot 100 from 0 to 1, and 200 from 1 to 2.
+    # So we need to prepend the first time point.
+    extended_eps = pd.concat([pd.Series([eps.iloc[0]]), eps])
+    extended_eps_smooth = pd.concat([pd.Series([eps_smooth.iloc[0]]), eps_smooth])
+
     return {
-        "time_s": time_s.values,
-        "throughput_eps": eps.values,
-        "throughput_eps_smooth": eps_smooth.values,
+        "time_s": extended_time_s.values,
+        "throughput_eps": extended_eps.values,
+        "throughput_eps_smooth": extended_eps_smooth.values,
     }
 
 
@@ -169,8 +191,8 @@ def plot_throughput(throughput_samples: pd.DataFrame, out_path: Path, data_path:
     plt.figure(figsize=(6, 4))
     # Plot raw count deltas with thin line and markers
     plt.plot(result["time_s"], result["throughput_eps"],
-             linewidth=2.0, alpha=0.9, color='#1f77b4', marker='o',
-             markersize=3)
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
+             markersize=3, drawstyle='steps-pre')
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Throughput (events/sec)")
     plt.title("Throughput over Time")
@@ -235,7 +257,8 @@ def plot_comparison_throughput(run_data, title, out_path: Path, data_path: Path 
         color = get_adapter_color(label)
         # Plot throughput data
         plt.plot(result["time_s"], result["throughput_eps"],
-                label=label, color=color, linewidth=2.0, alpha=0.9, marker='o', markersize=3)
+                label=label, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                drawstyle='steps-pre')
 
         # Store data
         if data_path:
