@@ -142,23 +142,28 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
             let event = result.map_err(|e| anyhow::anyhow!("{}", e))?;
             let current_offset = offset;
             offset += 1;
-            if let Some(from) = req.from_offset {
-                if current_offset < from {
-                    continue;
-                }
-            }
-            let payload = serde_json::to_vec(event.data())?;
-            let timestamp_ms = event.time().timestamp_millis() as u64;
-            out.push(ReadEvent {
-                offset: current_offset,
-                event_type: event.ty().to_string(),
-                payload,
-                timestamp_ms,
-            });
+
+            let mut met_limit = false;
             if let Some(lim) = req.limit {
                 if out.len() as u64 >= lim {
-                    break;
+                    met_limit = true;
                 }
+            }
+
+            if !met_limit {
+                if let Some(from) = req.from_offset {
+                    if current_offset < from {
+                        continue;
+                    }
+                }
+                let payload = serde_json::to_vec(event.data())?;
+                let timestamp_ms = event.time().timestamp_millis() as u64;
+                out.push(ReadEvent {
+                    offset: current_offset,
+                    event_type: event.ty().to_string(),
+                    payload,
+                    timestamp_ms,
+                });
             }
         }
         Ok(out)

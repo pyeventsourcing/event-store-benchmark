@@ -122,16 +122,29 @@ impl EventStoreAdapter for KurrentDbAdapter {
         let mut out = Vec::new();
         while let Some(event) = stream.next().await? {
             let recorded = event.get_original_event();
-            out.push(ReadEvent {
-                offset: recorded.revision,
-                event_type: recorded.event_type.clone(),
-                payload: recorded.data.to_vec(),
-                timestamp_ms: recorded.created.timestamp_millis() as u64,
-            });
+            let mut met_limit = false;
             if let Some(lim) = req.limit {
-                if out.len() as u64 >= lim {
-                    break;
+                if (out.len() as u64) < lim {
+                    out.push(ReadEvent {
+                        offset: recorded.revision,
+                        event_type: recorded.event_type.clone(),
+                        payload: recorded.data.to_vec(),
+                        timestamp_ms: recorded.created.timestamp_millis() as u64,
+                    });
+                } else {
+                    met_limit = true;
                 }
+            } else {
+                out.push(ReadEvent {
+                    offset: recorded.revision,
+                    event_type: recorded.event_type.clone(),
+                    payload: recorded.data.to_vec(),
+                    timestamp_ms: recorded.created.timestamp_millis() as u64,
+                });
+            }
+            if met_limit {
+                // Keep draining the stream to avoid RST_STREAM
+                continue;
             }
         }
         Ok(out)

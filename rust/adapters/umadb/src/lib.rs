@@ -127,21 +127,25 @@ impl EventStoreAdapter for UmaDbAdapter {
             )
             .await?;
         let mut out = Vec::new();
-        let mut got: u64 = 0;
         while let Some(item) = rr.next().await {
             match item {
                 Ok(se) => {
-                    out.push(ReadEvent {
-                        offset: se.position,
-                        event_type: se.event.event_type.clone(),
-                        payload: se.event.data.clone(),
-                        timestamp_ms: 0,
-                    });
-                    got += 1;
                     if let Some(lim) = req.limit {
-                        if got >= lim {
-                            break;
+                        if (out.len() as u64) < lim {
+                            out.push(ReadEvent {
+                                offset: se.position,
+                                event_type: se.event.event_type.clone(),
+                                payload: se.event.data.clone(),
+                                timestamp_ms: 0,
+                            });
                         }
+                    } else {
+                        out.push(ReadEvent {
+                            offset: se.position,
+                            event_type: se.event.event_type.clone(),
+                            payload: se.event.data.clone(),
+                            timestamp_ms: 0,
+                        });
                     }
                 }
                 Err(_status) => break,
