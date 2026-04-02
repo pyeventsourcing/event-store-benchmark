@@ -73,38 +73,6 @@ impl Workload {
 pub struct WorkloadFactory;
 
 impl WorkloadFactory {
-    /// Create a workload from YAML configuration
-    pub fn create_from_yaml(yaml_config: &str, seed: u64) -> Result<Workload> {
-        // Parse just enough to determine workload type
-        let value: Value = serde_yaml::from_str(yaml_config)?;
-
-        let workload_type = value
-            .get("workload_type")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'workload_type' field in config"))?;
-
-        match workload_type {
-            "performance" => {
-                let config: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
-                let workload = PerformanceWorkload::from_config(config, seed)?;
-                Ok(Workload::Performance(workload))
-            }
-            "durability" => {
-                let workload = DurabilityWorkload::from_yaml(yaml_config)?;
-                Ok(Workload::Durability(workload))
-            }
-            "consistency" => {
-                let workload = ConsistencyWorkload::from_yaml(yaml_config)?;
-                Ok(Workload::Consistency(workload))
-            }
-            "operational" => {
-                let workload = OperationalWorkload::from_yaml(yaml_config)?;
-                Ok(Workload::Operational(workload))
-            }
-            _ => Err(anyhow::anyhow!("Unknown workload_type: {}", workload_type)),
-        }
-    }
-
     /// Extract the workload name from YAML config
     pub fn extract_workload_name(yaml_config: &str) -> Result<String> {
         let value: Value = serde_yaml::from_str(yaml_config)?;

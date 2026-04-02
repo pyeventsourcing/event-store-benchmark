@@ -56,9 +56,16 @@ impl EventStoreAdapter for DummyAdapter {
         precise_delay(Duration::from_micros(5000)).await;
         Ok(())
     }
-    async fn read(&self, _req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         precise_delay(Duration::from_micros(5000)).await;
-        Ok(vec![])
+        Ok((0..req.limit.unwrap_or(1))
+            .map(|_| ReadEvent {
+                offset: 0,
+                event_type: String::from("DummyEvent"),
+                payload: vec![],
+                timestamp_ms: 0,
+            })
+            .collect())
     }
 }
 

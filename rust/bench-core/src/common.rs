@@ -4,13 +4,12 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 
 /// Setup/prepopulation configuration for workloads that need data seeding
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SetupConfig {
     /// Number of events to prepopulate during setup phase
     pub prepopulate_events: u64,
     /// Number of streams to distribute prepopulated events across
-    #[serde(default)]
-    pub prepopulate_streams: Option<u64>,
+    pub prepopulate_streams: u64,
 }
 
 fn pulled_images() -> &'static Mutex<HashSet<String>> {

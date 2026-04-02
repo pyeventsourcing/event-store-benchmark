@@ -82,7 +82,7 @@ pub async fn execute_run(
         None
     };
 
-    // Extract workload details and execute based on type
+    // Execute workload
     let workload_res = tokio::select! {
         res = workload.execute(store.as_ref(), cancel_token.clone()) => res,
         _ = cancel_token.cancelled() => {
@@ -101,14 +101,7 @@ pub async fn execute_run(
         }
     };
 
-    if workload_results.throughput_samples.len() >= 2 {
-        let first_sample = workload_results.throughput_samples.first().unwrap();
-        let last_sample = workload_results.throughput_samples.last().unwrap();
-        let duration = last_sample.elapsed_s - first_sample.elapsed_s;
-        let count_delta = last_sample.count - first_sample.count;
-        let throughput = (count_delta as f64) / duration.max(0.001);
-        println!("Duration: {:.2}s, Throughput: {:.2} eps", duration, throughput);
-    }
+    workload_results.print_summary();
 
     // Collect container metrics
     let mut container_metrics = ContainerMetrics {
@@ -138,5 +131,3 @@ pub async fn execute_run(
 
     Ok((container_metrics, workload_results))
 }
-
-// Performance workload is handled directly in the match above now

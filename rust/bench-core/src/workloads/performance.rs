@@ -16,21 +16,17 @@ use crate::EventStoreAdapter;
 pub struct PerformanceConfig {
     pub name: String,
     pub mode: PerformanceMode,
+    #[serde(default)]
+    pub warmup_seconds: u64,
     pub duration_seconds: u64,
     pub concurrency: ConcurrencyConfig,
     pub operations: OperationConfig,
     #[serde(default)]
-    pub setup: Option<SetupConfig>,
+    pub setup: SetupConfig,
     pub stores: StoreValue,
 }
 
 impl PerformanceConfig {
-    /// Check if this config represents a sweep (has multiple values)
-    pub fn is_sweep(&self) -> bool {
-        matches!(self.concurrency.writers, ConcurrencyValue::Multiple(_))
-            || matches!(self.concurrency.readers, ConcurrencyValue::Multiple(_))
-    }
-
     /// Expand a sweep config into multiple single-value configs
     pub fn expand(&self) -> Vec<Self> {
         let writers_vec = self.concurrency.writers.as_vec();
@@ -59,7 +55,6 @@ impl PerformanceConfig {
 pub enum PerformanceMode {
     Write,
     Read,
-    Mixed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +68,13 @@ impl ConcurrencyValue {
     pub fn as_vec(&self) -> Vec<usize> {
         match self {
             ConcurrencyValue::Single(v) => vec![*v],
-            ConcurrencyValue::Multiple(v) => v.clone(),
+            ConcurrencyValue::Multiple(v) => {
+                if v.len() == 0 {
+                    ConcurrencyValue::default().as_vec()
+                } else {
+                    v.clone()
+                }
+            },
         }
     }
 
@@ -81,6 +82,13 @@ impl ConcurrencyValue {
         match self {
             ConcurrencyValue::Single(v) => *v,
             ConcurrencyValue::Multiple(v) => v.first().copied().unwrap_or(0),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ConcurrencyValue::Single(_) => 1,
+            ConcurrencyValue::Multiple(v) => v.len(),
         }
     }
 }
@@ -128,37 +136,27 @@ pub struct ConcurrencyConfig {
     pub readers: ConcurrencyValue,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OperationConfig {
     #[serde(default)]
-    pub write: Option<WriteOpConfig>,
+    pub write: WriteOpConfig,
     #[serde(default)]
-    pub read: Option<ReadOpConfig>,
+    pub read: ReadOpConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WriteOpConfig {
     pub event_size_bytes: usize,
-    #[serde(default = "default_batch_size")]
-    pub batch_size: usize,
-    #[serde(default)]
-    pub probability: Option<f64>, // For mixed mode
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReadOpConfig {
-    #[serde(default = "default_read_batch")]
-    pub batch_size: usize,
-    #[serde(default)]
-    pub probability: Option<f64>, // For mixed mode
+    #[serde(default = "default_read_limit")]
+    pub limit: usize,
 }
 
-fn default_batch_size() -> usize {
+fn default_read_limit() -> usize {
     1
-}
-
-fn default_read_batch() -> usize {
-    100
 }
 
 /// Performance workload - generic event store read/write patterns
@@ -178,9 +176,9 @@ impl PerformanceWorkload {
                         "Write mode requires writers > 0 in concurrency config"
                     ));
                 }
-                if config.operations.write.is_none() {
+                if config.concurrency.readers.len() != 1 {
                     return Err(anyhow::anyhow!(
-                        "Write mode requires 'write' operation config"
+                        "Write mode requires exactly one readers value"
                     ));
                 }
             }
@@ -190,19 +188,9 @@ impl PerformanceWorkload {
                         "Read mode requires readers > 0 in concurrency config"
                     ));
                 }
-                if config.operations.read.is_none() {
-                    return Err(anyhow::anyhow!("Read mode requires 'read' operation config"));
-                }
-            }
-            PerformanceMode::Mixed => {
-                if config.concurrency.writers.first() == 0 && config.concurrency.readers.first() == 0 {
+                if config.concurrency.writers.len() != 1 {
                     return Err(anyhow::anyhow!(
-                        "Mixed mode requires writers > 0 or readers > 0"
-                    ));
-                }
-                if config.operations.write.is_none() && config.operations.read.is_none() {
-                    return Err(anyhow::anyhow!(
-                        "Mixed mode requires at least one of 'write' or 'read' operation config"
+                        "Read mode requires exactly one writers value"
                     ));
                 }
             }
@@ -222,66 +210,63 @@ impl PerformanceWorkload {
 
     /// Prepare the workload (e.g., prepopulate data for read workloads)
     pub async fn prepare(&self, store: &dyn StoreManager) -> Result<()> {
-        if let Some(setup_config) = &self.config.setup {
-            let setup_start = Instant::now();
+        let setup_start = Instant::now();
 
-            let total_events = setup_config.prepopulate_events;
-            let num_streams = setup_config
-                .prepopulate_streams
-                .unwrap_or(setup_config.prepopulate_events);
-            println!(
-                "Running setup phase: prepopulating {} events in {} streams...",
-                total_events, num_streams
-            );
-            let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;
-
-            // Prepopulate events across streams concurrently
-            let mut setup_set = JoinSet::new();
-            let concurrency = 10;
-            let streams_per_task = (num_streams as f64 / concurrency as f64).ceil() as usize;
-
-            let write_config = self.config.operations.write.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("Setup requires write operation config for prepopulation")
-            })?;
-            let event_size = write_config.event_size_bytes;
-
-            for task_idx in 0..concurrency {
-                let start_stream = task_idx * streams_per_task;
-                let end_stream = (start_stream + streams_per_task).min(num_streams as usize);
-                if start_stream >= end_stream {
-                    continue;
-                }
-
-                let adapter = store.create_adapter()?;
-
-                let stream_prefix = self.stream_prefix.clone();
-                setup_set.spawn(async move {
-                    for stream_idx in start_stream..end_stream {
-                        let stream_name = format!("{}{}", stream_prefix, stream_idx);
-                        let mut events = Vec::with_capacity(events_per_stream as usize);
-                        for _ in 0..events_per_stream {
-                            events.push(EventData {
-                                payload: vec![0u8; event_size],
-                                event_type: "setup".to_string(),
-                                tags: vec![stream_name.clone()],
-                            });
-                        }
-                        adapter.append(events).await?;
-                    }
-                    Ok::<(), anyhow::Error>(())
-                });
-            }
-
-            while let Some(res) = setup_set.join_next().await {
-                res??;
-            }
-
-            let setup_duration = setup_start.elapsed();
-            println!(
-                "Setup phase completed in {:.2} seconds",
-                setup_duration.as_secs_f64()
-            );
+        let total_events = self.config.setup.prepopulate_events;
+        let mut num_streams = self.config.setup.prepopulate_streams;
+        if num_streams == 0 {
+            num_streams = total_events
         }
+        println!(
+            "Running setup phase: prepopulating {} events in {} streams...",
+            total_events, num_streams
+        );
+        let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;
+
+        // Prepopulate events across streams concurrently
+        let mut setup_set = JoinSet::new();
+        let concurrency = 10;
+        let streams_per_task = (num_streams as f64 / concurrency as f64).ceil() as usize;
+
+        let write_config = self.config.operations.write.clone();
+        let event_size = write_config.event_size_bytes;
+
+        for task_idx in 0..concurrency {
+            let start_stream = task_idx * streams_per_task;
+            let end_stream = (start_stream + streams_per_task).min(num_streams as usize);
+            if start_stream >= end_stream {
+                continue;
+            }
+
+            let adapter = store.create_adapter()?;
+
+            let stream_prefix = self.stream_prefix.clone();
+            setup_set.spawn(async move {
+                for stream_idx in start_stream..end_stream {
+                    let stream_name = format!("{}{}", stream_prefix, stream_idx);
+                    let mut events = Vec::with_capacity(events_per_stream as usize);
+                    for _ in 0..events_per_stream {
+                        events.push(EventData {
+                            payload: vec![0u8; event_size],
+                            event_type: "setup".to_string(),
+                            tags: vec![stream_name.clone()],
+                        });
+                    }
+                    adapter.append(events).await?;
+                }
+                Ok::<(), anyhow::Error>(())
+            });
+        }
+
+        while let Some(res) = setup_set.join_next().await {
+            res??;
+        }
+
+        let setup_duration = setup_start.elapsed();
+        println!(
+            "Setup phase completed in {:.2} seconds",
+            setup_duration.as_secs_f64()
+        );
 
         Ok(())
     }
@@ -292,27 +277,24 @@ impl PerformanceWorkload {
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
     ) -> Result<WorkloadResults> {
-        match self.config.mode {
-            PerformanceMode::Write => {
-                self.execute_write_workload(store, cancel_token)
-                    .await
-            }
-            PerformanceMode::Read => {
-                self.execute_read_workload(store, cancel_token)
-                    .await
-            }
-            PerformanceMode::Mixed => {
-                self.execute_mixed_workload(store, cancel_token)
-                    .await
+        // Run preparation (prepopulation) if configured
+        self.prepare(store).await?;
+
+        let readers = self.config.concurrency.readers.first();
+        println!("Creating {} reader clients...", readers);
+        let mut reader_adapters = Vec::new();
+        for i in 0..readers {
+            match store.create_adapter() {
+                Ok(adapter) => reader_adapters.push(adapter),
+                Err(e) => {
+                    eprintln!("Failed to create reader {}: {}", i, e);
+                    anyhow::bail!("Failed to create reader {}: {}", i, e);
+                }
             }
         }
-    }
+        println!("All {} reader clients ready", readers);
 
-    async fn execute_write_workload(
-        &self,
-        store: &dyn StoreManager,
-        cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
+
         let writers = self.config.concurrency.writers.first();
         println!("Creating {} writer clients...", writers);
 
@@ -330,30 +312,63 @@ impl PerformanceWorkload {
 
         let mut worker_tasks = JoinSet::new();
 
-        let write_config = self.config.operations.write.as_ref().unwrap();
+        let write_config = self.config.operations.write.clone();
 
         // Per-worker atomic counters to avoid contention
-        let worker_counters: Vec<Arc<AtomicU64>> = (0..writers)
+        let writer_counters: Vec<Arc<AtomicU64>> = (0..writers)
+            .map(|_| Arc::new(AtomicU64::new(0)))
+            .collect();
+
+        // Per-worker atomic counters to avoid contention
+        let reader_counters: Vec<Arc<AtomicU64>> = (0..readers)
             .map(|_| Arc::new(AtomicU64::new(0)))
             .collect();
 
         let has_stopped = Arc::new(AtomicBool::new(false));
-        
+
         // Spawn writer tasks
         for (i, adapter) in writer_adapters.into_iter().enumerate() {
             Self::spawn_writer_task(
                 &mut worker_tasks,
                 adapter,
                 write_config.clone(),
-                worker_counters[i].clone(),
+                writer_counters[i].clone(),
                 has_stopped.clone(),
                 cancel_token.clone(),
+                matches!(self.config.mode, PerformanceMode::Write)
+            );
+        }
+
+        // Spawn reader tasks
+        let read_config = self.config.operations.read.clone();
+        let mut prepopulated_streams = self.config.setup.prepopulate_streams;
+        let prepopulated_events = self.config.setup.prepopulate_events;
+        if prepopulated_streams == 0 {
+            prepopulated_streams = prepopulated_events
+        }
+
+        for (i, adapter) in reader_adapters.into_iter().enumerate() {
+            Self::spawn_reader_task(
+                &mut worker_tasks,
+                adapter,
+                read_config.clone(),
+                self.seed + (i as u64),
+                reader_counters[i].clone(),
+                has_stopped.clone(),
+                cancel_token.clone(),
+                self.stream_prefix.clone(),
+                prepopulated_streams,
+                matches!(self.config.mode, PerformanceMode::Read)
+
             );
         }
 
         // Spawn throughput sampling task
         let throughput_samples = self.spawn_throughput_sampler(
-            worker_counters,
+            match self.config.mode {
+                PerformanceMode::Write => writer_counters,
+                PerformanceMode::Read => reader_counters,
+            },
             cancel_token,
         ).await.expect("throughput samples");
 
@@ -364,7 +379,9 @@ impl PerformanceWorkload {
         let mut latency_histogram = LatencyRecorder::new();
         while let Some(worker_result) = worker_tasks.join_next().await {
             let worker_latencies = worker_result.expect("worker result");
-            latency_histogram.hist.add(&worker_latencies.hist).unwrap();
+            if worker_latencies.is_some() {
+                latency_histogram.hist.add(&worker_latencies.unwrap().hist).unwrap();
+            }
         }
         Ok(WorkloadResults::new(
             serde_json::to_value(&self.config)?,
@@ -375,12 +392,13 @@ impl PerformanceWorkload {
     }
 
     fn spawn_writer_task(
-        worker_tasks: &mut JoinSet<LatencyRecorder>,
+        worker_tasks: &mut JoinSet<Option<LatencyRecorder>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         worker_counter: Arc<AtomicU64>,
         has_stopped: Arc<AtomicBool>,
-        cancel_token: CancellationToken
+        cancel_token: CancellationToken,
+        activate_metrics: bool,
     ) {
         worker_tasks.spawn(async move {
             let mut total_events = 0u64;
@@ -406,13 +424,14 @@ impl PerformanceWorkload {
 
                 let operation_started = Instant::now();
                 if adapter.append(vec![evt]).await.is_ok() {
-                    // Update counter
-                    total_events += 1;
-                    worker_counter.store(total_events, Ordering::Relaxed);
+                    if activate_metrics {
+                        // Update counter
+                        total_events += 1;
+                        worker_counter.store(total_events, Ordering::Relaxed);
 
-                    // Record latency sample
-                    latencies.record(operation_started.elapsed());
-
+                        // Record latency sample
+                        latencies.record(operation_started.elapsed());
+                    }
                     // Increment stream position, maybe reset and change name.
                     stream_position += 1;
                     if stream_position == stream_len {
@@ -422,87 +441,26 @@ impl PerformanceWorkload {
                 }
             }
 
-            latencies
+            if activate_metrics {
+                Some(latencies)
+            } else {
+                None
+            }
         });
     }
 
-    async fn execute_read_workload(
-        &self,
-        store: &dyn StoreManager,
+    fn spawn_reader_task(
+        worker_tasks: &mut JoinSet<Option<LatencyRecorder>>,
+        adapter: Arc<dyn EventStoreAdapter>,
+        read_cfg: ReadOpConfig,
+        seed: u64,
+        worker_counter: Arc<AtomicU64>,
+        has_stopped: Arc<AtomicBool>,
         cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
-        let readers = self.config.concurrency.readers.first();
-        println!("Creating {} reader clients...", readers);
-
-        let mut reader_adapters = Vec::new();
-        for i in 0..readers {
-            match store.create_adapter() {
-                Ok(adapter) => reader_adapters.push(adapter),
-                Err(e) => {
-                    eprintln!("Failed to create reader {}: {}", i, e);
-                    anyhow::bail!("Failed to create reader {}: {}", i, e);
-                }
-            }
-        }
-        println!("All {} reader clients ready", readers);
-
-        let mut worker_tasks = JoinSet::new();
-
-        let read_config = self.config.operations.read.as_ref().unwrap();
-
-        // Per-worker atomic counters to track operations
-        let worker_counters: Vec<Arc<AtomicU64>> = (0..readers)
-            .map(|_| Arc::new(AtomicU64::new(0)))
-            .collect();
-
-        let has_stopped = Arc::new(AtomicBool::new(false));
-
-        let prepopulated_streams = if let Some(setup) = self.config.clone().setup {
-            setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
-        } else {
-            1
-        };
-
-        // Spawn reader tasks
-        for (i, adapter) in reader_adapters.into_iter().enumerate() {
-            Self::spawn_reader_task(
-                &mut worker_tasks,
-                adapter,
-                read_config.clone(),
-                self.seed + (i as u64),
-                worker_counters[i].clone(),
-                has_stopped.clone(),
-                cancel_token.clone(),
-                self.stream_prefix.clone(),
-                prepopulated_streams,
-            );
-        }
-
-        // Spawn throughput sampling task that waits for warmup, then samples
-        let throughput_samples = self.spawn_throughput_sampler(
-            worker_counters.clone(),
-            cancel_token,
-        ).await.expect("throughput task");
-
-        // Stop the workers.
-        has_stopped.store(true, Ordering::Relaxed);
-
-        // Collect results from reader tasks
-        let mut latency_histogram = LatencyRecorder::new();
-        while let Some(worker_result) = worker_tasks.join_next().await {
-            let worker_latencies = worker_result.expect("join");
-            latency_histogram.hist.add(&worker_latencies.hist)?;
-        }
-
-        Ok(WorkloadResults::new(
-            serde_json::to_value(&self.config)?,
-            store.name().to_string(),
-            throughput_samples,
-            latency_histogram,
-        ))
-    }
-
-    fn spawn_reader_task(worker_tasks: &mut JoinSet<LatencyRecorder>, adapter: Arc<dyn EventStoreAdapter>, read_cfg: ReadOpConfig, seed: u64, worker_counter: Arc<AtomicU64>, has_stopped: Arc<AtomicBool>, cancel_token: CancellationToken, stream_prefix: String, prepopulated_streams: u64) {
+        stream_prefix: String,
+        prepopulated_streams: u64,
+        activate_metrics: bool,
+    ) {
         worker_tasks.spawn(async move {
             let mut rng = StdRng::seed_from_u64(seed);
             let mut latencies = LatencyRecorder::new();
@@ -514,182 +472,57 @@ impl PerformanceWorkload {
                 let req = ReadRequest {
                     stream: format!("{}{}", stream_prefix, stream_idx),
                     from_offset: None,
-                    limit: Some(read_cfg.batch_size as u64),
+                    limit: Some(read_cfg.limit as u64),
                 };
 
                 let operation_started = Instant::now();
                 let result = adapter.read(req).await;
 
-                if let Ok(events) = result {
-                    total_events_read += events.len() as u64;
-                    worker_counter.store(total_events_read, Ordering::Relaxed);
-                }
-
-                // Record latency for all operations
-                latencies.record(operation_started.elapsed());
-            }
-            latencies
-        });
-    }
-
-    async fn execute_mixed_workload(
-        &self,
-        store: &dyn StoreManager,
-        cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
-        let writers = self.config.concurrency.writers.first();
-        let readers = self.config.concurrency.readers.first();
-        let total_workers = writers + readers;
-
-        println!("Creating {} worker clients ({} writers, {} readers)...", total_workers, writers, readers);
-
-        let mut worker_adapters = Vec::new();
-        for i in 0..total_workers {
-            match store.create_adapter() {
-                Ok(adapter) => worker_adapters.push(adapter),
-                Err(e) => {
-                    eprintln!("Failed to create worker {}: {}", i, e);
-                    anyhow::bail!("Failed to create worker {}: {}", i, e);
-                }
-            }
-        }
-        println!("All {} worker clients ready", total_workers);
-
-        let mut worker_tasks = JoinSet::new();
-
-        // Per-worker atomic counters to track operations
-        let worker_counters: Vec<Arc<AtomicU64>> = (0..total_workers)
-            .map(|_| Arc::new(AtomicU64::new(0)))
-            .collect();
-
-        let has_stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-        let write_prob = self
-            .config
-            .operations
-            .write
-            .as_ref()
-            .and_then(|w| w.probability)
-            .unwrap_or(0.5);
-
-        // Spawn worker tasks
-        for (i, adapter) in worker_adapters.into_iter().enumerate() {
-            let config = self.config.clone();
-            let seed = self.seed + (i as u64);
-            let is_writer = i < writers;
-            let worker_counter = worker_counters[i].clone();
-            let has_stopped = has_stopped.clone();
-            let cancel_token = cancel_token.clone();
-
-            worker_tasks.spawn(async move {
-                let mut rng = StdRng::seed_from_u64(seed);
-                let mut latencies = LatencyRecorder::new();
-                let mut events_written = 0u64;
-                let mut events_read = 0u64;
-                let prepopulated_streams = if let Some(setup) = config.setup {
-                    setup.prepopulate_streams.unwrap_or(setup.prepopulate_events)
-                } else {
-                    1
-                };
-
-                let write_cfg = config.operations.write.as_ref();
-                let read_cfg = config.operations.read.as_ref();
-
-                while !has_stopped.load(Ordering::Relaxed) && !cancel_token.is_cancelled() {
-                    let stream_idx = rng.gen_range(0..prepopulated_streams);
-
-                    // Decide operation based on worker type and probability
-                    let should_write = if is_writer {
-                        write_cfg.is_some() && (read_cfg.is_none() || rng.gen_bool(write_prob))
-                    } else {
-                        false
-                    };
-
-                    let operation_started = Instant::now();
-
-                    if should_write {
-                        if let Some(write_cfg) = write_cfg {
-                            let evt = EventData {
-                                payload: vec![0u8; write_cfg.event_size_bytes],
-                                event_type: "test".to_string(),
-                                tags: vec![format!("stream-{}", stream_idx)],
-                            };
-                            if adapter.append(vec![evt]).await.is_ok() {
-                                events_written += 1;
-                                worker_counter.store(events_written, Ordering::Relaxed);
-                            }
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        if let Some(read_cfg) = read_cfg {
-                            let req = ReadRequest {
-                                stream: format!("stream-{}", stream_idx),
-                                from_offset: None,
-                                limit: Some(read_cfg.batch_size as u64),
-                            };
-                            let result = adapter.read(req).await;
-                            if let Ok(events) = result {
-                                events_read += events.len() as u64;
-                                worker_counter.store(events_read, Ordering::Relaxed);
-                            }
-                        } else {
-                            continue;
-                        }
-                    };
+                if activate_metrics {
+                    if let Ok(events) = result {
+                        total_events_read += events.len() as u64;
+                        worker_counter.store(total_events_read, Ordering::Relaxed);
+                    }
 
                     // Record latency for all operations
                     latencies.record(operation_started.elapsed());
                 }
-                latencies
-            });
-        }
-
-        // Spawn throughput sampling task that waits for warmup, then samples
-        let throughput_samples = self.spawn_throughput_sampler(
-            worker_counters.clone(),
-            cancel_token,
-        ).await.expect("throughput task");
-
-        // Stop the workers.
-        has_stopped.store(true, Ordering::Relaxed);
-
-        // Collect results from worker tasks
-        let mut latency_histogram = LatencyRecorder::new();
-        while let Some(worker_result) = worker_tasks.join_next().await {
-            let worker_latencies = worker_result.expect("join");
-            latency_histogram.hist.add(&worker_latencies.hist)?;
-        }
-
-        Ok(WorkloadResults::new(
-            serde_json::to_value(&self.config)?,
-            store.name().to_string(),
-            throughput_samples,
-            latency_histogram,
-        ))
+            }
+            if activate_metrics {
+                Some(latencies)
+            } else {
+                None
+            }
+        });
     }
-
+    
     fn spawn_throughput_sampler(
         &self,
         worker_counters: Vec<Arc<AtomicU64>>,
         cancel_token: CancellationToken,
     ) -> JoinHandle<Vec<ThroughputSample>> {
-        let duration_seconds = self.config.duration_seconds;
-        let samples_per_second = 2;
-        let num_intervals = duration_seconds * samples_per_second;
-        let cancel_token_throughput = cancel_token.clone();
+
+        let config = self.config.clone();
 
         tokio::spawn(async move {
+
+            let warmup_seconds = config.warmup_seconds;
+            println!("Warmup: {}", warmup_seconds);
             // Wait for warmup
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(warmup_seconds)).await;
+
+            let duration_seconds = config.duration_seconds;
+            println!("Duration: {}", duration_seconds);
 
             // Pre-allocate vector for N+1 samples
+            let samples_per_second = 2;
+            let num_intervals = duration_seconds * samples_per_second;
             let mut samples = Vec::with_capacity((num_intervals + 1) as usize);
             let sampling_started = Instant::now();
 
             // Take samples at fixed intervals (N+1 total for N seconds)
             for i in 0..=num_intervals {
-                if cancel_token_throughput.is_cancelled() {
+                if cancel_token.is_cancelled() {
                     break;
                 }
                 let total_count: u64 = worker_counters
@@ -712,7 +545,7 @@ impl PerformanceWorkload {
                     };
                     tokio::select! {
                         _ = tokio::time::sleep(sleep_duration) => {}
-                        _ = cancel_token_throughput.cancelled() => { break; }
+                        _ = cancel_token.cancelled() => { break; }
                     }
                 }
             }

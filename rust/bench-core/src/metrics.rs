@@ -45,6 +45,19 @@ pub struct WorkloadResults {
 }
 
 impl WorkloadResults {
+    pub(crate) fn print_summary(&self) {
+        if self.throughput_samples.len() >= 2 {
+            let first_sample = self.throughput_samples.first().unwrap();
+            let last_sample = self.throughput_samples.last().unwrap();
+            let duration = last_sample.elapsed_s - first_sample.elapsed_s;
+            let count_delta = last_sample.count - first_sample.count;
+            let throughput = (count_delta as f64) / duration.max(0.001);
+            println!("Throughput: {:.2} eps", throughput);
+        }
+    }
+}
+
+impl WorkloadResults {
     pub fn new(
         workload_config: serde_json::Value,
         store_name: String,

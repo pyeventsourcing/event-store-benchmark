@@ -36,7 +36,10 @@ def load_performance_runs(session_dir: Path):
         if not run_path.is_dir():
             continue
 
-        runs.append(load_performance_run(run_path))
+        try:
+            runs.append(load_performance_run(run_path))
+        except FileNotFoundError as e:
+            print(e)
     
     # Filter out None values in case parse_run_dir fails
     return [r for r in runs if r is not None]

@@ -102,10 +102,6 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
     println!("Session ID: {}", session_id);
 
-    // Create raw results directory
-    let session_results_path = PathBuf::from("results/raw").join(&session_id);
-    fs::create_dir_all(&session_results_path)?;
-
     // Read config file
     let session_config_yaml = fs::read_to_string(session_config_path)?;
 
@@ -127,6 +123,14 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
     // Generate workload variants
     let (workloads, config_json)  = WorkloadFactory::generate_workloads(&session_config_yaml, actual_seed)?;
+    println!("Total runs to execute: {}", workloads.len());
+    if workloads.len() == 0 {
+        return Ok(())
+    }
+
+    // Create raw results directory
+    let session_results_path = PathBuf::from("results/raw").join(&session_id);
+    fs::create_dir_all(&session_results_path)?;
 
     // Record session config
     fs::write(session_results_path.join("config.json"), config_json)?;
@@ -146,7 +150,6 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     let environment_json = serde_json::to_string_pretty(&environment_info)?;
     fs::write(session_results_path.join("environment.json"), environment_json)?;
 
-    println!("Total runs to execute: {}", workloads.len());
     for workload in workloads {
 
         if cancel_token.is_cancelled() {
