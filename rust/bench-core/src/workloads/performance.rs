@@ -19,6 +19,8 @@ pub struct PerformanceConfig {
     #[serde(default)]
     pub warmup_seconds: u64,
     pub duration_seconds: u64,
+    #[serde(default)]
+    pub samples_per_second: u64,
     pub concurrency: ConcurrencyConfig,
     pub operations: OperationConfig,
     #[serde(default)]
@@ -514,13 +516,18 @@ impl PerformanceWorkload {
             let duration_seconds = config.duration_seconds;
             println!("Duration: {}", duration_seconds);
 
+            // Decide samples per second
+            let samples_per_second = if config.samples_per_second == 0 {
+                1
+            } else {
+                config.samples_per_second
+            };
             // Pre-allocate vector for N+1 samples
-            let samples_per_second = 2;
             let num_intervals = duration_seconds * samples_per_second;
             let mut samples = Vec::with_capacity((num_intervals + 1) as usize);
             let sampling_started = Instant::now();
 
-            // Take samples at fixed intervals (N+1 total for N seconds)
+            // Take samples at fixed intervals
             for i in 0..=num_intervals {
                 if cancel_token.is_cancelled() {
                     break;
@@ -535,7 +542,7 @@ impl PerformanceWorkload {
                     count: total_count,
                 });
 
-                // Sleep until next interval (except after last sample)
+                // Sleep until the next interval (except after the last sample)
                 if i < num_intervals {
                     let sleep_duration = {
                         let target_time =
