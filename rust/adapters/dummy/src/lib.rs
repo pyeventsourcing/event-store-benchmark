@@ -84,7 +84,7 @@ impl Scheduler {
             })
             .expect("failed to spawn scheduler thread");
 
-        Arc::new(Self { tx, delay: Duration::from_micros(10000) })
+        Arc::new(Self { tx, delay: Duration::from_micros(1000) })
     }
 
     pub async fn wait(&self, release_at: Instant) {
