@@ -39,9 +39,9 @@ impl PerformanceConfig {
         let readers_vec = self.concurrency.readers.as_vec();
 
         let mut configs = Vec::new();
-        for store in self.stores.as_vec() {
-            for &writers in &writers_vec {
-                for &readers in &readers_vec {
+        for &writers in &writers_vec {
+            for &readers in &readers_vec {
+                for store in self.stores.as_vec() {
                     let mut new_config = self.clone();
                     new_config.concurrency.writers = ConcurrencyValue::Single(writers);
                     new_config.concurrency.readers = ConcurrencyValue::Single(readers);
