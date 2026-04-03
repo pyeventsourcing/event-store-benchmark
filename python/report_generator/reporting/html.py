@@ -5,22 +5,36 @@ from typing import Optional
 import yaml
 
 from ..environment_info import EnvironmentInfo
+from ..data_loader import load_session_metadata
+
+
+def _format_bytes(byte_count):
+    if byte_count is None: return "N/A"
+    power = 1024
+    n = 0
+    power_labels = {0: '', 1: 'K', 2: 'M', 3: 'G', 4: 'T'}
+    while byte_count >= power and n < len(power_labels) - 1:
+        byte_count /= power
+        n += 1
+    return f"{byte_count:.1f}{power_labels[n]}B"
+
+
+def _get_env_summary(env_info: Optional[EnvironmentInfo]) -> str:
+    if not env_info:
+        return "N/A"
+
+    os_name = env_info.os.name
+    cpu_model = env_info.cpu.model
+    container_runtime = env_info.container_runtime
+    container_str = f"{container_runtime.runtime_type} {container_runtime.ncpu} CPU {_format_bytes(container_runtime.mem_total)}"
+
+    return f"{os_name} {cpu_model}, {container_str}"
 
 
 def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
     """Renders the EnvironmentInfo object into a nice HTML table."""
     if not env_info:
         return ""
-
-    def format_bytes(byte_count):
-        if byte_count is None: return "N/A"
-        power = 1024
-        n = 0
-        power_labels = {0: '', 1: 'K', 2: 'M', 3: 'G', 4: 'T'}
-        while byte_count >= power and n < len(power_labels) -1 :
-            byte_count /= power
-            n += 1
-        return f"{byte_count:.1f} {power_labels[n]}B"
 
     fsync_latency_html = "N/A"
     if env_info.disk and env_info.disk.fsync_latency:
@@ -52,7 +66,7 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
                 </tr>
                 <tr>
                     <th>Memory</th>
-                    <td>{format_bytes(env_info.memory.total_bytes)} Total / {format_bytes(env_info.memory.available_bytes)} Available</td>
+                    <td>{_format_bytes(env_info.memory.total_bytes)} Total / {_format_bytes(env_info.memory.available_bytes)} Available</td>
                 </tr>
                 <tr>
                     <th>Disk</th>
@@ -64,7 +78,7 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
                 </tr>
                 <tr>
                     <th>Container Runtime</th>
-                    <td>{env_info.container_runtime.runtime_type} {env_info.container_runtime.version} ({env_info.container_runtime.ncpu} vCPUs, {format_bytes(env_info.container_runtime.mem_total)} Memory)</td>
+                    <td>{env_info.container_runtime.runtime_type} {env_info.container_runtime.version} ({env_info.container_runtime.ncpu} vCPUs, {_format_bytes(env_info.container_runtime.mem_total)} Memory)</td>
                 </tr>
             </table>
         </div>
@@ -278,24 +292,17 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
             continue
 
         try:
-            session_info_file = raw_session_dir / "session.json"
-            session_info = {}
-            if session_info_file.exists():
-                with open(session_info_file, "r") as f:
-                    session_info = json.load(f)
+            metadata = load_session_metadata(raw_session_dir)
+            session_info = metadata["session_info"]
+            env_info = metadata["env_info"]
+            session_configs = metadata["session_configs"]
 
-            session_config_file = raw_session_dir / "config.yaml"
-            session_configs = []
-            if session_config_file.exists():
-                with open(session_config_file, "r") as f:
-                    session_configs = list(yaml.safe_load_all(f))
+            config_file = session_info.get('config_file', 'N/A')
+            workload_name = Path(config_file).stem if config_file != 'N/A' else 'N/A'
 
-            workload_names = []
             all_stores = set()
             for cfg in session_configs:
                 perf_cfg = cfg.get('performance', cfg)
-                if 'name' in perf_cfg:
-                    workload_names.append(perf_cfg['name'])
                 if 'stores' in perf_cfg:
                     stores = perf_cfg['stores']
                     if isinstance(stores, list):
@@ -304,9 +311,10 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
                         all_stores.add(stores)
 
             sessions_summaries[session_id] = {
-                'workload_name': ", ".join(workload_names) if workload_names else "N/A",
+                'workload_name': workload_name,
                 'benchmark_version': session_info.get('benchmark_version', 'N/A'),
                 'stores': list(all_stores),
+                'env_summary': _get_env_summary(env_info),
             }
         except Exception as e:
             print(f"Warning: Could not collect summary for session {session_id} from raw data: {e}")
@@ -319,6 +327,7 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
         <td><a href='{session_id}/index.html'>{session_id}</a></td>
         <td>{summary.get('workload_name', 'N/A')}</td>
         <td>{stores}</td>
+        <td>{summary.get('env_summary', 'N/A')}</td>
         <td>{summary.get('benchmark_version', 'N/A')}</td>
       </tr>"""
 
@@ -342,7 +351,7 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
   <h1>Event Store Benchmark Suite</h1>
   <h2>Benchmark Sessions</h2>
   <table>
-    <tr><th>Session ID</th><th>Workload</th><th>Stores</th><th>Version</th></tr>
+    <tr><th>Session ID</th><th>Workload</th><th>Stores</th><th>Environment</th><th>Version</th></tr>
     {session_rows}
   </table>
 </body>
