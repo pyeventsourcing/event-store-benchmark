@@ -1,35 +1,35 @@
 performance:
-    name: performance-write-test
-    mode: write
-    warmup_seconds: 1
-    duration_seconds: 3
-    samples_per_second: 10
-    concurrency:
-      writers: [1, 4]
-    operations:
-      read:
-        limit: 10
-      write:
-        event_size_bytes: 256
-    setup:
-      prepopulate_events: 500
-      prepopulate_streams: 50
-    stores: [umadb, eventsourcingdb, dummy]
+  name: smoke-test-performance-write
+  mode: write
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 10
+  concurrency:
+    writers: [1, 4]
+  operations:
+    read:
+      limit: 10
+    write:
+      event_size_bytes: 256
+  setup:
+    prepopulate_events: 500
+    prepopulate_streams: 50
+  stores: [umadb, eventsourcingdb, dummy]
 ---
 performance:
-    name: performance-read-test
-    mode: read
-    warmup_seconds: 1
-    duration_seconds: 3
-    samples_per_second: 10
-    concurrency:
-      readers: [1, 4]
-    operations:
-      read:
-        limit: 10
-      write:
-        event_size_bytes: 256
-    setup:
-      prepopulate_events: 500
-      prepopulate_streams: 50
-    stores: [umadb, eventsourcingdb, dummy]
+  name: smoke-test-performance-read
+  mode: read
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 10
+  concurrency:
+    readers: [1, 4]
+  operations:
+    read:
+      limit: 10
+    write:
+      event_size_bytes: 256
+  setup:
+    prepopulate_events: 500
+    prepopulate_streams: 50
+  stores: [umadb, eventsourcingdb, dummy]
