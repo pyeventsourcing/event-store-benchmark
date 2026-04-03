@@ -34,7 +34,7 @@ venv:
 
 # Generate report from raw results
 report:
-	./.venv/bin/python python/report_generator.py --raw results/raw --out results/published
+	PYTHONPATH=./python ./.venv/bin/python -m report_generator.main --raw results/raw --out results/published
 
 # Run the smoke-test workload
 run-smoke-test:
