@@ -1,7 +1,75 @@
 import json
 from pathlib import Path
+from typing import Optional
 
 import yaml
+
+from ..environment_info import EnvironmentInfo
+
+
+def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
+    """Renders the EnvironmentInfo object into a nice HTML table."""
+    if not env_info:
+        return ""
+
+    def format_bytes(byte_count):
+        if byte_count is None: return "N/A"
+        power = 1024
+        n = 0
+        power_labels = {0: '', 1: 'K', 2: 'M', 3: 'G', 4: 'T'}
+        while byte_count >= power and n < len(power_labels) -1 :
+            byte_count /= power
+            n += 1
+        return f"{byte_count:.1f} {power_labels[n]}B"
+
+    fsync_latency_html = "N/A"
+    if env_info.disk and env_info.disk.fsync_latency:
+        fsync = env_info.disk.fsync_latency
+        fsync_latency_html = f"""
+        <ul style="margin: 0; padding-left: 1.2rem;">
+            <li><b>Avg:</b> {fsync.avg_us:.2f} µs</li>
+            <li><b>p95:</b> {fsync.p95_us:.2f} µs</li>
+            <li><b>p99:</b> {fsync.p99_us:.2f} µs</li>
+        </ul>
+        """
+
+    return f"""
+    <div class='workload-section'>
+        <h2>Environment Information</h2>
+        <div class='card' style='width: 100%;'>
+            <table class='env-table'>
+                <tr>
+                    <th>OS</th>
+                    <td>{env_info.os.name} {env_info.os.version} ({env_info.os.arch})</td>
+                </tr>
+                <tr>
+                    <th>Kernel</th>
+                    <td>{env_info.os.kernel}</td>
+                </tr>
+                <tr>
+                    <th>CPU</th>
+                    <td>{env_info.cpu.model} ({env_info.cpu.cores} cores, {env_info.cpu.threads} threads)</td>
+                </tr>
+                <tr>
+                    <th>Memory</th>
+                    <td>{format_bytes(env_info.memory.total_bytes)} Total / {format_bytes(env_info.memory.available_bytes)} Available</td>
+                </tr>
+                <tr>
+                    <th>Disk</th>
+                    <td>{env_info.disk.disk_type} ({env_info.disk.filesystem})</td>
+                </tr>
+                <tr>
+                    <th>Fsync Latency</th>
+                    <td>{fsync_latency_html}</td>
+                </tr>
+                <tr>
+                    <th>Container Runtime</th>
+                    <td>{env_info.container_runtime.runtime_type} {env_info.container_runtime.version} ({env_info.container_runtime.ncpu} vCPUs, {format_bytes(env_info.container_runtime.mem_total)} Memory)</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+    """
 
 
 def generate_run_html(report_dir: Path, run):
@@ -73,25 +141,25 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         report_link = f"report-{run.adapter}-r{run.readers:03d}-w{run.writers:03d}/index.html"
 
         metrics = run.metrics
-        startup_time = f"{metrics.get('startup_time_s', 0):.1f}s" if metrics.get('startup_time_s') else "N/A"
-        image_size_mb = f"{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if metrics.get(
+        startup_time = f"{{metrics.get('startup_time_s', 0):.1f}}s" if metrics.get('startup_time_s') else "N/A"
+        image_size_mb = f"{{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f}}" if metrics.get(
             "image_size_bytes") else "N/A"
 
         avg_cpu = metrics.get("avg_cpu_percent")
         peak_cpu = metrics.get("peak_cpu_percent")
         cpu_display = "N/A"
         if avg_cpu is not None and peak_cpu is not None:
-            cpu_display = f"{avg_cpu:.1f}% / {peak_cpu:.1f}%"
+            cpu_display = f"{{avg_cpu:.1f}}% / {{peak_cpu:.1f}}%"
         elif avg_cpu is not None:
-            cpu_display = f"{avg_cpu:.1f}%"
+            cpu_display = f"{{avg_cpu:.1f}}%"
 
         avg_mem = metrics.get("avg_memory_bytes")
         peak_mem = metrics.get("peak_memory_bytes")
         mem_display = "N/A"
         if avg_mem is not None and peak_mem is not None:
-            mem_display = f"{avg_mem / 1024 / 1024:.0f} / {peak_mem / 1024 / 1024:.0f}"
+            mem_display = f"{{avg_mem / 1024 / 1024:.0f}} / {{peak_mem / 1024 / 1024:.0f}}"
         elif avg_mem is not None:
-            mem_display = f"{avg_mem / 1024 / 1024:.0f}"
+            mem_display = f"{{avg_mem / 1024 / 1024:.0f}}"
 
         summary_rows += f"""
       <tr>
@@ -284,20 +352,10 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
         f.write(html)
 
 
-def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries, env_info=None,
+def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries, env_info: Optional[EnvironmentInfo] = None,
                            session_info=None):
     """Generate index.html for a specific session."""
-    env_section = ""
-    if env_info:
-        # This can be expanded to render the new environment.json format nicely
-        env_str = json.dumps(env_info, indent=2)
-        env_section = f"""
-    <div class='workload-section'>
-      <h2>Environment Information</h2>
-      <div class='card'>
-        <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{env_str}</pre>
-      </div>
-    </div>"""
+    env_section = _render_environment_info(env_info)
 
     workload_sections = ""
     for workload_name, summary in sorted(workload_summaries.items()):
@@ -341,6 +399,9 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
     .card h3 {{ margin-top: 0; font-size: 1rem; }}
     a {{ color: #0066cc; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
+    .env-table {{ width: 100%; border-collapse: collapse; }}
+    .env-table th, .env-table td {{ padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #eee; }}
+    .env-table th {{ width: 200px; font-weight: 600; background-color: #f9f9f9; }}
   </style>
 </head>
 <body>

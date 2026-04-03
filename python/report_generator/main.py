@@ -2,9 +2,48 @@ import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 from .data_loader import load_session_workloads
 from .reporting import plotting, html
+from .environment_info import EnvironmentInfo, OsInfo, CpuInfo, MemoryInfo, FsyncStats, DiskInfo, ContainerRuntimeInfo
+
+
+def _load_environment_info(env_data: dict) -> Optional[EnvironmentInfo]:
+    """Loads environment info from a dictionary into the EnvironmentInfo dataclass."""
+    if not env_data:
+        return None
+
+    try:
+        os_info = OsInfo(**env_data.get("os", {}))
+        cpu_info = CpuInfo(**env_data.get("cpu", {}))
+        memory_info = MemoryInfo(**env_data.get("memory", {}))
+
+        fsync_stats_data = env_data.get("disk", {}).get("fsync_latency")
+        fsync_stats = FsyncStats(**fsync_stats_data) if fsync_stats_data else None
+        disk_info = DiskInfo(
+            disk_type=env_data.get("disk", {}).get("type", "unknown"),
+            filesystem=env_data.get("disk", {}).get("filesystem", "unknown"),
+            fsync_latency=fsync_stats,
+        )
+
+        container_runtime_info = ContainerRuntimeInfo(
+            runtime_type=env_data.get("container_runtime", {}).get("type", "unknown"),
+            version=env_data.get("container_runtime", {}).get("version", "unknown"),
+            ncpu=env_data.get("container_runtime", {}).get("ncpu", 0),
+            mem_total=env_data.get("container_runtime", {}).get("mem_total", 0),
+        )
+
+        return EnvironmentInfo(
+            os=os_info,
+            cpu=cpu_info,
+            memory=memory_info,
+            disk=disk_info,
+            container_runtime=container_runtime_info,
+        )
+    except Exception as e:
+        print(f"Warning: Failed to parse environment info: {e}")
+        return None
 
 
 def main():
@@ -45,7 +84,7 @@ def main():
         published_session_dir.mkdir(parents=True, exist_ok=True)
 
         # Load session metadata
-        session_info, env_info = {}, {}
+        session_info, raw_env_info = {}, {}
         try:
             with open(raw_session_dir / "session.json", "r") as f:
                 session_info = json.load(f)
@@ -56,11 +95,13 @@ def main():
 
         try:
             with open(raw_session_dir / "environment.json", "r") as f:
-                env_info = json.load(f)
+                raw_env_info = json.load(f)
         except FileNotFoundError:
             pass  # Optional file
         except Exception as e:
             print(f"Warning: Could not load environment.json: {e}")
+
+        env_info_obj = _load_environment_info(raw_env_info)
 
         # Load all workload runs for the session
         workloads = load_session_workloads(raw_session_dir)
@@ -137,7 +178,7 @@ def main():
             }
 
         # Generate the main index page for the session
-        html.generate_session_index(published_session_dir, session_id, workload_summaries, env_info, session_info)
+        html.generate_session_index(published_session_dir, session_id, workload_summaries, env_info_obj, session_info)
 
     # Finally, update the top-level index of all sessions
     html.generate_top_level_index(raw_base, published_base)
