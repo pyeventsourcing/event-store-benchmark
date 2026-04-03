@@ -25,36 +25,57 @@ def get_adapter_color(adapter_name):
     return ADAPTER_COLORS.get(adapter_name, '#cccccc')
 
 
-def load_performance_runs(session_dir: Path):
+def load_session_results(session_dir: Path):
     """
-    Load runs from a performance session by looking for config.yaml files recursively.
+    Load runs from a session and group them by workload.
+    Returns a dictionary mapping workload name to a dictionary containing 'config' and 'runs'.
     """
-    runs = []
-    if not session_dir.exists() or not session_dir.is_dir():
-        return []
+    session_config_file = session_dir / "config.yaml"
+    if not session_config_file.exists():
+        print(f"Warning: No config.yaml found in session {session_dir}")
+        return {}
 
-    # Collect all run directories to avoid duplicates
-    run_paths = set()
-    # Search for all config.yaml or config.json files in subdirectories
-    for config_file in list(session_dir.glob("**/config.yaml")) + list(session_dir.glob("**/config.json")):
-        run_path = config_file.parent
-        # Avoid picking up files from the session root
-        if run_path == session_dir:
-            continue
-            
-        if run_path in run_paths:
-            continue
-        run_paths.add(run_path)
+    session_results = []
+    try:
+        with open(session_config_file, "r") as f:
+            session_configs = list(yaml.safe_load_all(f))
 
-        try:
-            run = load_performance_run(run_path)
-            if run:
-                runs.append(run)
-        except Exception as e:
-            print(f"Warning: Failed to load run at {run_path}: {e}")
+        for run_config in session_configs:
+            # Check if it's a performance workload config
+            if 'performance' in run_config:
+                perf_cfg = run_config['performance']
+                base_name = perf_cfg.get('name')
+                if not base_name:
+                    continue
 
-    # Filter out None values
-    return [r for r in runs if r is not None]
+                workload_dir = session_dir / base_name
+                runs = []
+                if workload_dir.exists() and workload_dir.is_dir():
+                    # Find all run subdirectories in this workload directory
+                    for run_dir in workload_dir.iterdir():
+                        if run_dir.is_dir():
+                            try:
+                                run = load_performance_run(run_dir)
+                                if run:
+                                    runs.append(run)
+                            except Exception as e:
+                                print(f"Warning: Failed to load run at {run_dir}: {e}")
+                else:
+                    print(f"Warning: Workload directory {workload_dir} not found")
+
+                session_results.append({
+                    "workload_type": "performance",
+                    "config": perf_cfg,
+                    "runs": runs
+                })
+            else:
+                # Potential future support for other workload types
+                print(f"Info: Skipping non-performance workload document in {session_config_file}")
+
+    except Exception as e:
+        print(f"Error reading session config {session_config_file}: {e}")
+
+    return session_results
 
 
 def load_performance_run(run_dir: Path):
@@ -63,61 +84,40 @@ def load_performance_run(run_dir: Path):
     results_file = run_dir / "results.json"
     metrics_file = run_dir / "metrics.json"
 
-    # Support legacy naming if new files don't exist
-    if not results_file.exists():
-        results_file = run_dir / "latency.json" # Part of legacy results.json was split
-    if not metrics_file.exists():
-        metrics_file = run_dir / "container.json"
-
     # Load expanded workload config from YAML
-    if config_file.exists():
-        with open(config_file) as f:
-            config_data = yaml.safe_load(f)
-    else:
-        # Fallback to config.json if config.yaml is not present (for some backward compatibility)
-        config_json_file = run_dir / "config.json"
-        if config_json_file.exists():
-            with open(config_json_file) as f:
-                config_data = json.load(f)
-        else:
-            # We must have at least one of them
-            print(f"Warning: Neither config.yaml nor config.json found in {run_dir}")
-            return None
+    if not config_file.exists():
+        print(f"Warning: config.yaml not found in {run_dir}")
+        return None
 
-    # Load results (formerly latency.json + throughput.json)
+    with open(config_file) as f:
+        config_data = yaml.safe_load(f)
+
+    # Load results
+    results_data = {}
     if results_file.exists():
         with open(results_file) as f:
             results_data = json.load(f)
-    else:
-        # Fallback for very old results if needed
-        results_data = {}
 
-    # Load metrics (formerly container.json)
+    # Load metrics
+    metrics_data = {}
     if metrics_file.exists():
         with open(metrics_file) as f:
             metrics_data = json.load(f)
-    else:
-        metrics_data = {}
 
     # Read logs if available
     container_logs = ""
     logs_file = run_dir / "logs.txt"
-    if not logs_file.exists():
-        logs_file = run_dir / "container.log"
-
     if logs_file.exists():
         with open(logs_file, "r", errors="replace") as f:
             container_logs = f.read()
 
     # Extract adapter and concurrency from config_data
-    # Note: in expanded config, 'stores' is a single string (StoreValue::Single)
     stores = config_data.get("stores")
     adapter = "unknown"
     if isinstance(stores, dict):
-        # Handle cases where it might be serialized as enum
+        # Handle cases where it might be serialized as enum (StoreValue::Single)
         adapter = stores.get("Single", "unknown")
     elif isinstance(stores, list) and len(stores) > 0:
-        # Legacy case where it might be a list
         adapter = stores[0]
     elif stores is not None:
         adapter = str(stores)
@@ -126,7 +126,6 @@ def load_performance_run(run_dir: Path):
     writers = 0
     readers = 0
     if isinstance(concurrency, dict):
-        # New format: {"writers": {"Single": 1}, "readers": {"Single": 0}} or similar
         w_val = concurrency.get("writers", 0)
         if isinstance(w_val, dict):
             writers = w_val.get("Single", 0)
@@ -1161,11 +1160,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
 
     config_section = ""
     if workload_config:
-        config_json = json.dumps(workload_config, indent=2)
+        config_yaml = yaml.dump(workload_config, indent=2)
         config_section = f"""
     <h2>Workload Configuration</h2>
     <div class='card'>
-      <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{config_json}</pre>
+      <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{config_yaml}</pre>
     </div>"""
 
     html = f"""
@@ -1538,110 +1537,80 @@ def main():
 
         # Load session config.
         session_config_file = raw_session_dir / "config.yaml"
-        session_configs = []
-        if session_config_file.exists():
-            try:
-                with open(session_config_file, "r") as f:
-                    # session.yaml might contain multiple documents
-                    session_configs = list(yaml.safe_load_all(f))
-            except Exception as e:
-                print(f"Warning: Could not load {session_config_file}: {e}")
+        if not session_config_file.exists():
+            print(f"No config.yaml found for session {session_id}. Skipping.")
+            continue
 
         # Group runs by workload within the session
-        workload_groups = defaultdict(list)
-        runs = load_performance_runs(raw_session_dir)
-        if not runs:
+        session_results = load_session_results(raw_session_dir)
+        if not session_results:
             print(f"No runs found for session {session_id}. Skipping.")
             continue
 
-        for run in runs:
-            # Match run to one of the configs in session_configs if possible
-            # In load_performance_run, we get workload_name from the run's own config.json
-            full_workload_name = run["workload_name"]
-            adapter = run["adapter"]
-
-            # Extract base workload name for grouping (consistent with directory structure)
-            report_workload_name = re.sub(rf'-{re.escape(adapter)}-w\d+-r\d+$', '', full_workload_name)
-            if report_workload_name == full_workload_name:
-                report_workload_name = re.sub(r'-w\d+-r\d+$', '', full_workload_name)
-
-            workload_groups[report_workload_name].append(run)
-
-        # Generate individual reports for each run in this session
-        for run in runs:
-            # Calculate duration and throughput once per run
-            if "throughput_samples" in run and run["throughput_samples"]:
-                df = pd.DataFrame(run["throughput_samples"])
-                run["_throughput_df"] = df
-                if len(df) >= 2:
-                    df = df.sort_values("elapsed_s")
-                    duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
-                    total_count = df["count"].iloc[-1] - df["count"].iloc[0]
-                    run["_duration_s"] = duration
-                    if duration > 0:
-                        run["_throughput_eps"] = total_count / duration
-                    else:
-                        run["_throughput_eps"] = 0
-                else:
-                    # Should not happen with valid data, but provide defaults
-                    run["_duration_s"] = 0
-                    run["_throughput_eps"] = 0
-            else:
-                run["_throughput_df"] = pd.DataFrame()
-                run["_duration_s"] = 0
-                run["_throughput_eps"] = 0
-
-            writers = run["writers"]
-            readers = run["readers"]
-
-            # Create nested structure: workload/report-adapter
-            adapter = run["adapter"]
-            full_workload_name = run["workload_name"]
-            
-            # Extract base workload name for grouping
-            report_workload_name = re.sub(rf'-{re.escape(adapter)}-w\d+-r\d+$', '', full_workload_name)
-            if report_workload_name == full_workload_name:
-                report_workload_name = re.sub(r'-w\d+-r\d+$', '', full_workload_name)
-            
-            workload_dir = published_session_dir / report_workload_name
-            workload_dir.mkdir(parents=True, exist_ok=True)
-
-            # Format directory name based on workload type, zero-padded for sorting
-            report_dir_name = f"report-{adapter}-r{readers:03d}-w{writers:03d}"
-            report_dir = workload_dir / report_dir_name
-            report_dir.mkdir(parents=True, exist_ok=True)
-
-            # Plot latency from JSON percentiles
-            plot_latency_cdf_from_json(run, report_dir / "latency_cdf.png")
-
-            plot_throughput(run["_throughput_df"], report_dir / "throughput.png", report_dir / "throughput_data.json")
-            generate_html(report_dir, run)
-
-        # Generate per-workload consolidated reports for this session
+        # For the per-workload consolidated reports for this session
         workload_summaries = {}
         all_adapters = set()
 
-        for workload_name, workload_runs in workload_groups.items():
+        # Generate individual reports for each run in this session
+        for workload_results in session_results:
+            if workload_results["workload_type"] != "performance":
+                print(f"Unsupported workload type: {workload_results["workload_type"]}. Skipping.")
+                continue
+            workload_runs = workload_results["runs"]
+            workload_config = workload_results["config"]
+            workload_name = workload_config["name"]
             print(f"  Processing workload: {workload_name}")
+            workload_dir = published_session_dir / workload_name
+            workload_dir.mkdir(parents=True, exist_ok=True)
 
-            # Resolve the specific config for this workload from the multi-doc YAML
-            session_config = {}
-            for cfg in session_configs:
-                # Check if it has 'performance' or is directly the config
-                perf_cfg = cfg.get('performance', cfg)
-                # Use name if available, otherwise just use it
-                if perf_cfg.get('name') == workload_name:
-                    session_config = perf_cfg
-                    break
-            
-            if not session_config and session_configs:
-                 # Default to first one if no exact match
-                 session_config = session_configs[0].get('performance', session_configs[0])
+            for run in workload_runs:
+                # Calculate duration and throughput once per run
+                if "throughput_samples" in run and run["throughput_samples"]:
+                    df = pd.DataFrame(run["throughput_samples"])
+                    run["_throughput_df"] = df
+                    if len(df) >= 2:
+                        df = df.sort_values("elapsed_s")
+                        duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
+                        total_count = df["count"].iloc[-1] - df["count"].iloc[0]
+                        run["_duration_s"] = duration
+                        if duration > 0:
+                            run["_throughput_eps"] = total_count / duration
+                        else:
+                            run["_throughput_eps"] = 0
+                    else:
+                        # Should not happen with valid data, but provide defaults
+                        run["_duration_s"] = 0
+                        run["_throughput_eps"] = 0
+                else:
+                    run["_throughput_df"] = pd.DataFrame()
+                    run["_duration_s"] = 0
+                    run["_throughput_eps"] = 0
+
+                writers = run["writers"]
+                readers = run["readers"]
+
+                # Create nested structure: workload/report-adapter
+                adapter = run["adapter"]
+                
+                # Format directory name based on workload type, zero-padded for sorting
+                report_dir_name = f"report-{adapter}-r{readers:03d}-w{writers:03d}"
+                report_dir = workload_dir / report_dir_name
+                report_dir.mkdir(parents=True, exist_ok=True)
+
+                # Plot latency from JSON percentiles
+                plot_latency_cdf_from_json(run, report_dir / "latency_cdf.png")
+
+                plot_throughput(run["_throughput_df"], report_dir / "throughput.png", report_dir / "throughput_data.json")
+                generate_html(report_dir, run)
+
+            # Generate per-workload consolidated reports for this session
+            if not workload_runs:
+                continue
 
             # Get store order for this workload
             store_order = []
-            if session_config and "stores" in session_config:
-                stores_val = session_config["stores"]
+            if workload_config and "stores" in workload_config:
+                stores_val = workload_config["stores"]
                 if isinstance(stores_val, list):
                     store_order = stores_val
                 elif isinstance(stores_val, str):
@@ -1669,9 +1638,6 @@ def main():
                 adapters_set.add(adapter)
                 writer_counts_set.add(wc)
                 all_adapters.add(adapter)
-
-            workload_dir = published_session_dir / workload_name
-            workload_dir.mkdir(parents=True, exist_ok=True)
 
             for wc, run_data in sorted(writer_groups.items()):
                 # Sort run_data by store order before plotting
@@ -1701,7 +1667,7 @@ def main():
                 plot_peak_mem_scaling(workload_runs, workload_dir / f"{workload_name}_scaling_peak_mem.png", get_store_rank)
 
             plot_container_metrics(workload_runs, workload_dir / f"{workload_name}_container_metrics.png", get_store_rank)
-            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, session_config, get_store_rank)
+            generate_workload_html(published_session_dir, workload_name, workload_runs, writer_groups, workload_config, get_store_rank)
 
             workload_summaries[workload_name] = {
                 'run_count': len(workload_runs),
