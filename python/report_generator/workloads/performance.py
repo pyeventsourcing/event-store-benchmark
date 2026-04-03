@@ -1,4 +1,5 @@
 import pandas as pd
+from pathlib import Path
 
 from .base import BaseWorkloadResult
 
@@ -6,43 +7,40 @@ from .base import BaseWorkloadResult
 class PerformanceWorkloadResult(BaseWorkloadResult):
     """Represents and analyzes the results of a single performance workload run."""
 
-    def __init__(self, raw_data: dict, run_path):
+    def __init__(self, raw_data: dict, run_path: Path):
         super().__init__(raw_data, run_path)
         self._parse_config()
         self._process_results()
 
+    def _get_value_from_config_entry(self, entry_val, default=0):
+        """Helper to extract value from config entry that might be a single value or a dict with 'Single' key."""
+        if isinstance(entry_val, dict):
+            return entry_val.get("Single", default)
+        return entry_val if entry_val is not None else default
+
     def _parse_config(self):
         """Extracts key parameters from the run's configuration data."""
         stores = self.config.get("stores")
-        adapter = "unknown"
         if isinstance(stores, dict):
-            adapter = stores.get("Single", "unknown")
+            self.adapter_name = self._get_value_from_config_entry(stores, "unknown")
         elif isinstance(stores, list) and len(stores) > 0:
-            adapter = stores[0]
+            self.adapter_name = stores[0]
         elif stores is not None:
-            adapter = str(stores)
-        self.adapter_name = adapter
+            self.adapter_name = str(stores)
+        else:
+            self.adapter_name = "unknown"
 
         concurrency = self.config.get("concurrency", {})
-        writers = 0
-        readers = 0
         if isinstance(concurrency, dict):
-            w_val = concurrency.get("writers", 0)
-            if isinstance(w_val, dict):
-                writers = w_val.get("Single", 0)
-            else:
-                writers = w_val
+            self.writers = self._get_value_from_config_entry(concurrency.get("writers"), 0)
+            self.readers = self._get_value_from_config_entry(concurrency.get("readers"), 0)
+        else:
+            # Default to 0 if concurrency is not a dict or not present
+            self.writers = 0
+            self.readers = 0
 
-            r_val = concurrency.get("readers", 0)
-            if isinstance(r_val, dict):
-                readers = r_val.get("Single", 0)
-            else:
-                readers = r_val
-
-        self.writers = writers
-        self.readers = readers
-        self.worker_count = writers if writers > 0 else readers
-        self.is_read_workload = readers > 0 and writers == 0
+        self.worker_count = self.writers if self.writers > 0 else self.readers
+        self.is_read_workload = self.readers > 0 and self.writers == 0
 
     def _process_results(self):
         """Processes raw result data into structured formats and summary metrics."""
