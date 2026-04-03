@@ -1143,7 +1143,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, writer_grou
         <img src='{workload_name}_scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Latency (p50, p99, p99.9) vs {worker_label}</h3>
+        <h3>Latency vs {worker_label}</h3>
         <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
     </div>
@@ -1399,30 +1399,14 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
           <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='460'>
         </div>
         <div class='card'>
-          <h3>Latency (p50, p99, p99.9)</h3>
+          <h3>Latency</h3>
           <img src='{workload_name}/{workload_name}_scaling_latency.png' width='460'>
         </div>
-      </div>
-      <div class='row'>
-        <div class='card'>
-          <h3>Peak CPU</h3>
-          <img src='{workload_name}/{workload_name}_scaling_peak_cpu.png' width='460'>
-        </div>
-        <div class='card'>
-          <h3>Peak Memory</h3>
-          <img src='{workload_name}/{workload_name}_scaling_peak_mem.png' width='460'>
-        </div>
-      </div>
       </div>"""
 
         workload_sections += f"""
     <div class='workload-section'>
       <h2><a href='{workload_name}/index.html'>{workload_name}</a></h2>
-      <div class='workload-info'>
-        <p><b>Runs:</b> {summary['run_count']}</p>
-        <p><b>Adapters tested:</b> {', '.join(sorted(summary['adapters']))}</p>
-        <p><b>Worker counts:</b> {', '.join(map(str, sorted(summary['writer_counts'])))}</p>
-      </div>
       {scaling_plots}
     </div>"""
 
