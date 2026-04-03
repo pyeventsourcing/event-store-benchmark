@@ -36,6 +36,9 @@ jobs:
       - name: Run smoke-test workload
         run: make run-smoke-test
 
+      - name: Run scaling workload
+        run: make run-scaling
+
       - name: Generate report
         run: make report
 
