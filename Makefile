@@ -48,6 +48,10 @@ run-scaling-readers:
 run-scaling-writers:
 	@make ./configs/scaling/writers.yaml
 
+# Run the scaling-writers workload
+run-scaling:
+	@make ./configs/scaling.yaml
+
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE
 	./target/release/es-bench run --config $@ --seed $(ESB_SEED) --data-dir=$(ESB_CONTAINER_DATA_DIR)
