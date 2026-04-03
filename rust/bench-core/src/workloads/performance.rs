@@ -13,6 +13,12 @@ use tokio_util::sync::CancellationToken;
 use crate::EventStoreAdapter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkloadConfig {
+    #[serde(default)]
+    pub performance: Option<PerformanceConfig>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     pub name: String,
     pub mode: PerformanceMode,
@@ -331,7 +337,7 @@ impl PerformanceWorkload {
 
         // Wait for warmup before starting to record metrics
         println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
-        
+
         let sampling_started = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
 
         // Spawn writer tasks
@@ -383,19 +389,6 @@ impl PerformanceWorkload {
                 throughput_recorder,
             );
         }
-
-        // // Run for duration
-        // tokio::select! {
-        //     _ = tokio::time::sleep(Duration::from_secs(self.config.warmup_seconds + self.config.duration_seconds)) => {
-        //         println!("Workload duration reached");
-        //     }
-        //     _ = cancel_token.cancelled() => {
-        //         println!("Workload cancelled");
-        //     }
-        // }
-        // 
-        // // Stop the workers.
-        // has_stopped.store(true, Ordering::Relaxed);
 
         // Collect results
         let mut latency_histogram = LatencyRecorder::new();

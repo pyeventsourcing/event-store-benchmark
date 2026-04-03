@@ -1,5 +1,4 @@
 use anyhow::Result;
-use serde_yaml::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::adapter::StoreManager;
@@ -67,78 +66,13 @@ impl Workload {
             }
         }
     }
-}
 
-/// Factory for creating workload instances from YAML configuration
-pub struct WorkloadFactory;
-
-impl WorkloadFactory {
-    /// Extract the workload name from YAML config
-    pub fn extract_workload_name(yaml_config: &str) -> Result<String> {
-        let value: Value = serde_yaml::from_str(yaml_config)?;
-        value
-            .get("name")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'name' field in config"))
-    }
-
-    /// Extract the workload name from YAML config
-    pub fn extract_workload_type(yaml_config: &str) -> Result<String> {
-        let value: Value = serde_yaml::from_str(yaml_config)?;
-        value
-            .get("workload_type")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'workload_type' field in config"))
-    }
-
-    /// Extract the stores list from YAML config (if specified)
-    pub fn extract_stores(yaml_config: &str) -> Result<Vec<String>> {
-        let value: Value = serde_yaml::from_str(yaml_config)?;
-
-        match value.get("stores") {
-            None => Err(anyhow::anyhow!("'stores' must be a string or array")),
-            Some(stores_value) => {
-                if let Some(stores_array) = stores_value.as_sequence() {
-                    let stores: Vec<String> = stores_array
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect();
-                    Ok(stores)
-                } else if let Some(store_str) = stores_value.as_str() {
-                    Ok(vec![store_str.to_string()])
-                } else {
-                    Err(anyhow::anyhow!("'stores' must be a string or array"))
-                }
+    pub fn performance_config(&self) -> Result<PerformanceConfig> {
+        match self {
+            Workload::Performance(w) => {
+                Ok(w.config.clone())
             }
+            _ => anyhow::bail!("Not a performance workload"),
         }
-    }
-
-    /// Expand into multiple workloads (only supports performance workloads)
-    pub fn generate_workloads(yaml_config: &str, seed: u64) -> Result<(Vec<Workload>, String)> {
-        let value: Value = serde_yaml::from_str(yaml_config)?;
-
-        // Check we are dealing with performance workloads..
-        let workload_type = value
-            .get("workload_type")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing 'workload_type' field in config"))?;
-
-        if workload_type != "performance" {
-            return Err(anyhow::anyhow!("Sweep expansion only supported for performance workloads"));
-        }
-
-        // Construct a performance config.
-        let unexpanded: PerformanceConfig = serde_yaml::from_str(yaml_config)?;
-        let mut workloads = Vec::new();
-        for config in unexpanded.expand() {
-            workloads.push(
-                Workload::Performance(PerformanceWorkload::from_config(config, seed)?)
-            );
-        }
-
-        let json_config = serde_json::to_string_pretty(&unexpanded)?;
-        Ok((workloads, json_config))
     }
 }

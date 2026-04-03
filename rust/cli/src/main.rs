@@ -1,8 +1,5 @@
 use anyhow::Result;
-use bench_core::{
-    collect_environment_info, execute_run, get_git_commit_hash, SessionMetadata,
-    StoreManagerFactory, WorkloadFactory,
-};
+use bench_core::{collect_environment_info, execute_run, get_git_commit_hash, PerformanceWorkload, SessionMetadata, StoreManagerFactory, Workload};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use rand::Rng;
@@ -11,6 +8,8 @@ use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
+use bench_core::workloads::performance::WorkloadConfig;
+use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 #[command(name = "es-bench", version, about = "Event Store Benchmark Suite CLI")]
@@ -85,6 +84,14 @@ fn main() -> Result<()> {
 }
 
 async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_dir: Option<String>, cancel_token: CancellationToken) -> Result<()> {
+    // Generate session ID (ISO timestamp)
+    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+    println!("Session ID: {}", session_id);
+
+    // Decide random seed.
+    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
+    println!("Seed: {}", actual_seed);
+
     // Resolve data_dir to an absolute path if provided
     let data_dir = if let Some(path) = data_dir {
         let abs_path = fs::canonicalize(&path)
@@ -97,70 +104,75 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     } else {
         None
     };
-
-    // Generate session ID (ISO timestamp)
-    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
-    println!("Session ID: {}", session_id);
+    println!("Data path: {:?}", data_dir.clone().unwrap_or("".to_string()));
 
     // Read config file
     let session_config_yaml = fs::read_to_string(session_config_path)?;
-
-    // Collect environment info
-    let data_dir_path = data_dir.as_ref().map(Path::new);
-    let environment_info = collect_environment_info(data_dir_path).await?;
-
-    // Get benchmark version (git commit)
-    let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
-
-    // Decide random seed.
-    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
-    println!("Seed: {}", actual_seed);
-
-    // Extract workload type and name from config
-    let workload_type = WorkloadFactory::extract_workload_type(&session_config_yaml)?;
-    let workload_name = WorkloadFactory::extract_workload_name(&session_config_yaml)?;
-    println!("Running {} workload: {}", workload_type, workload_name);
-
-    // Generate workload variants
-    let (workloads, config_json)  = WorkloadFactory::generate_workloads(&session_config_yaml, actual_seed)?;
-    println!("Total runs to execute: {}", workloads.len());
-    if workloads.len() == 0 {
-        return Ok(())
-    }
 
     // Create raw results directory
     let session_results_path = PathBuf::from("results/raw").join(&session_id);
     fs::create_dir_all(&session_results_path)?;
 
     // Record session config
-    fs::write(session_results_path.join("config.json"), config_json)?;
+    fs::write(session_results_path.join("config.yaml"), session_config_yaml.clone())?;
 
-    // Write session metadata
+    // 1. Collect all expanded workloads and ensure unique base names across the whole session
+    let mut all_expanded_runs = Vec::new();
+    let mut seen_base_names = std::collections::HashSet::new();
+
+    for document in serde_yaml::Deserializer::from_str(&session_config_yaml) {
+        let value = WorkloadConfig::deserialize(document)?;
+        if let Some(unexpanded) = value.performance {
+            if seen_base_names.contains(&unexpanded.name) {
+                anyhow::bail!("Duplicate base workload name detected: {}. Please ensure all workload names in the session config are unique.", unexpanded.name);
+            }
+            seen_base_names.insert(unexpanded.name.clone());
+
+            for config in unexpanded.expand() {
+                all_expanded_runs.push((unexpanded.name.clone(), config));
+            }
+        }
+    }
+
+    if all_expanded_runs.is_empty() {
+        return Ok(());
+    }
+
+    println!("Total runs to execute: {}", all_expanded_runs.len());
+
+    // 2. Write session metadata and environment info (once per session)
+    let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
     let session_metadata = SessionMetadata {
         session_id: session_id.clone(),
         benchmark_version,
         config_file: session_config_path.to_string_lossy().to_string(),
-        workload_type,
         seed: actual_seed,
     };
-    let session_json = serde_json::to_string_pretty(&session_metadata)?;
-    fs::write(session_results_path.join("session.json"), session_json)?;
+    fs::write(
+        session_results_path.join("session.json"),
+        serde_json::to_string_pretty(&session_metadata)?
+    )?;
 
-    // Write environment info
-    let environment_json = serde_json::to_string_pretty(&environment_info)?;
-    fs::write(session_results_path.join("environment.json"), environment_json)?;
+    let data_dir_path = data_dir.as_ref().map(Path::new);
+    let environment_info = collect_environment_info(data_dir_path).await?;
+    fs::write(
+        session_results_path.join("environment.json"),
+        serde_json::to_string_pretty(&environment_info)?
+    )?;
 
-    for workload in workloads {
-
+    // 3. Execute all runs
+    for (base_name, config) in all_expanded_runs {
         if cancel_token.is_cancelled() {
             break;
         }
 
-        let workload_name = &workload.name()?;
-        println!("\n=== Running {} ===", workload_name);
+        let workload = Workload::Performance(PerformanceWorkload::from_config(config, actual_seed)?);
+        let workload_name = workload.name()?.to_string();
 
-        // Create workload results directory (one per run)
-        let workload_results_path = session_results_path.join(workload_name);
+        println!("\n=== Running {} (Workload: {}) ===", workload_name, base_name);
+
+        // Create workload results directory (results/raw/<session_id>/<base_name>/<run_name>)
+        let workload_results_path = session_results_path.join(&base_name).join(&workload_name);
         fs::create_dir_all(&workload_results_path)?;
 
         // Find store factory
@@ -185,30 +197,29 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
                     println!("Run interrupted, skipping results for {}", store_name);
                     continue;
                 }
-                return Err(e);
+                println!("Error executing run for {}: {}", store_name, e);
+                continue;
             }
         };
 
-        // Write workload config
-        let config_json = serde_json::to_string_pretty(&workload_results.workload_config)?;
-        fs::write(workload_results_path.join("config.json"), config_json)?;
-
-        // Write container metrics
-        let container_json = serde_json::to_string_pretty(&container_metrics)?;
-        fs::write(workload_results_path.join("container.json"), container_json)?;
-
-        // Write workload results
-        workload_results.write_to_dir(&workload_results_path)?;
-
-        // Write container logs
+        // Write individual run results
+        fs::write(
+            workload_results_path.join("results.json"),
+            serde_json::to_string_pretty(&workload_results)?,
+        )?;
+        fs::write(
+            workload_results_path.join("metrics.json"),
+            serde_json::to_string_pretty(&container_metrics)?,
+        )?;
         if !container_logs.is_empty() {
-            fs::write(workload_results_path.join("container.log"), container_logs)?;
+            fs::write(workload_results_path.join("logs.txt"), container_logs)?;
         }
 
-        println!(
-            "✓ {} on {} completed",
-            workload_name, store_name
-        );
+        // Include the actual run config
+        let run_config_yaml = serde_yaml::to_string(&workload.performance_config()?)?;
+        fs::write(workload_results_path.join("config.yaml"), run_config_yaml)?;
+
+        println!("✓ {} on {} completed", workload_name, store_name);
     }
 
     println!("\n✓ Session complete: {}", session_results_path.display());

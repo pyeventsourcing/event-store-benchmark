@@ -2,25 +2,25 @@ use std::fs;
 use std::path::Path;
 use anyhow::Result;
 use hdrhistogram::Histogram;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Throughput time-series sample: elapsed time from workload start and cumulative operation count
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThroughputSample {
     pub elapsed_s: f64,
     pub count: u64,
 }
 
 /// Throughput time-series sample: elapsed time from workload start and cumulative operation count
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatencyPercentile {
     pub percentile: f64,
     pub latency_us: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContainerMetrics {
     /// Container image size in bytes
     pub image_size_bytes: Option<u64>,
@@ -36,12 +36,12 @@ pub struct ContainerMetrics {
     pub peak_memory_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkloadResults {
     pub workload_config: serde_json::Value,
     pub store_name: String,
     pub throughput_samples: Vec<ThroughputSample>,
-    pub latency_histogram: LatencyRecorder,
+    pub latency_percentiles: Vec<LatencyPercentile>,
 }
 
 impl WorkloadResults {
@@ -62,20 +62,20 @@ impl WorkloadResults {
         workload_config: serde_json::Value,
         store_name: String,
         throughput_samples: Vec<ThroughputSample>,
-        latency_histogram: LatencyRecorder,
+        latency_recorder: LatencyRecorder,
     ) -> Self {
         Self {
             workload_config,
             store_name,
             throughput_samples,
-            latency_histogram,
+            latency_percentiles: latency_recorder.to_percentiles(),
         }
     }
 
     pub fn write_to_dir(&self, path: &Path) -> Result<()> {
         fs::write(
-            path.join("config.json"),
-            serde_json::to_string_pretty(&self.workload_config)?,
+            path.join("config.yaml"),
+            serde_yaml::to_string(&self.workload_config)?,
         )?;
 
         fs::write(
@@ -85,7 +85,7 @@ impl WorkloadResults {
 
         fs::write(
             path.join("latency.json"),
-            serde_json::to_string_pretty(&self.latency_histogram.to_percentiles())?,
+            serde_json::to_string_pretty(&self.latency_percentiles)?,
         )?;
 
         Ok(())
@@ -187,7 +187,6 @@ pub struct SessionMetadata {
     pub session_id: String,
     pub benchmark_version: String,
     pub config_file: String,
-    pub workload_type: String,
     pub seed: u64,
 }
 

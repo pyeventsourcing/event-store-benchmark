@@ -1,8 +1,9 @@
 name: scaling-readers
 workload_type: performance
 mode: read
-warmup_seconds: 10
-duration_seconds: 10
+warmup_seconds: 0
+duration_seconds: 20
+samples_per_second: 10
 concurrency:
   readers: [1, 2, 4, 8, 16, 32]
   writers: 0
@@ -14,5 +15,10 @@ operations:
 setup:
   prepopulate_events: 5000
   prepopulate_streams: 500
-stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
+stores:
+  - umadb
+  - kurrentdb
+  - axonserver
+  - eventsourcingdb
+  - dummy
 #stores: [umadb]

@@ -1,13 +1,14 @@
-name: scaling-writers
-workload_type: performance
-mode: write
-warmup_seconds: 10
-duration_seconds: 30
-concurrency:
-  readers: 0
-  writers: [1, 2, 4, 8, 16, 32]
-operations:
-  write:
-    event_size_bytes: 256
-stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
-#stores: [umadb]
+scaling-writers:
+  workload_type: performance
+  mode: write
+  warmup_seconds: 0
+  duration_seconds: 20
+  samples_per_second: 10
+  concurrency:
+    readers: 0
+    writers: [1, 2, 4, 8, 16, 32]
+  operations:
+    write:
+      event_size_bytes: 256
+  stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
+  #stores: [umadb]

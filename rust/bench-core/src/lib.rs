@@ -15,4 +15,4 @@ pub use metrics::{SessionMetadata, EnvironmentInfo, RunManifest};
 pub use metrics::{OsInfo, CpuInfo, MemoryInfo, DiskInfo, ContainerRuntimeInfo};
 pub use runner::execute_run;
 pub use system_info::{collect_environment_info, get_git_commit_hash};
-pub use workloads::{Workload, WorkloadFactory, PerformanceWorkload, PerformanceConfig};
+pub use workloads::{Workload, PerformanceWorkload, PerformanceConfig};
