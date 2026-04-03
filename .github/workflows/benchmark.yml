@@ -37,7 +37,7 @@ jobs:
         run: make run-smoke-test
 
       - name: Run scaling workload
-        run: make run-scaling
+        run: sudo make run-scaling  # Axon Server files can't be deleted otherwise
 
       - name: Generate report
         run: make report
