@@ -155,25 +155,25 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         report_link = f"report-{run.adapter}-r{run.readers:03d}-w{run.writers:03d}/index.html"
 
         metrics = run.metrics
-        startup_time = f"{{metrics.get('startup_time_s', 0):.1f}}s" if metrics.get('startup_time_s') else "N/A"
-        image_size_mb = f"{{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f}}" if metrics.get(
+        startup_time = f"{metrics.get('startup_time_s', 0):.1f}s" if metrics.get('startup_time_s') else "N/A"
+        image_size_mb = f"{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if metrics.get(
             "image_size_bytes") else "N/A"
 
         avg_cpu = metrics.get("avg_cpu_percent")
         peak_cpu = metrics.get("peak_cpu_percent")
         cpu_display = "N/A"
         if avg_cpu is not None and peak_cpu is not None:
-            cpu_display = f"{{avg_cpu:.1f}}% / {{peak_cpu:.1f}}%"
+            cpu_display = f"{avg_cpu:.1f}% / {peak_cpu:.1f}%"
         elif avg_cpu is not None:
-            cpu_display = f"{{avg_cpu:.1f}}%"
+            cpu_display = f"{avg_cpu:.1f}%"
 
         avg_mem = metrics.get("avg_memory_bytes")
         peak_mem = metrics.get("peak_memory_bytes")
         mem_display = "N/A"
         if avg_mem is not None and peak_mem is not None:
-            mem_display = f"{{avg_mem / 1024 / 1024:.0f}} / {{peak_mem / 1024 / 1024:.0f}}"
+            mem_display = f"{avg_mem / 1024 / 1024:.0f} / {peak_mem / 1024 / 1024:.0f}"
         elif avg_mem is not None:
-            mem_display = f"{{avg_mem / 1024 / 1024:.0f}}"
+            mem_display = f"{avg_mem / 1024 / 1024:.0f}"
 
         summary_rows += f"""
       <tr>
