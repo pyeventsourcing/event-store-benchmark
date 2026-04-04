@@ -9,6 +9,8 @@ ESB_SEED ?= 42
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
 .PHONY: help
+.PHONY: run-kurrentdb-bench-python
+.PHONY: run-kurrentdb-bench-rust
 .PHONY: FORCE
 
 # Default target
@@ -20,6 +22,8 @@ help:
 	@echo "  run-smoke-test        - Run the 'smoke-test' workload"
 	@echo "  run-scaling-readers   - Run the 'scaling-readers' workload"
 	@echo "  run-scaling-writers   - Run the 'scaling-writers' workload"
+	@echo "  run-kurrentdb-bench-python - Run the Python KurrentDB benchmark"
+	@echo "  run-kurrentdb-bench-rust   - Run the Rust KurrentDB benchmark"
 	@echo "  configs/%.yaml        - Run a workload defined by the specified configuration file"
 
 # Build the es-bench binary
@@ -50,6 +54,14 @@ run-scaling-writers:
 # Run the scaling-writers workload
 run-scaling:
 	@make ./configs/scaling.yaml
+
+# Run the Python KurrentDB benchmark
+run-kurrentdb-bench-python:
+	@./.venv/bin/python python/kurrentdb_benchmark.py
+
+# Run the Rust KurrentDB benchmark
+run-kurrentdb-bench-rust:
+	@cargo run --release --package kurrentdb-benchmark
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE

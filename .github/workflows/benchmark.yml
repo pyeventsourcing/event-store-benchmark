@@ -53,4 +53,7 @@ jobs:
           path: results/
 
       - name: Run Python KurrentDB benchmark
-        run: make python-kurrentdb-benchmark
+        run: make run-kurrentdb-bench-python
+
+      - name: Run Rust KurrentDB benchmark
+        run: make run-kurrentdb-bench-rust

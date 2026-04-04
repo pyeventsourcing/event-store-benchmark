@@ -7,5 +7,6 @@ members = [
     "rust/testcontainers",
     "rust/adapters/eventsourcingdb",
     "rust/cli",
+    "rust/kurrentdb-benchmark",
 ]
 resolver = "2"
