@@ -42,6 +42,13 @@ jobs:
           path: configs/
           retention-days: 1
 
+      - name: Upload Makefile
+        uses: actions/upload-artifact@v4
+        with:
+          name: Makefile
+          path: Makefile
+          retention-days: 1
+
   run-smoke-test:
     needs: setup
     runs-on: ubuntu-latest
@@ -60,13 +67,19 @@ jobs:
           name: configs
           path: configs/
 
+      - name: Download Makefile
+        uses: actions/download-artifact@v4
+        with:
+          name: Makefile
+          path: .
+
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
       - name: Run smoke-test workload  # sudo otherwise Axon Server files can't be deleted
         run: |
           sudo make run-smoke-test
-          sudo sudo chown -R $(shell id -u):$(shell id -g) ./results
+          sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload smoke-test results
         uses: actions/upload-artifact@v4
@@ -97,13 +110,19 @@ jobs:
           name: configs
           path: configs/
 
+      - name: Download Makefile
+        uses: actions/download-artifact@v4
+        with:
+          name: Makefile
+          path: .
+
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
           sudo make run-scaling  
-          sudo chown -R $(shell id -u):$(shell id -g) ./results
+          sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v4
@@ -147,6 +166,9 @@ jobs:
 
       - name: Generate report
         run: make report
+
+      - name: Clean up raw results
+        run: rm -rf results/raw
 
       - name: Upload results artifact
         uses: actions/upload-artifact@v4
