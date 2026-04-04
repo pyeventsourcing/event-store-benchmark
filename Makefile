@@ -73,6 +73,7 @@ start-kurrentdb-insecure:
     --env "KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP=true" \
     --env "KURRENTDB_ALLOW_UNKNOWN_OPTIONS=true" \
     --env "KURRENTDB_TELEMETRY_OPTOUT=true" \
+    --env "KURRENTDB_MEM_DB=true" \
     --env "EVENTSTORE_ADVERTISE_HOST_TO_CLIENT_AS=localhost" \
     --env "EVENTSTORE_ADVERTISE_NODE_PORT_TO_CLIENT_AS=2113" \
     --env "EVENTSTORE_RUN_PROJECTIONS=All" \
