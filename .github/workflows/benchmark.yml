@@ -78,7 +78,7 @@ jobs:
 
       - name: Run smoke-test workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          sudo make run-smoke-test
+          sudo -E make run-smoke-test
           sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload smoke-test results
@@ -121,7 +121,7 @@ jobs:
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          sudo make run-scaling  
+          sudo -E make run-scaling  
           sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload scaling results
