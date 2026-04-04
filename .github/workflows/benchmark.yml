@@ -53,4 +53,4 @@ jobs:
           path: results/
 
       - name: Run Python KurrentDB benchmark
-        run: python-kurrentdb-benchmark
+        run: make python-kurrentdb-benchmark
