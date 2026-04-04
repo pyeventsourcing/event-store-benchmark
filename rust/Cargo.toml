@@ -1,9 +1,0 @@
-[workspace]
-members = [
-    "bench-core",
-    "adapters/umadb",
-    "cli",
-    "kurrentdb-benchmark",
-    "kurrentdb-fork",
-]
-resolver = "2"
