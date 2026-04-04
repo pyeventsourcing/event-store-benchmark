@@ -53,7 +53,7 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-A
     steps:
       - name: Download benchmark tool
         uses: actions/download-artifact@v4
@@ -85,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: results-smoke-test
-          path: results/raw/${{ env.ESB_SESSION_ID }}
+          path: results/raw/
           retention-days: 1
 
   run-scaling:
@@ -95,7 +95,7 @@ jobs:
       matrix:
         store: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
     env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-B
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
       - name: Download benchmark tool
@@ -128,15 +128,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: results-scaling-${{ matrix.store }}
-          path: results/raw/${{ env.ESB_SESSION_ID }}
+          path: results/raw/
           retention-days: 1
 
   report:
-    needs: [setup, run-smoke-test, run-scaling]
+    needs: [run-smoke-test, run-scaling]
     runs-on: ubuntu-latest
     if: always()
-    env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -151,27 +149,18 @@ jobs:
       - name: Create Python virtual environment for reporting
         run: make venv
 
-      - name: Download smoke-test results
+      - name: Download results
         uses: actions/download-artifact@v4
         with:
-          name: results-smoke-test
-          path: results/raw/${{ env.ESB_SESSION_ID }}
-
-      - name: Download scaling results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: results-scaling-*
-          path: results/raw/${{ env.ESB_SESSION_ID }}
+          pattern: results-*
+          path: results/raw/
           merge-multiple: true
 
       - name: Generate report
         run: make report
 
-      - name: Clean up raw results
-        run: rm -rf results/raw
-
-      - name: Upload results artifact
+      - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: benchmark-report
           path: results/published
