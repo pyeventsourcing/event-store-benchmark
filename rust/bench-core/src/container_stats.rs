@@ -1,6 +1,6 @@
 use anyhow::Result;
-use bollard::container::StatsOptions;
 use bollard::Docker;
+use bollard::query_parameters::StatsOptions;
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -49,21 +49,24 @@ impl ContainerMonitor {
                     Some(Ok(stats)) = stream.next() => {
                         let mut guard = stats_arc.lock().await;
 
-                        // Calculate CPU percentage
-                        // bollard provides raw stats, we need to calculate %
-                        // Formula: (cpu_delta / system_delta) * online_cpus * 100.0
-                        let cpu_delta = (stats.cpu_stats.cpu_usage.total_usage as f64) - (stats.precpu_stats.cpu_usage.total_usage as f64);
-                        let system_delta = (stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64) - (stats.precpu_stats.system_cpu_usage.unwrap_or(0) as f64);
-                        let online_cpus = stats.cpu_stats.online_cpus.unwrap_or(1) as f64;
+                        if let (Some(cpu_stats), Some(precpu_stats)) = (&stats.cpu_stats, &stats.precpu_stats) {
+                            if let (Some(cpu_usage), Some(precpu_usage)) = (&cpu_stats.cpu_usage, &precpu_stats.cpu_usage) {
+                                let cpu_delta = (cpu_usage.total_usage.unwrap_or(0) as f64) - (precpu_usage.total_usage.unwrap_or(0) as f64);
+                                let system_delta = (cpu_stats.system_cpu_usage.unwrap_or(0) as f64) - (precpu_stats.system_cpu_usage.unwrap_or(0) as f64);
+                                let online_cpus = cpu_stats.online_cpus.unwrap_or(1) as f64;
 
-                        if system_delta > 0.0 && cpu_delta > 0.0 {
-                            let cpu_perc = (cpu_delta / system_delta) * online_cpus * 100.0;
-                            guard.cpu_samples.push(cpu_perc);
+                                if system_delta > 0.0 && cpu_delta > 0.0 {
+                                    let cpu_perc = (cpu_delta / system_delta) * online_cpus * 100.0;
+                                    guard.cpu_samples.push(cpu_perc);
+                                }
+                            }
                         }
 
                         // Memory usage
-                        let mem_usage = stats.memory_stats.usage.unwrap_or(0);
-                        guard.memory_samples.push(mem_usage);
+                        if let Some(memory_stats) = &stats.memory_stats {
+                            let mem_usage = memory_stats.usage.unwrap_or(0);
+                            guard.memory_samples.push(mem_usage);
+                        }
                     }
                     else => break,
                 }
@@ -89,7 +92,7 @@ impl ContainerMonitor {
             None
         };
 
-        let peak_cpu = guard.cpu_samples.iter().cloned().fold(None, |acc, x| {
+        let peak_cpu = guard.cpu_samples.iter().cloned().fold(None, |acc: Option<f64>, x| {
             Some(acc.map_or(x, |curr| if x > curr { x } else { curr }))
         });
 

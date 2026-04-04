@@ -20,7 +20,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "process", "sync", "signal"] }
 tokio-util = { version = "0.7" }
 uuid = { version = "1.8", features = ["v4"] }
-bollard = "0.18"
+bollard = "0.20"
 num_cpus = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
