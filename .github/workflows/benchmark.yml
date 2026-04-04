@@ -47,4 +47,4 @@ jobs:
         if: always()
         with:
           name: benchmark-results
-          path: results/published/
+          path: results/
