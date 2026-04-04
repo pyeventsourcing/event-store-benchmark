@@ -5,6 +5,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use crate::metrics::ContainerMetrics;
 
 pub struct ContainerMonitor {
     docker: Docker,
@@ -12,6 +13,7 @@ pub struct ContainerMonitor {
     stats: Arc<Mutex<CollectedStats>>,
     stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
     monitor_task: Option<JoinHandle<()>>,
+    startup_tims_s: f64,
 }
 
 #[derive(Default, Clone)]
@@ -21,7 +23,7 @@ struct CollectedStats {
 }
 
 impl ContainerMonitor {
-    pub fn new(container_id: String) -> Result<Self> {
+    pub fn new(container_id: String, startup_tims_s: f64) -> Result<Self> {
         let docker = Docker::connect_with_local_defaults()?;
         Ok(Self {
             docker,
@@ -29,6 +31,7 @@ impl ContainerMonitor {
             stats: Arc::new(Mutex::new(CollectedStats::default())),
             stop_tx: None,
             monitor_task: None,
+            startup_tims_s,
         })
     }
 
@@ -76,7 +79,16 @@ impl ContainerMonitor {
         self.monitor_task = Some(monitor_task);
     }
 
-    pub async fn stop(mut self) -> Result<(Option<f64>, Option<f64>, Option<u64>, Option<u64>)> {
+    pub async fn stop(mut self) -> ContainerMetrics {
+
+        let image_size = match self.get_image_size().await {
+            Ok(size) => Some(size),
+            Err(e) => {
+                eprintln!("Failed to get image size: {}", e);
+                None
+            },
+        };
+
         if let Some(stop_tx) = self.stop_tx.take() {
             let _ = stop_tx.send(());
         }
@@ -104,7 +116,14 @@ impl ContainerMonitor {
 
         let peak_mem = guard.memory_samples.iter().max().cloned();
 
-        Ok((avg_cpu, peak_cpu, avg_mem, peak_mem))
+        ContainerMetrics{
+            image_size_bytes: image_size,
+            startup_time_s: self.startup_tims_s,
+            avg_cpu_percent: avg_cpu,
+            peak_cpu_percent: peak_cpu,
+            avg_memory_bytes: avg_mem,
+            peak_memory_bytes: peak_mem,
+        }
     }
 
     pub async fn get_image_size(&self) -> Result<u64> {

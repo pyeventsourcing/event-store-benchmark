@@ -15,7 +15,7 @@ use umadb_dcb::{DCBEvent, DCBEventStoreAsync, DCBQuery, DCBQueryItem};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
-    uri: Option<String>,
+    uri: String,
     container: Option<ContainerAsync<UmaDb>>,
     client: Option<Arc<umadb_client::AsyncUmaDBClient>>,
     local: bool,
@@ -25,32 +25,33 @@ pub struct UmaDbStoreManager {
 impl UmaDbStoreManager {
     pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
-            uri: None,
+            uri: Self::format_uri(UMADB_PORT.as_u16()),
             container: None,
             client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
         }
     }
+
+    fn format_uri(host_port: u16) -> String {
+        format!("http://127.0.0.1:{}", host_port)
+    }
 }
 
 #[async_trait]
 impl StoreManager for UmaDbStoreManager {
+    fn local(&self) -> bool { self.local }
+
     async fn start(&mut self) -> Result<()> {
-        if !self.local {
-            let mount_path = self.data_dir.setup()?;
-            let container = UmaDb::new(mount_path).start().await?;
-            let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
-            self.uri = Some(format!("http://127.0.0.1:{}", host_port));
-            self.container = Some(container);
-        } else {
-            self.uri = Some(format!("http://127.0.0.1:{}", UMADB_PORT.as_u16()));
-        }
+        let mount_path = self.data_dir.setup()?;
+        let container = UmaDb::new(mount_path).start().await?;
+        let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
+        self.uri = Self::format_uri(host_port);
+        self.container = Some(container);
 
         // Wait for container to be ready and create shared client
-        let uri = self.uri.clone().unwrap();
         self.client = Some(Arc::new(wait_for_ready("UmaDB", || async {
-            let client = UmaDBClient::new(uri.clone()).connect_async().await?;
+            let client = UmaDBClient::new(self.uri.clone()).connect_async().await?;
             client.head().await?;
             Ok(client)
         }, Duration::from_secs(60)).await?));
@@ -59,9 +60,7 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        if !self.local {
-            let _ = UmaDb::new(None).pull_image().await?;
-        }
+        let _ = UmaDb::new(None).pull_image().await?;
         Ok(())
     }
 

@@ -20,7 +20,7 @@ use url::Url;
 
 // Store manager - handles lifecycle and adapter creation
 pub struct EventsourcingDbStoreManager {
-    uri: Option<String>,
+    uri: String,
     options: HashMap<String, String>,
     container: Option<ContainerAsync<EventsourcingDb>>,
     local: bool,
@@ -30,35 +30,36 @@ pub struct EventsourcingDbStoreManager {
 impl EventsourcingDbStoreManager {
     pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
-            uri: None,
+            uri: Self::format_uri(EVENTSOURCINGDB_PORT.as_u16()),
             container: None,
             options: HashMap::new(),
             local,
             data_dir: StoreDataDir::new(data_dir, "eventsourcingdb"),
         }
     }
+
+    fn format_uri(host_port: u16) -> String {
+        format!("http://127.0.0.1:{}/", host_port)
+    }
 }
 
 #[async_trait]
 impl StoreManager for EventsourcingDbStoreManager {
+    fn local(&self) -> bool { self.local }
+
     async fn start(&mut self) -> Result<()> {
-        if !self.local {
-            let mount_path = self.data_dir.setup()?;
-            let container = EventsourcingDb::new(mount_path).start().await?;
-            let host_port = container.get_host_port_ipv4(EVENTSOURCINGDB_PORT).await?;
-            self.uri = Some(format!("http://127.0.0.1:{}/", host_port));
-            self.container = Some(container);
-        } else {
-            self.uri = Some(format!("http://127.0.0.1:{}/", EVENTSOURCINGDB_PORT.as_u16()));
-        }
+        let mount_path = self.data_dir.setup()?;
+        let container = EventsourcingDb::new(mount_path).start().await?;
+        let host_port = container.get_host_port_ipv4(EVENTSOURCINGDB_PORT).await?;
+        self.uri = Self::format_uri(host_port);
+        self.container = Some(container);
 
         // Use the default API token for the container
         self.options
             .insert("api_token".to_string(), EVENTSOURCINGDB_API_TOKEN.to_string());
 
-        let url: Url = self.uri.clone().unwrap().parse()?;
         wait_for_ready("EventsourcingDB", || async {
-            let client = Client::new(url.clone(), EVENTSOURCINGDB_API_TOKEN);
+            let client = Client::new(Url::parse(&self.uri)?, EVENTSOURCINGDB_API_TOKEN);
             client.ping().await.map_err(|e| anyhow::anyhow!(e))
         }, Duration::from_secs(60)).await?;
 
@@ -66,9 +67,7 @@ impl StoreManager for EventsourcingDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        if !self.local {
-            let _ = EventsourcingDb::new(None).pull_image().await?;
-        }
+        let _ = EventsourcingDb::new(None).pull_image().await?;
         Ok(())
     }
 
@@ -89,7 +88,7 @@ impl StoreManager for EventsourcingDbStoreManager {
     }
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(EventsourcingDbAdapter::new(&self.uri.clone().unwrap(), &self.options)?))
+        Ok(Arc::new(EventsourcingDbAdapter::new(&self.uri, &self.options)?))
     }
 
     async fn logs(&self) -> Result<String> {

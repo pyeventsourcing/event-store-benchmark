@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 // Store manager - handles lifecycle and adapter creation
 pub struct KurrentDbStoreManager {
-    uri: Option<String>,
+    uri: String,
     container: Option<ContainerAsync<KurrentDb>>,
     local: bool,
     data_dir: StoreDataDir,
@@ -23,31 +23,34 @@ pub struct KurrentDbStoreManager {
 impl KurrentDbStoreManager {
     pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
-            uri: None,
+            uri: Self::format_uri(KURRENTDB_PORT.as_u16()),
             container: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "kurrentdb"),
         }
     }
+
+    fn format_uri(port: u16) -> String {
+        format!("esdb://127.0.0.1:{}?tls=false", port)
+    }
 }
 
 #[async_trait]
 impl StoreManager for KurrentDbStoreManager {
+    fn local(&self) -> bool { self.local }
+
     async fn start(&mut self) -> Result<()> {
         if !self.local {
             let mount_path = self.data_dir.setup()?;
             let container = KurrentDb::new(mount_path).start().await?;
             let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
-            self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", host_port));
+            self.uri = Self::format_uri(host_port);
             self.container = Some(container);
-        } else {
-            self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", KURRENTDB_PORT.as_u16()));
         }
 
         // Wait for the container to be ready
-        let uri = self.uri.clone().unwrap();
         wait_for_ready("KurrentDB", || async {
-            let settings = uri.parse::<ClientSettings>()?;
+            let settings = self.uri.clone().parse::<ClientSettings>()?;
             let client = Client::new(settings).map_err(|e| anyhow::anyhow!(e))?;
             let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
             let options = AppendToStreamOptions::default();
@@ -61,9 +64,7 @@ impl StoreManager for KurrentDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        if !self.local {
-            let _ = KurrentDb::new(None).pull_image().await?;
-        }
+        let _ = KurrentDb::new(None).pull_image().await?;
         Ok(())
     }
 
@@ -84,7 +85,7 @@ impl StoreManager for KurrentDbStoreManager {
     }
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(KurrentDbAdapter::new(&self.uri.clone().unwrap())?))
+        Ok(Arc::new(KurrentDbAdapter::new(&self.uri.clone())?))
     }
 
     async fn logs(&self) -> Result<String> {

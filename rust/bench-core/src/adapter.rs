@@ -45,6 +45,9 @@ pub trait EventStoreAdapter: Send + Sync {
 
 #[async_trait]
 pub trait StoreManager: Send + Sync {
+    /// Use local service (no need to start and stop)
+    fn local(&self) -> bool;
+
     /// Start the container and return success status
     async fn start(&mut self) -> anyhow::Result<()>;
 

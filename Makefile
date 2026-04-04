@@ -31,7 +31,6 @@ venv:
 	$(PYTHON) -m venv ./.venv
 	./.venv/bin/pip install -r ./python/requirements.txt
 
-
 # Generate report from raw results
 report:
 	PYTHONPATH=./python ./.venv/bin/python -m report_generator.main --raw results/raw --out results/published
@@ -82,3 +81,12 @@ start-kurrentdb-insecure:
     --name my-kurrentdb-insecure \
     $(KURRENTDB_DOCKER_IMAGE) \
     --insecure
+
+.PHONY: stop-kurrentdb-insecure
+stop-kurrentdb-insecure:
+	@docker stop my-kurrentdb-insecure
+	@docker rm my-kurrentdb-insecure
+
+.PHONY: python-kurrentdb-benchmark
+python-kurrentdb-benchmark:
+	./.venv/bin/python ./python/kurrentdb_benchmark.py

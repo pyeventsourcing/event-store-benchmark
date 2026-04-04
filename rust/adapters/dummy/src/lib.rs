@@ -108,6 +108,7 @@ impl DummyStoreManager {
 
 #[async_trait]
 impl StoreManager for DummyStoreManager {
+    fn local(&self) -> bool { true }
     async fn start(&mut self) -> Result<()> {
         Ok(())
     }
