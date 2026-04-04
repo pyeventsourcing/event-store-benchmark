@@ -136,6 +136,16 @@ impl StoreValue {
     }
 }
 
+impl From<String> for StoreValue {
+    fn from(s: String) -> Self {
+        if s.contains(',') {
+            StoreValue::Multiple(s.split(',').map(|s| s.trim().to_string()).collect())
+        } else {
+            StoreValue::Single(s)
+        }
+    }
+}
+
 impl Default for StoreValue {
     fn default() -> Self {
         StoreValue::Single("default".to_string())

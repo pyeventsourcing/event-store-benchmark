@@ -84,8 +84,9 @@ fn main() -> Result<()> {
 }
 
 async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_dir: Option<String>, cancel_token: CancellationToken) -> Result<()> {
-    // Generate session ID (ISO timestamp)
-    let session_id = Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string();
+    // Generate session ID (ISO timestamp or from environment variable)
+    let session_id = std::env::var("ESB_SESSION_ID")
+        .unwrap_or_else(|_| Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string());
     println!("Session ID: {}", session_id);
 
     // Decide random seed.
@@ -122,7 +123,10 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
     for document in serde_yaml::Deserializer::from_str(&session_config_yaml) {
         let value = WorkloadConfig::deserialize(document)?;
-        if let Some(unexpanded) = value.performance {
+        if let Some(mut unexpanded) = value.performance {
+            if let Ok(stores) = std::env::var("ESB_WORKLOAD_STORES") {
+                unexpanded.stores = stores.into();
+            }
             if seen_base_names.contains(&unexpanded.name) {
                 anyhow::bail!("Duplicate base workload name detected: {}. Please ensure all workload names in the session config are unique.", unexpanded.name);
             }
