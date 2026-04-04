@@ -36,12 +36,21 @@ jobs:
       - name: Build benchmark tool
         run: make build
 
+      - name: Run Python KurrentDB benchmark
+        run: make run-kurrentdb-bench-python
+
+      - name: Run Rust KurrentDB benchmark
+        run: make run-kurrentdb-bench-rust
+
+      - name: Stop KurrentDB
+        run: make stop-kurrentdb-insecure
+
       - name: Run smoke-test workload
         run: make run-smoke-test
 
-#      - name: Run scaling workload
-#        run: sudo make run-scaling  # Axon Server files can't be deleted otherwise
-#
+      - name: Run scaling workload
+        run: sudo make run-scaling  # sudo otherwise Axon Server files can't be deleted
+
       - name: Generate report
         run: make report
 
@@ -51,9 +60,3 @@ jobs:
         with:
           name: benchmark-results
           path: results/
-
-      - name: Run Python KurrentDB benchmark
-        run: make run-kurrentdb-bench-python
-
-      - name: Run Rust KurrentDB benchmark
-        run: make run-kurrentdb-bench-rust

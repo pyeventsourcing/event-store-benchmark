@@ -2,7 +2,7 @@ performance:
   name: scaling-writers
   mode: write
   warmup_seconds: 0
-  duration_seconds: 20
+  duration_seconds: 30
   samples_per_second: 10
   concurrency:
     readers: 0
@@ -21,7 +21,7 @@ performance:
   name: scaling-readers
   mode: read
   warmup_seconds: 0
-  duration_seconds: 20
+  duration_seconds: 30
   samples_per_second: 10
   concurrency:
     readers: [1, 2, 4, 8, 16, 32]
