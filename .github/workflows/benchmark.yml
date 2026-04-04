@@ -7,9 +7,101 @@ on:
       - main
 
 jobs:
-  benchmark:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      session_id: ${{ steps.session.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
 
+      - name: Generate Session ID
+        id: session
+        run: echo "session_id=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Upload benchmark tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: es-bench
+          path: target/release/es-bench
+
+  run-smoke-test:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v4
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Run smoke-test workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          sudo make run-smoke-test
+          sudo sudo chown -R $(shell id -u):$(shell id -g) ./results
+
+      - name: Upload smoke-test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-smoke-test
+          path: results/raw/${{ env.ESB_SESSION_ID }}
+
+  run-scaling:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        store: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v4
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          sudo make run-scaling  
+          sudo chown -R $(shell id -u):$(shell id -g) ./results
+
+      - name: Upload scaling results
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-scaling-${{ matrix.store }}
+          path: results/raw/${{ env.ESB_SESSION_ID }}
+
+  report:
+    needs: [setup, run-smoke-test, run-scaling]
+    runs-on: ubuntu-latest
+    if: always()
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -24,39 +116,24 @@ jobs:
       - name: Create Python virtual environment for reporting
         run: make venv
 
-      - name: Start KurrentDB
-        run: make start-kurrentdb-insecure
+      - name: Download smoke-test results
+        uses: actions/download-artifact@v4
+        with:
+          name: results-smoke-test
+          path: results/raw/${{ env.ESB_SESSION_ID }}
 
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Build benchmark tool
-        run: make build
-
-      - name: Run Python KurrentDB benchmark
-        run: make run-kurrentdb-bench-python
-
-      - name: Run Rust KurrentDB benchmark
-        run: make run-kurrentdb-bench-rust
-
-      - name: Stop KurrentDB
-        run: make stop-kurrentdb-insecure
-
-      - name: Run smoke-test workload
-        run: sudo make run-smoke-test  # sudo otherwise Axon Server files can't be deleted
-
-      - name: Run scaling workload
-        run: sudo make run-scaling  # sudo otherwise Axon Server files can't be deleted
+      - name: Download scaling results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: results-scaling-*
+          path: results/raw/${{ env.ESB_SESSION_ID }}
+          merge-multiple: true
 
       - name: Generate report
         run: make report
 
-      - name: Upload results
-        uses: actions/upload-artifact@v7
-        if: always()
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
           path: results/
