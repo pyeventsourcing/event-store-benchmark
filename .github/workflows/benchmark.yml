@@ -46,7 +46,7 @@ jobs:
         run: make stop-kurrentdb-insecure
 
       - name: Run smoke-test workload
-        run: make run-smoke-test
+        run: sudo make run-smoke-test  # sudo otherwise Axon Server files can't be deleted
 
       - name: Run scaling workload
         run: sudo make run-scaling  # sudo otherwise Axon Server files can't be deleted
