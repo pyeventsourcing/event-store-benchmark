@@ -17,14 +17,16 @@ use tokio::time::Duration;
 pub struct AxonServerStoreManager {
     uri: Option<String>,
     container: Option<ContainerAsync<AxonServer>>,
+    local: bool,
     data_dir: StoreDataDir,
 }
 
 impl AxonServerStoreManager {
-    pub fn new(data_dir: Option<String>) -> Self {
+    pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
             uri: None,
             container: None,
+            local,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
         }
     }
@@ -51,11 +53,15 @@ impl AxonServerStoreManager {
 #[async_trait]
 impl StoreManager for AxonServerStoreManager {
     async fn start(&mut self) -> Result<()> {
-        let mount_path = self.data_dir.setup()?;
-        let container = AxonServer::new(mount_path).start().await?;
-        let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
-        self.uri = Some(format!("http://127.0.0.1:{}", host_port));
-        self.container = Some(container);
+        if !self.local {
+            let mount_path = self.data_dir.setup()?;
+            let container = AxonServer::new(mount_path).start().await?;
+            let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
+            self.uri = Some(format!("http://127.0.0.1:{}", host_port));
+            self.container = Some(container);
+        } else {
+            self.uri = Some(format!("http://127.0.0.1:{}", AXONSERVER_GRPC_PORT.as_u16()));
+        }
 
         // Wait for the container to be ready
         let uri = self.uri.clone().unwrap();
@@ -69,7 +75,9 @@ impl StoreManager for AxonServerStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = AxonServer::new(None).pull_image().await?;
+        if !self.local {
+            let _ = AxonServer::new(None).pull_image().await?;
+        }
         Ok(())
     }
 
@@ -217,8 +225,8 @@ impl StoreManagerFactory for AxonServerFactory {
         "axonserver"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(AxonServerStoreManager::new(data_dir)))
+    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(AxonServerStoreManager::new(data_dir, local)))
     }
 }
 

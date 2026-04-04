@@ -16,14 +16,16 @@ use uuid::Uuid;
 pub struct KurrentDbStoreManager {
     uri: Option<String>,
     container: Option<ContainerAsync<KurrentDb>>,
+    local: bool,
     data_dir: StoreDataDir,
 }
 
 impl KurrentDbStoreManager {
-    pub fn new(data_dir: Option<String>) -> Self {
+    pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
             uri: None,
             container: None,
+            local,
             data_dir: StoreDataDir::new(data_dir, "kurrentdb"),
         }
     }
@@ -32,11 +34,15 @@ impl KurrentDbStoreManager {
 #[async_trait]
 impl StoreManager for KurrentDbStoreManager {
     async fn start(&mut self) -> Result<()> {
-        let mount_path = self.data_dir.setup()?;
-        let container = KurrentDb::new(mount_path).start().await?;
-        let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
-        self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", host_port));
-        self.container = Some(container);
+        if !self.local {
+            let mount_path = self.data_dir.setup()?;
+            let container = KurrentDb::new(mount_path).start().await?;
+            let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
+            self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", host_port));
+            self.container = Some(container);
+        } else {
+            self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", KURRENTDB_PORT.as_u16()));
+        }
 
         // Wait for the container to be ready
         let uri = self.uri.clone().unwrap();
@@ -55,7 +61,9 @@ impl StoreManager for KurrentDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = KurrentDb::new(None).pull_image().await?;
+        if !self.local {
+            let _ = KurrentDb::new(None).pull_image().await?;
+        }
         Ok(())
     }
 
@@ -184,7 +192,7 @@ impl StoreManagerFactory for KurrentDbFactory {
         "kurrentdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(KurrentDbStoreManager::new(data_dir)))
+    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(KurrentDbStoreManager::new(data_dir, local)))
     }
 }

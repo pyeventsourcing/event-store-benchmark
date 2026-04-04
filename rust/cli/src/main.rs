@@ -166,6 +166,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             break;
         }
 
+        let local = config.local;
         let workload = Workload::Performance(PerformanceWorkload::from_config(config, actual_seed)?);
         let workload_name = workload.name()?.to_string();
 
@@ -183,7 +184,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store_name))?;
 
         // Create store manager
-        let store_manager = store_factory.create_store_manager(data_dir.clone())?;
+        let store_manager = store_factory.create_store_manager(data_dir.clone(), local)?;
 
         // Execute the run
         let (
@@ -204,11 +205,11 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
         // Write individual run results
         fs::write(
-            workload_results_path.join("results.json"),
+            workload_results_path.join("workload_results.json"),
             serde_json::to_string_pretty(&workload_results)?,
         )?;
         fs::write(
-            workload_results_path.join("metrics.json"),
+            workload_results_path.join("container_metrics.json"),
             serde_json::to_string_pretty(&container_metrics)?,
         )?;
         if !container_logs.is_empty() {

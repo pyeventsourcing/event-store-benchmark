@@ -48,8 +48,8 @@ def _load_environment_info(env_data: dict) -> Optional[EnvironmentInfo]:
 def load_raw_run_data(run_dir: Path) -> dict | None:
     """Loads all raw data files for a single run into a dictionary."""
     config_file = run_dir / "config.yaml"
-    results_file = run_dir / "results.json"
-    metrics_file = run_dir / "metrics.json"
+    results_file = run_dir / "workload_results.json"
+    metrics_file = run_dir / "container_metrics.json"
     logs_file = run_dir / "logs.txt"
 
     if not config_file.exists():

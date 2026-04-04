@@ -23,15 +23,17 @@ pub struct EventsourcingDbStoreManager {
     uri: Option<String>,
     options: HashMap<String, String>,
     container: Option<ContainerAsync<EventsourcingDb>>,
+    local: bool,
     data_dir: StoreDataDir,
 }
 
 impl EventsourcingDbStoreManager {
-    pub fn new(data_dir: Option<String>) -> Self {
+    pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
             uri: None,
             container: None,
             options: HashMap::new(),
+            local,
             data_dir: StoreDataDir::new(data_dir, "eventsourcingdb"),
         }
     }
@@ -40,11 +42,15 @@ impl EventsourcingDbStoreManager {
 #[async_trait]
 impl StoreManager for EventsourcingDbStoreManager {
     async fn start(&mut self) -> Result<()> {
-        let mount_path = self.data_dir.setup()?;
-        let container = EventsourcingDb::new(mount_path).start().await?;
-        let host_port = container.get_host_port_ipv4(EVENTSOURCINGDB_PORT).await?;
-        self.uri = Some(format!("http://127.0.0.1:{}/", host_port));
-        self.container = Some(container);
+        if !self.local {
+            let mount_path = self.data_dir.setup()?;
+            let container = EventsourcingDb::new(mount_path).start().await?;
+            let host_port = container.get_host_port_ipv4(EVENTSOURCINGDB_PORT).await?;
+            self.uri = Some(format!("http://127.0.0.1:{}/", host_port));
+            self.container = Some(container);
+        } else {
+            self.uri = Some(format!("http://127.0.0.1:{}/", EVENTSOURCINGDB_PORT.as_u16()));
+        }
 
         // Use the default API token for the container
         self.options
@@ -60,7 +66,9 @@ impl StoreManager for EventsourcingDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = EventsourcingDb::new(None).pull_image().await?;
+        if !self.local {
+            let _ = EventsourcingDb::new(None).pull_image().await?;
+        }
         Ok(())
     }
 
@@ -201,7 +209,7 @@ impl StoreManagerFactory for EventsourcingDbFactory {
         "eventsourcingdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(EventsourcingDbStoreManager::new(data_dir)))
+    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(EventsourcingDbStoreManager::new(data_dir, local)))
     }
 }

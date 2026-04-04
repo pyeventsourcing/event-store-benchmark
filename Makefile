@@ -57,3 +57,27 @@ configs/%.yaml: FORCE
 	./target/release/es-bench run --config $@ --seed $(ESB_SEED) --data-dir=$(ESB_CONTAINER_DATA_DIR)
 
 FORCE:
+
+#KURRENTDB_DOCKER_IMAGE ?= docker.cloudsmith.io/eventstore/eventstore-ce/eventstoredb-oss:23.10.7-bookworm-slim
+#KURRENTDB_DOCKER_IMAGE ?= docker.cloudsmith.io/eventstore/eventstore/eventstoredb-ee:24.10.6-x64-8.0-bookworm-slim
+#KURRENTDB_DOCKER_IMAGE ?= docker.kurrent.io/kurrent-latest/kurrentdb:25.0.1-x64-8.0-bookworm-slim
+KURRENTDB_DOCKER_IMAGE ?= docker.kurrent.io/kurrent-latest/kurrentdb:25.1.0-x64-8.0-bookworm-slim
+
+.PHONY: start-kurrentdb-insecure
+start-kurrentdb-insecure:
+	@docker run -d -i -t -p 2113:2113 \
+    --env "KURRENTDB_ADVERTISE_HOST_TO_CLIENT_AS=localhost" \
+    --env "KURRENTDB_ADVERTISE_NODE_PORT_TO_CLIENT_AS=2113" \
+    --env "KURRENTDB_RUN_PROJECTIONS=All" \
+    --env "KURRENTDB_START_STANDARD_PROJECTIONS=true" \
+    --env "KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP=true" \
+    --env "KURRENTDB_ALLOW_UNKNOWN_OPTIONS=true" \
+    --env "KURRENTDB_TELEMETRY_OPTOUT=true" \
+    --env "EVENTSTORE_ADVERTISE_HOST_TO_CLIENT_AS=localhost" \
+    --env "EVENTSTORE_ADVERTISE_NODE_PORT_TO_CLIENT_AS=2113" \
+    --env "EVENTSTORE_RUN_PROJECTIONS=All" \
+    --env "EVENTSTORE_START_STANDARD_PROJECTIONS=true" \
+    --env "EVENTSTORE_ENABLE_ATOM_PUB_OVER_HTTP=true" \
+    --name my-kurrentdb-insecure \
+    $(KURRENTDB_DOCKER_IMAGE) \
+    --insecure

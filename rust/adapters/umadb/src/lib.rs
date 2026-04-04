@@ -23,12 +23,12 @@ pub struct UmaDbStoreManager {
 }
 
 impl UmaDbStoreManager {
-    pub fn new(data_dir: Option<String>) -> Self {
+    pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
             uri: None,
             container: None,
             client: None,
-            local: false,
+            local,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
         }
     }
@@ -44,7 +44,7 @@ impl StoreManager for UmaDbStoreManager {
             self.uri = Some(format!("http://127.0.0.1:{}", host_port));
             self.container = Some(container);
         } else {
-            self.uri = Some(format!("http://localhost:{}", UMADB_PORT));
+            self.uri = Some(format!("http://127.0.0.1:{}", UMADB_PORT.as_u16()));
         }
 
         // Wait for container to be ready and create shared client
@@ -183,7 +183,7 @@ impl StoreManagerFactory for UmaDbFactory {
         "umadb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(UmaDbStoreManager::new(data_dir)))
+    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(UmaDbStoreManager::new(data_dir, local)))
     }
 }

@@ -24,6 +24,9 @@ jobs:
       - name: Create Python virtual environment for reporting
         run: make venv
 
+      - name: Start KurrentDB
+        run: make start-kurrentdb-insecure
+
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 

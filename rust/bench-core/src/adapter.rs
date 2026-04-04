@@ -120,5 +120,5 @@ pub trait StoreManagerFactory: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Create a store manager instance with given (internal) connection params or defaults
-    fn create_store_manager(&self, data_dir: Option<String>) -> anyhow::Result<Box<dyn StoreManager>>;
+    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> anyhow::Result<Box<dyn StoreManager>>;
 }
