@@ -34,6 +34,7 @@ pub struct AllStreamPosition {
     pub prepare_position: u64,
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[allow(dead_code)]
 pub struct WrongExpectedVersion {
     #[prost(
         oneof = "wrong_expected_version::CurrentStreamRevisionOption",
@@ -71,24 +72,37 @@ pub mod wrong_expected_version {
         ExpectedNoStream(()),
     }
 }
+
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct AccessDenied {}
+
+#[allow(dead_code)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StreamDeleted {
     #[prost(message, optional, tag = "1")]
     pub stream_identifier: ::core::option::Option<StreamIdentifier>,
 }
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Timeout {}
+
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Unknown {}
+
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct InvalidTransaction {}
+
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MaximumAppendSizeExceeded {
     #[prost(uint32, tag = "1")]
     pub max_append_size: u32,
 }
+
+#[allow(dead_code)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadRequest {
     #[prost(string, tag = "1")]
