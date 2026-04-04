@@ -896,6 +896,7 @@ impl NodeConnection {
 
         let mut http = HttpConnector::new();
         http.enforce_http(false);
+        http.set_nodelay(true);
 
         let connector = tower::ServiceBuilder::new()
             .layer_fn(move |s| {
@@ -911,6 +912,8 @@ impl NodeConnection {
             hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
                 .timer(hyper_util::rt::tokio::TokioTimer::new())
                 .http2_only(true)
+                .http2_initial_stream_window_size(4 * 1024 * 1024)
+                .http2_initial_connection_window_size(8 * 1024 * 1024)
                 .http2_keep_alive_interval(settings.keep_alive_interval)
                 .http2_keep_alive_timeout(settings.keep_alive_timeout)
                 .build::<_, tonic::body::Body>(connector);
