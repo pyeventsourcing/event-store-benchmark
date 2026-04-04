@@ -1,5 +1,5 @@
-scaling-writers:
-  workload_type: performance
+performance:
+  name: scaling-writers
   mode: write
   warmup_seconds: 0
   duration_seconds: 20
@@ -10,5 +10,9 @@ scaling-writers:
   operations:
     write:
       event_size_bytes: 256
-  stores: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
-  #stores: [umadb]
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+    - eventsourcingdb
+    - dummy
