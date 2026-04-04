@@ -35,7 +35,7 @@ impl StoreManager for KurrentDbStoreManager {
         let mount_path = self.data_dir.setup()?;
         let container = KurrentDb::new(mount_path).start().await?;
         let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
-        self.uri = Some(format!("esdb://localhost:{}?tls=false", host_port));
+        self.uri = Some(format!("esdb://127.0.0.1:{}?tls=false", host_port));
         self.container = Some(container);
 
         // Wait for the container to be ready

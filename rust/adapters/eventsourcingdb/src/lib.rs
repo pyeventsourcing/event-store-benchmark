@@ -43,7 +43,7 @@ impl StoreManager for EventsourcingDbStoreManager {
         let mount_path = self.data_dir.setup()?;
         let container = EventsourcingDb::new(mount_path).start().await?;
         let host_port = container.get_host_port_ipv4(EVENTSOURCINGDB_PORT).await?;
-        self.uri = Some(format!("http://localhost:{}/", host_port));
+        self.uri = Some(format!("http://127.0.0.1:{}/", host_port));
         self.container = Some(container);
 
         // Use the default API token for the container

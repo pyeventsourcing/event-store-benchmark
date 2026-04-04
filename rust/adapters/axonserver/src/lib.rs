@@ -54,7 +54,7 @@ impl StoreManager for AxonServerStoreManager {
         let mount_path = self.data_dir.setup()?;
         let container = AxonServer::new(mount_path).start().await?;
         let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
-        self.uri = Some(format!("http://localhost:{}", host_port));
+        self.uri = Some(format!("http://127.0.0.1:{}", host_port));
         self.container = Some(container);
 
         // Wait for the container to be ready
