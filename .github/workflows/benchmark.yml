@@ -33,6 +33,14 @@ jobs:
         with:
           name: es-bench
           path: target/release/es-bench
+          retention-days: 1
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v4
+        with:
+          name: configs
+          path: configs/
+          retention-days: 1
 
   run-smoke-test:
     needs: setup
@@ -40,14 +48,17 @@ jobs:
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Download benchmark tool
         uses: actions/download-artifact@v4
         with:
           name: es-bench
           path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v4
+        with:
+          name: configs
+          path: configs/
 
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
@@ -62,6 +73,7 @@ jobs:
         with:
           name: results-smoke-test
           path: results/raw/${{ env.ESB_SESSION_ID }}
+          retention-days: 1
 
   run-scaling:
     needs: setup
@@ -73,14 +85,17 @@ jobs:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Download benchmark tool
         uses: actions/download-artifact@v4
         with:
           name: es-bench
           path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v4
+        with:
+          name: configs
+          path: configs/
 
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
@@ -95,6 +110,7 @@ jobs:
         with:
           name: results-scaling-${{ matrix.store }}
           path: results/raw/${{ env.ESB_SESSION_ID }}
+          retention-days: 1
 
   report:
     needs: [setup, run-smoke-test, run-scaling]
@@ -136,4 +152,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
-          path: results/
+          path: results/published
