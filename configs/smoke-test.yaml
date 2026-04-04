@@ -14,7 +14,11 @@ performance:
   setup:
     prepopulate_events: 500
     prepopulate_streams: 50
-  stores: [umadb, eventsourcingdb, dummy]
+  stores:
+    - umadb
+    - eventsourcingdb
+    - dummy
+    - kurrentdb
 ---
 performance:
   name: smoke-test-performance-read
@@ -32,4 +36,8 @@ performance:
   setup:
     prepopulate_events: 500
     prepopulate_streams: 50
-  stores: [umadb, eventsourcingdb, dummy]
+  stores:
+    - umadb
+    - eventsourcingdb
+    - dummy
+    - kurrentdb

@@ -23,6 +23,7 @@ impl KurrentDb {
             env_vars: vec![
                 ("KURRENTDB_INSECURE", "true"),
                 ("KURRENTDB_RUN_PROJECTIONS", "All"),
+                ("KURRENTDB_START_STANDARD_PROJECTIONS", "true"),
                 ("KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP", "true"),
                 ("KURRENTDB_CLUSTER_SIZE", "1"),
                 ("KURRENTDB_MEM_DB", "false"),
