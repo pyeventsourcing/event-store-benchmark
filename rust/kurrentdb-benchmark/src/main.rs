@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
 
     for i in 0..args.events {
         let event = kurrentdb::EventData::binary("BenchmarkEvent", payload.clone().into()).id(Uuid::new_v4());
+        // Use exactly the same stream name pattern as Python (args.stream + uuid4() + uuid4())
         let stream_name = format!("{}{}{}", args.stream, Uuid::new_v4(), Uuid::new_v4());
 
         let step_start = Instant::now();
