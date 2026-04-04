@@ -28,6 +28,24 @@ impl AxonServerStoreManager {
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
         }
     }
+
+    // Set user so that the container data folder can be removed,
+    // tried but disused because Axon Server needs to run a root.
+    // fn with_user(image: AxonServer) -> Result<ContainerRequest<AxonServer>> {
+    //     let uid = std::process::Command::new("id")
+    //         .arg("-u")
+    //         .output()?;
+    //     let gid = std::process::Command::new("id")
+    //         .arg("-g")
+    //         .output()?;
+    //     let user = format!(
+    //         "{}:{}",
+    //         String::from_utf8(uid.stdout)?.trim().to_string(),
+    //         String::from_utf8(gid.stdout)?.trim().to_string(),
+    //     );
+    //     let image = image.with_user(user);
+    //     Ok(image)
+    // }
 }
 
 #[async_trait]
