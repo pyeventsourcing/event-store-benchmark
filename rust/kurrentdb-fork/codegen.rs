@@ -7,10 +7,10 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
     let files = ["protos/shared.proto"];
 
     // Common files.
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(false)
         .extern_path(".event_store.client.Empty", "()")
-        .bytes(&["StreamIdentifier.stream_name"])
+        .bytes("StreamIdentifier.stream_name")
         .out_dir(out_dir)
         .compile_protos(&files, &[""])?;
 
@@ -42,17 +42,15 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::create_dir_all(out_dir)?;
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(false)
-        .bytes(&[
-            "AppendReq.ProposedMessage.custom_metadata",
-            "AppendReq.ProposedMessage.data",
-            "BatchAppendReq.ProposedMessage.custom_metadata",
-            "BatchAppendReq.ProposedMessage.data",
-            "ReadEvent.RecordedEvent.custom_metadata",
-            "ReadEvent.RecordedEvent.data",
-            "StreamIdentifier.stream_name",
-        ])
+        .bytes("AppendReq.ProposedMessage.custom_metadata")
+        .bytes("AppendReq.ProposedMessage.data")
+        .bytes("BatchAppendReq.ProposedMessage.custom_metadata")
+        .bytes("BatchAppendReq.ProposedMessage.data")
+        .bytes("ReadEvent.RecordedEvent.custom_metadata")
+        .bytes("ReadEvent.RecordedEvent.data")
+        .bytes("StreamIdentifier.stream_name")
         .out_dir(out_dir)
         .extern_path(".event_store.client.Empty", "()")
         .extern_path(

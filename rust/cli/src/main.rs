@@ -2,7 +2,7 @@ use anyhow::Result;
 use bench_core::{collect_environment_info, execute_run, get_git_commit_hash, PerformanceWorkload, SessionMetadata, StoreManagerFactory, Workload};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use rand::Rng;
+use rand::random;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tokio::runtime::Runtime;
@@ -89,7 +89,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     println!("Session ID: {}", session_id);
 
     // Decide random seed.
-    let actual_seed = seed.unwrap_or_else(|| rand::thread_rng().gen());
+    let actual_seed = seed.unwrap_or_else(random);
     println!("Seed: {}", actual_seed);
 
     // Resolve data_dir to an absolute path if provided

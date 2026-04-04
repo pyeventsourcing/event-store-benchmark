@@ -6,15 +6,7 @@ use crate::options::read_all::ReadAllOptions;
 use crate::options::read_stream::ReadStreamOptions;
 use crate::options::subscribe_to_stream::SubscribeToStreamOptions;
 use crate::server_features::ServerInfo;
-use crate::{
-    DeletePersistentSubscriptionOptions, DeleteStreamOptions, GetPersistentSubscriptionInfoOptions,
-    ListPersistentSubscriptionsOptions, MetadataStreamName, PersistentSubscription,
-    PersistentSubscriptionInfo, PersistentSubscriptionToAllOptions, Position, ReadStream,
-    ReplayParkedMessagesOptions, RestartPersistentSubscriptionSubsystem, RevisionOrPosition,
-    StreamMetadata, StreamMetadataResult, StreamName, SubscribeToAllOptions,
-    SubscribeToPersistentSubscriptionOptions, Subscription, TombstoneStreamOptions,
-    VersionedMetadata, WriteResult, commands,
-};
+use crate::{DeletePersistentSubscriptionOptions, DeleteStreamOptions, GetPersistentSubscriptionInfoOptions, ListPersistentSubscriptionsOptions, MetadataStreamName, PersistentSubscription, PersistentSubscriptionInfo, PersistentSubscriptionToAllOptions, Position, ReadStream, ReplayParkedMessagesOptions, RestartPersistentSubscriptionSubsystem, RevisionOrPosition, StreamMetadata, StreamMetadataResult, StreamName, SubscribeToAllOptions, SubscribeToPersistentSubscriptionOptions, Subscription, TombstoneStreamOptions, VersionedMetadata, WriteResult, commands};
 use crate::{
     EventData,
     options::append_to_stream::{AppendToStreamOptions, ToEvents},
@@ -45,7 +37,7 @@ impl Client {
         let client = GrpcClient::create(handle, settings.clone())?;
 
         let http_client = reqwest::Client::builder()
-            .danger_accept_invalid_certs(!settings.is_tls_certificate_verification_enabled())
+            .tls_danger_accept_invalid_certs(!settings.is_tls_certificate_verification_enabled())
             .https_only(settings.is_secure_mode_enabled())
             .build()
             .map_err(|e| crate::Error::InitializationError(e.to_string()))?;

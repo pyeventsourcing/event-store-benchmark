@@ -6,7 +6,7 @@ pub struct SupportedMethods {
     #[prost(string, tag = "2")]
     pub event_store_server_version: ::prost::alloc::string::String,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SupportedMethod {
     #[prost(string, tag = "1")]
     pub method_name: ::prost::alloc::string::String,
@@ -121,7 +121,7 @@ pub mod server_features_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.server_features.ServerFeatures/GetSupportedMethods",
             );

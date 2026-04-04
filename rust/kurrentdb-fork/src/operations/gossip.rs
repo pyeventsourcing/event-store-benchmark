@@ -75,7 +75,7 @@ pub(crate) async fn http_read(
     handle: grpc::Handle,
 ) -> Result<Vec<MemberInfo>, Box<dyn std::error::Error>> {
     let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(!setts.tls_verify_cert)
+        .tls_danger_accept_invalid_certs(!setts.tls_verify_cert)
         .build()?;
 
     let resp = http_configure_auth(

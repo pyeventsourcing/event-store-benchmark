@@ -2,7 +2,7 @@ use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
 use crate::metrics::{LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults};
 use anyhow::Result;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -487,7 +487,7 @@ impl PerformanceWorkload {
 
 
             while !out_of_time && !cancel_token.is_cancelled() {
-                let stream_idx = rng.gen_range(0..prepopulated_streams);
+                let stream_idx = rng.random_range(0..prepopulated_streams);
 
                 let req = ReadRequest {
                     stream: format!("{}{}", stream_prefix, stream_idx),

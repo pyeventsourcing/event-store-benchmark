@@ -13,7 +13,7 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use nom::lib::std::fmt::Formatter;
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
-use rand::{RngCore, SeedableRng};
+use rand::{SeedableRng, TryRng};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
@@ -1442,7 +1442,7 @@ fn determine_best_node(
 
     let member_opt = members.min_by(|a, b| {
         if let NodePreference::Random = preference {
-            if rng.next_u32() % 2 == 0 {
+            if rng.try_next_u32().unwrap() % 2 == 0 {
                 return Ordering::Greater;
             }
 
@@ -1450,7 +1450,7 @@ fn determine_best_node(
         }
 
         if preference.match_preference(&a.state) && preference.match_preference(&b.state) {
-            if rng.next_u32() % 2 == 0 {
+            if rng.try_next_u32().unwrap() % 2 == 0 {
                 return Ordering::Less;
             } else {
                 return Ordering::Greater;
@@ -1480,7 +1480,7 @@ fn determine_best_node(
 
 #[cfg(test)]
 mod node_selection_tests {
-    use rand::{RngCore, SeedableRng, rngs::SmallRng};
+    use rand::{SeedableRng, rngs::SmallRng, TryRng};
 
     use crate::{
         Endpoint, NodePreference,
@@ -1515,12 +1515,12 @@ mod node_selection_tests {
 
         members.push(MemberInfo {
             instance_id: uuid::Uuid::new_v4(),
-            time_stamp: rng.next_u32() as i64,
+            time_stamp: rng.try_next_u32().unwrap() as i64,
             state: VNodeState::Leader,
             is_alive: true,
             http_end_point: Endpoint {
                 host: "localhost".to_string(),
-                port: rng.next_u32(),
+                port: rng.try_next_u32().unwrap(),
             },
 
             last_commit_position: 0,
@@ -1534,12 +1534,12 @@ mod node_selection_tests {
 
         members.push(MemberInfo {
             instance_id: uuid::Uuid::new_v4(),
-            time_stamp: rng.next_u32() as i64,
+            time_stamp: rng.try_next_u32().unwrap() as i64,
             state: VNodeState::Follower,
             is_alive: true,
             http_end_point: Endpoint {
                 host: "localhost".to_string(),
-                port: rng.next_u32(),
+                port: rng.try_next_u32().unwrap(),
             },
             last_commit_position: 0,
             writer_checkpoint: 0,
@@ -1552,12 +1552,12 @@ mod node_selection_tests {
 
         members.push(MemberInfo {
             instance_id: uuid::Uuid::new_v4(),
-            time_stamp: rng.next_u32() as i64,
+            time_stamp: rng.try_next_u32().unwrap() as i64,
             state: VNodeState::Follower,
             is_alive: true,
             http_end_point: Endpoint {
                 host: "localhost".to_string(),
-                port: rng.next_u32(),
+                port: rng.try_next_u32().unwrap(),
             },
             last_commit_position: 0,
             writer_checkpoint: 0,
@@ -1570,12 +1570,12 @@ mod node_selection_tests {
 
         members.push(MemberInfo {
             instance_id: uuid::Uuid::new_v4(),
-            time_stamp: rng.next_u32() as i64,
+            time_stamp: rng.try_next_u32().unwrap() as i64,
             state: VNodeState::ReadOnlyReplica,
             is_alive: true,
             http_end_point: Endpoint {
                 host: "localhost".to_string(),
-                port: rng.next_u32(),
+                port: rng.try_next_u32().unwrap(),
             },
             last_commit_position: 0,
             writer_checkpoint: 0,
@@ -1588,12 +1588,12 @@ mod node_selection_tests {
 
         members.push(MemberInfo {
             instance_id: uuid::Uuid::new_v4(),
-            time_stamp: rng.next_u32() as i64,
+            time_stamp: rng.try_next_u32().unwrap() as i64,
             state: VNodeState::ReadOnlyReplica,
             is_alive: true,
             http_end_point: Endpoint {
                 host: "localhost".to_string(),
-                port: rng.next_u32(),
+                port: rng.try_next_u32().unwrap(),
             },
             last_commit_position: 0,
             writer_checkpoint: 0,

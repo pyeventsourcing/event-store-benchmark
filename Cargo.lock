@@ -213,10 +213,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "prost",
- "tokio",
  "tokio-stream",
  "tonic",
- "tonic-build",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]
@@ -1839,6 +1839,8 @@ dependencies = [
  "tokio-rustls",
  "toml",
  "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
  "tower",
  "tracing",
  "tracing-subscriber",
@@ -2742,6 +2744,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",

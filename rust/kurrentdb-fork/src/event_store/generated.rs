@@ -435,7 +435,8 @@ pub(crate) fn parse_revision_or_position(input: &str) -> crate::Result<RevisionO
 }
 
 pub(crate) fn parse_position(input: &str) -> crate::Result<Position> {
-    if let Ok((_, pos)) = nom::combinator::complete(parse_position_start_from)(input) {
+    use nom::Parser;
+    if let Ok((_, pos)) = nom::combinator::complete(parse_position_start_from).parse(input) {
         Ok(pos)
     } else {
         Err(crate::Error::InternalParsingError(format!(

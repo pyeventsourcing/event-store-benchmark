@@ -6,7 +6,7 @@ pub struct ReadReq {
 }
 /// Nested message and enum types in `ReadReq`.
 pub mod read_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[prost(string, tag = "2")]
         pub group_name: ::prost::alloc::string::String,
@@ -19,14 +19,14 @@ pub mod read_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
         pub struct UuidOption {
             #[prost(oneof = "uuid_option::Content", tags = "1, 2")]
             pub content: ::core::option::Option<uuid_option::Content>,
         }
         /// Nested message and enum types in `UUIDOption`.
         pub mod uuid_option {
-            #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+            #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
             pub enum Content {
                 #[prost(message, tag = "1")]
                 Structured(()),
@@ -34,7 +34,7 @@ pub mod read_req {
                 String(()),
             }
         }
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "1")]
             StreamIdentifier(crate::event_store::generated::common::StreamIdentifier),
@@ -162,14 +162,14 @@ pub mod read_resp {
             #[prost(bytes = "bytes", tag = "8")]
             pub data: ::prost::bytes::Bytes,
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum Position {
             #[prost(uint64, tag = "3")]
             CommitPosition(u64),
             #[prost(message, tag = "4")]
             NoPosition(()),
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum Count {
             #[prost(int32, tag = "5")]
             RetryCount(i32),
@@ -177,7 +177,7 @@ pub mod read_resp {
             NoRetryCount(()),
         }
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct SubscriptionConfirmation {
         #[prost(string, tag = "1")]
         pub subscription_id: ::prost::alloc::string::String,
@@ -190,14 +190,14 @@ pub mod read_resp {
         SubscriptionConfirmation(SubscriptionConfirmation),
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<create_req::Options>,
 }
 /// Nested message and enum types in `CreateReq`.
 pub mod create_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[deprecated]
         #[prost(message, optional, tag = "1")]
@@ -213,7 +213,7 @@ pub mod create_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "4")]
             Stream(super::StreamOptions),
@@ -221,7 +221,7 @@ pub mod create_req {
             All(super::AllOptions),
         }
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct StreamOptions {
         #[prost(message, optional, tag = "1")]
         pub stream_identifier: ::core::option::Option<
@@ -232,7 +232,7 @@ pub mod create_req {
     }
     /// Nested message and enum types in `StreamOptions`.
     pub mod stream_options {
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum RevisionOption {
             #[prost(uint64, tag = "2")]
             Revision(u64),
@@ -242,7 +242,7 @@ pub mod create_req {
             End(()),
         }
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct AllOptions {
         #[prost(oneof = "all_options::AllOption", tags = "1, 2, 3")]
         pub all_option: ::core::option::Option<all_options::AllOption>,
@@ -251,7 +251,7 @@ pub mod create_req {
     }
     /// Nested message and enum types in `AllOptions`.
     pub mod all_options {
-        #[derive(Clone, PartialEq, ::prost::Message)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
         pub struct FilterOptions {
             #[prost(uint32, tag = "5")]
             pub checkpoint_interval_multiplier: u32,
@@ -262,21 +262,21 @@ pub mod create_req {
         }
         /// Nested message and enum types in `FilterOptions`.
         pub mod filter_options {
-            #[derive(Clone, PartialEq, ::prost::Message)]
+            #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
             pub struct Expression {
                 #[prost(string, tag = "1")]
                 pub regex: ::prost::alloc::string::String,
                 #[prost(string, repeated, tag = "2")]
                 pub prefix: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
             }
-            #[derive(Clone, PartialEq, ::prost::Oneof)]
+            #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
             pub enum Filter {
                 #[prost(message, tag = "1")]
                 StreamIdentifier(Expression),
                 #[prost(message, tag = "2")]
                 EventType(Expression),
             }
-            #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+            #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
             pub enum Window {
                 #[prost(uint32, tag = "3")]
                 Max(u32),
@@ -284,7 +284,7 @@ pub mod create_req {
                 Count(()),
             }
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum AllOption {
             #[prost(message, tag = "1")]
             Position(super::Position),
@@ -293,7 +293,7 @@ pub mod create_req {
             #[prost(message, tag = "3")]
             End(()),
         }
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum FilterOption {
             #[prost(message, tag = "4")]
             Filter(FilterOptions),
@@ -301,14 +301,14 @@ pub mod create_req {
             NoFilter(()),
         }
     }
-    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Position {
         #[prost(uint64, tag = "1")]
         pub commit_position: u64,
         #[prost(uint64, tag = "2")]
         pub prepare_position: u64,
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Settings {
         #[prost(bool, tag = "1")]
         pub resolve_links: bool,
@@ -343,14 +343,14 @@ pub mod create_req {
     }
     /// Nested message and enum types in `Settings`.
     pub mod settings {
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum MessageTimeout {
             #[prost(int64, tag = "4")]
             MessageTimeoutTicks(i64),
             #[prost(int32, tag = "14")]
             MessageTimeoutMs(i32),
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum CheckpointAfter {
             #[prost(int64, tag = "6")]
             CheckpointAfterTicks(i64),
@@ -398,16 +398,16 @@ pub mod create_req {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CreateResp {}
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UpdateReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<update_req::Options>,
 }
 /// Nested message and enum types in `UpdateReq`.
 pub mod update_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[deprecated]
         #[prost(message, optional, tag = "1")]
@@ -423,7 +423,7 @@ pub mod update_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "4")]
             Stream(super::StreamOptions),
@@ -431,7 +431,7 @@ pub mod update_req {
             All(super::AllOptions),
         }
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct StreamOptions {
         #[prost(message, optional, tag = "1")]
         pub stream_identifier: ::core::option::Option<
@@ -442,7 +442,7 @@ pub mod update_req {
     }
     /// Nested message and enum types in `StreamOptions`.
     pub mod stream_options {
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum RevisionOption {
             #[prost(uint64, tag = "2")]
             Revision(u64),
@@ -452,14 +452,14 @@ pub mod update_req {
             End(()),
         }
     }
-    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct AllOptions {
         #[prost(oneof = "all_options::AllOption", tags = "1, 2, 3")]
         pub all_option: ::core::option::Option<all_options::AllOption>,
     }
     /// Nested message and enum types in `AllOptions`.
     pub mod all_options {
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum AllOption {
             #[prost(message, tag = "1")]
             Position(super::Position),
@@ -469,14 +469,14 @@ pub mod update_req {
             End(()),
         }
     }
-    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Position {
         #[prost(uint64, tag = "1")]
         pub commit_position: u64,
         #[prost(uint64, tag = "2")]
         pub prepare_position: u64,
     }
-    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Settings {
         #[prost(bool, tag = "1")]
         pub resolve_links: bool,
@@ -508,14 +508,14 @@ pub mod update_req {
     }
     /// Nested message and enum types in `Settings`.
     pub mod settings {
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum MessageTimeout {
             #[prost(int64, tag = "4")]
             MessageTimeoutTicks(i64),
             #[prost(int32, tag = "14")]
             MessageTimeoutMs(i32),
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum CheckpointAfter {
             #[prost(int64, tag = "6")]
             CheckpointAfterTicks(i64),
@@ -563,16 +563,16 @@ pub mod update_req {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UpdateResp {}
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<delete_req::Options>,
 }
 /// Nested message and enum types in `DeleteReq`.
 pub mod delete_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[prost(string, tag = "2")]
         pub group_name: ::prost::alloc::string::String,
@@ -581,7 +581,7 @@ pub mod delete_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "1")]
             StreamIdentifier(crate::event_store::generated::common::StreamIdentifier),
@@ -590,16 +590,16 @@ pub mod delete_req {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct DeleteResp {}
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetInfoReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<get_info_req::Options>,
 }
 /// Nested message and enum types in `GetInfoReq`.
 pub mod get_info_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[prost(string, tag = "3")]
         pub group_name: ::prost::alloc::string::String,
@@ -608,7 +608,7 @@ pub mod get_info_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "1")]
             StreamIdentifier(crate::event_store::generated::common::StreamIdentifier),
@@ -704,7 +704,7 @@ pub mod subscription_info {
         #[prost(string, tag = "9")]
         pub connection_name: ::prost::alloc::string::String,
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Measurement {
         #[prost(string, tag = "1")]
         pub key: ::prost::alloc::string::String,
@@ -712,14 +712,14 @@ pub mod subscription_info {
         pub value: i64,
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ReplayParkedReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<replay_parked_req::Options>,
 }
 /// Nested message and enum types in `ReplayParkedReq`.
 pub mod replay_parked_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[prost(string, tag = "1")]
         pub group_name: ::prost::alloc::string::String,
@@ -730,14 +730,14 @@ pub mod replay_parked_req {
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "2")]
             StreamIdentifier(crate::event_store::generated::common::StreamIdentifier),
             #[prost(message, tag = "3")]
             All(()),
         }
-        #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StopAtOption {
             #[prost(int64, tag = "4")]
             StopAt(i64),
@@ -746,23 +746,23 @@ pub mod replay_parked_req {
         }
     }
 }
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ReplayParkedResp {}
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListReq {
     #[prost(message, optional, tag = "1")]
     pub options: ::core::option::Option<list_req::Options>,
 }
 /// Nested message and enum types in `ListReq`.
 pub mod list_req {
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct Options {
         #[prost(oneof = "options::ListOption", tags = "1, 2")]
         pub list_option: ::core::option::Option<options::ListOption>,
     }
     /// Nested message and enum types in `Options`.
     pub mod options {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum ListOption {
             #[prost(message, tag = "1")]
             ListAllSubscriptions(()),
@@ -770,14 +770,14 @@ pub mod list_req {
             ListForStream(super::StreamOption),
         }
     }
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
     pub struct StreamOption {
         #[prost(oneof = "stream_option::StreamOption", tags = "1, 2")]
         pub stream_option: ::core::option::Option<stream_option::StreamOption>,
     }
     /// Nested message and enum types in `StreamOption`.
     pub mod stream_option {
-        #[derive(Clone, PartialEq, ::prost::Oneof)]
+        #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
         pub enum StreamOption {
             #[prost(message, tag = "1")]
             Stream(crate::event_store::generated::common::StreamIdentifier),
@@ -896,7 +896,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/Create",
             );
@@ -922,7 +922,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/Update",
             );
@@ -948,7 +948,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/Delete",
             );
@@ -977,7 +977,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/Read",
             );
@@ -1003,7 +1003,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/GetInfo",
             );
@@ -1032,7 +1032,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/ReplayParked",
             );
@@ -1058,7 +1058,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/List",
             );
@@ -1084,7 +1084,7 @@ pub mod persistent_subscriptions_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.persistent_subscriptions.PersistentSubscriptions/RestartSubsystem",
             );

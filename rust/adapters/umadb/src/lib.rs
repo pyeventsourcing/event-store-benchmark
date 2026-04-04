@@ -10,14 +10,14 @@ use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use tokio::time::Duration;
-use umadb_client::UmaDBClient;
-use umadb_dcb::{DCBEvent, DCBEventStoreAsync, DCBQuery, DCBQueryItem};
+use umadb_client::UmaDbClient;
+use umadb_dcb::{DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<UmaDb>>,
-    client: Option<Arc<umadb_client::AsyncUmaDBClient>>,
+    client: Option<Arc<umadb_client::AsyncUmaDbClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -50,8 +50,8 @@ impl StoreManager for UmaDbStoreManager {
         self.container = Some(container);
 
         // Wait for container to be ready and create shared client
-        self.client = Some(Arc::new(wait_for_ready("UmaDB", || async {
-            let client = UmaDBClient::new(self.uri.clone()).connect_async().await?;
+        self.client = Some(Arc::new(wait_for_ready("UmaDb", || async {
+            let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
             client.head().await?;
             Ok(client)
         }, Duration::from_secs(60)).await?));
@@ -84,7 +84,7 @@ impl StoreManager for UmaDbStoreManager {
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
         let client = self.client.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("UmaDB client not initialized. Did you call start()?"))?
+            .ok_or_else(|| anyhow::anyhow!("UmaDb client not initialized. Did you call start()?"))?
             .clone();
         Ok(Arc::new(UmaDbAdapter { client }))
     }
@@ -107,13 +107,13 @@ impl StoreManager for UmaDbStoreManager {
 
 // Lightweight adapter - just wraps a shared client
 pub struct UmaDbAdapter {
-    client: Arc<umadb_client::AsyncUmaDBClient>,
+    client: Arc<umadb_client::AsyncUmaDbClient>,
 }
 
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        let dcb_events: Vec<DCBEvent> = events.into_iter().map(|evt| DCBEvent {
+        let dcb_events: Vec<DcbEvent> = events.into_iter().map(|evt| DcbEvent {
             event_type: evt.event_type,
             tags: evt.tags,
             data: evt.payload,
@@ -124,8 +124,8 @@ impl EventStoreAdapter for UmaDbAdapter {
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let query = DCBQuery {
-            items: vec![DCBQueryItem {
+        let query = DcbQuery {
+            items: vec![DcbQueryItem {
                 types: vec![],
                 tags: vec![req.stream],
             }],

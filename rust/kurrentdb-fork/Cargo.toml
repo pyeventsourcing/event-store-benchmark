@@ -7,7 +7,7 @@ version = "1.0.1"
 # Uncomment if you want to update messages.rs code-gen.
 # We disabled codegen.rs because it requires having `protoc` installed on your machine
 # in order to build that library.
-# build = "codegen.rs"
+build = "codegen.rs"
 
 description = "Official KurrentDB gRPC client"
 keywords = ["database", "event-sourcing", "ddd", "cqrs", "kurrent"]
@@ -40,7 +40,7 @@ prost = "0.14"
 prost-types = "0.14"
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
-    "json",
+    "json", "query", "rustls"
 ] }
 rustls = { version = "0.23.37" }
 rustls-native-certs = "0.8"
@@ -49,7 +49,8 @@ serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["time"] }
 tokio-rustls = "0.26"
-tonic = { version = "0.14.5", features = ["tls-aws-lc", "tls-native-roots"] }
+tonic = { version = "0.14", features = ["tls-aws-lc", "tls-native-roots", "codegen"] }
+tonic-prost = "0.14"
 tower = "0.5"
 url = "2"
 urlencoding = "2"
@@ -57,8 +58,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 lazy_static = "1"
 eyre = "0.6"
 
-#[build-dependencies]
-#tonic-build = { version = "0.14" }
+[build-dependencies]
+tonic-prost-build = "0.14"
 
 [[test]]
 name = "integration"

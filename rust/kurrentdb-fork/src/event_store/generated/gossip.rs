@@ -4,14 +4,14 @@ pub struct ClusterInfo {
     #[prost(message, repeated, tag = "1")]
     pub members: ::prost::alloc::vec::Vec<MemberInfo>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct EndPoint {
     #[prost(string, tag = "1")]
     pub address: ::prost::alloc::string::String,
     #[prost(uint32, tag = "2")]
     pub port: u32,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct MemberInfo {
     #[prost(message, optional, tag = "1")]
     pub instance_id: ::core::option::Option<crate::event_store::generated::common::Uuid>,
@@ -208,7 +208,7 @@ pub mod gossip_client {
                         format!("Service was not ready: {}", e.into()),
                     )
                 })?;
-            let codec = tonic::codec::ProstCodec::default();
+            let codec = tonic_prost::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
                 "/event_store.client.gossip.Gossip/Read",
             );
