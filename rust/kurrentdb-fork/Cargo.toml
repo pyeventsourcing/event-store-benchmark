@@ -35,23 +35,21 @@ hyper = { version = "1", features = ["client"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http2"] }
 hyper-rustls = { version = "0.27", features = ["rustls-native-certs", "http2"] }
 tracing = "0.1"
-nom = "7"
-prost = "0.13"
-prost-types = "0.13"
-rand = { version = "0.9", features = ["small_rng"] }
-reqwest = { version = "0.12", default-features = false, features = [
-    "rustls-tls",
-    "rustls-tls-native-roots",
+nom = "8"
+prost = "0.14"
+prost-types = "0.14"
+rand = { version = "0.10" }
+reqwest = { version = "0.13", default-features = false, features = [
     "json",
 ] }
-rustls = { version = "0.23" }
+rustls = { version = "0.23.37" }
 rustls-native-certs = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["time"] }
 tokio-rustls = "0.26"
-tonic = { version = "0.13", features = ["tls-aws-lc", "tls-native-roots"] }
+tonic = { version = "0.14.5", features = ["tls-aws-lc", "tls-native-roots"] }
 tower = "0.5"
 url = "2"
 urlencoding = "2"
@@ -59,8 +57,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 lazy_static = "1"
 eyre = "0.6"
 
-[build-dependencies]
-tonic-build = { version = "0.13", features = ["prost-build"] }
+#[build-dependencies]
+#tonic-build = { version = "0.14" }
 
 [[test]]
 name = "integration"
@@ -73,8 +71,8 @@ tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "macros",
 ] }
-toml = "0.8"
-ctor = "0.4"
+toml = "1.1"
+#ctor = "0.4"
 
 [dev-dependencies.tracing-subscriber]
 version = "0.3"

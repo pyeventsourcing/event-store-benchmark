@@ -10,8 +10,8 @@ bench-core = { path = "../../bench-core" }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tracing = "0.1"
-umadb-client = "0.4.0"
-umadb-dcb = "0.4.0"
+umadb-client = "0.5.0"
+umadb-dcb = "0.5.0"
 uuid = { version = "1", features = ["v4", "serde"] }
 futures = "0.3"
 bench-testcontainers = { path = "../../testcontainers" }
