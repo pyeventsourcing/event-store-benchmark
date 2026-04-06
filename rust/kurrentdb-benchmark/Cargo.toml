@@ -3,6 +3,14 @@ name = "kurrentdb-benchmark"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "kurrentdb-benchmark"
+path = "src/main.rs"
+
+[[bin]]
+name = "kurrentdb-benchmark-minimal"
+path = "src/minimal.rs"
+
 [dependencies]
 kurrentdb = { path = "../kurrentdb-fork" }
 tokio = { version = "1.0", features = ["full"] }
