@@ -16,6 +16,7 @@ use uuid::Uuid;
 pub struct KurrentDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<KurrentDb>>,
+    client: Option<Arc<KurrentDbClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -25,6 +26,7 @@ impl KurrentDbStoreManager {
         Self {
             uri: Self::format_uri(KURRENTDB_PORT.as_u16()),
             container: None,
+            client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "kurrentdb"),
         }
@@ -49,7 +51,7 @@ impl StoreManager for KurrentDbStoreManager {
         }
 
         // Wait for the container to be ready
-        wait_for_ready("KurrentDB", || async {
+        self.client = Some(Arc::new(wait_for_ready("KurrentDB", || async {
             let client = KurrentDbClient::new(self.uri.clone())
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
@@ -58,8 +60,8 @@ impl StoreManager for KurrentDbStoreManager {
             client
                 .append_to_stream("_ping", &options, vec![event])
                 .await?;
-            Ok(())
-        }, Duration::from_secs(60)).await?;
+            Ok(client)
+        }, Duration::from_secs(60)).await?));
 
         Ok(())
     }
@@ -86,8 +88,10 @@ impl StoreManager for KurrentDbStoreManager {
     }
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        let uri = self.uri.clone();
-        Ok(Arc::new(KurrentDbAdapter::new(uri)))
+        let client = self.client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("KurrentDB client not initialized. Did you call start()?"))?
+            .clone();
+        Ok(Arc::new(KurrentDbAdapter { client }))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -106,29 +110,9 @@ impl StoreManager for KurrentDbStoreManager {
     }
 }
 
-// Lightweight adapter - just wraps a client
+// Lightweight adapter - just wraps a shared client
 pub struct KurrentDbAdapter {
-    client: Arc<tokio::sync::OnceCell<KurrentDbClient>>,
-    uri: String,
-}
-
-impl KurrentDbAdapter {
-    pub fn new(uri: String) -> Self {
-        Self {
-            client: Arc::new(tokio::sync::OnceCell::new()),
-            uri,
-        }
-    }
-
-    async fn get_client(&self) -> Result<&KurrentDbClient> {
-        self.client
-            .get_or_try_init(|| async {
-                KurrentDbClient::new(self.uri.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{}", e))
-            })
-            .await
-    }
+    client: Arc<KurrentDbClient>,
 }
 
 #[async_trait]
@@ -137,7 +121,6 @@ impl EventStoreAdapter for KurrentDbAdapter {
         if events.is_empty() {
             return Ok(());
         }
-        let client = self.get_client().await?;
         let stream_name = events[0].tags[0].clone();
         let k_events: Vec<kurrentdb::EventData> = events
             .into_iter()
@@ -146,14 +129,13 @@ impl EventStoreAdapter for KurrentDbAdapter {
             })
             .collect();
         let options = AppendToStreamOptions::default();
-        client
+        self.client
             .append_to_stream(stream_name, &options, k_events)
             .await?;
         Ok(())
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let client = self.get_client().await?;
         let count = req.limit.unwrap_or(4096) as usize;
         let options = ReadStreamOptions::default()
             .position(match req.from_offset {
@@ -161,7 +143,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 None => StreamPosition::Start,
             })
             .max_count(count);
-        let mut stream = client.read_stream(req.stream, &options).await?;
+        let mut stream = self.client.read_stream(req.stream, &options).await?;
         let mut out = Vec::new();
         while let Some(event) = stream.next().await? {
             let recorded = event.get_original_event();
@@ -192,6 +174,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
         }
         Ok(out)
     }
+}
 
     // async fn ping(&self) -> Result<Duration> {
     //     let t0 = std::time::Instant::now();
@@ -199,11 +182,10 @@ impl EventStoreAdapter for KurrentDbAdapter {
     //     let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
     //     let options = AppendToStreamOptions::default();
     //     self.client
-    //         .append_to_stream("_ping", &options, event)
+    //         .append_to_stream("_ping", &options, vec![event])
     //         .await?;
     //     Ok(t0.elapsed())
     // }
-}
 
 pub struct KurrentDbFactory;
 
