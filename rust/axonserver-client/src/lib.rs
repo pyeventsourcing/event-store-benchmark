@@ -16,8 +16,9 @@ use proto::dcb::{
     dcb_event_store_client::DcbEventStoreClient, AppendEventsRequest, Event, GetHeadRequest,
     SourceEventsRequest, SourceEventsResponse, Tag, TaggedEvent,
 };
+use std::time::Duration;
 use tokio_stream::once;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Endpoint};
 
 /// Minimal Axon Server DCB client.
 #[derive(Clone)]
@@ -28,7 +29,15 @@ pub struct AxonServerClient {
 impl AxonServerClient {
     /// Connect to an Axon Server gRPC endpoint (e.g. `http://localhost:8124`).
     pub async fn connect(uri: String) -> Result<Self> {
-        let inner = DcbEventStoreClient::connect(uri).await?;
+        let endpoint = Endpoint::from_shared(uri)?
+            .tcp_nodelay(true)
+            .http2_keep_alive_interval(Duration::from_secs(5))
+            .keep_alive_timeout(Duration::from_secs(10))
+            .initial_stream_window_size(Some(4 * 1024 * 1024))
+            .initial_connection_window_size(Some(8 * 1024 * 1024));
+
+        let channel = endpoint.connect().await?;
+        let inner = DcbEventStoreClient::new(channel);
         Ok(Self { inner })
     }
 

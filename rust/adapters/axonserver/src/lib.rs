@@ -17,6 +17,7 @@ use tokio::time::Duration;
 pub struct AxonServerStoreManager {
     uri: String,
     container: Option<ContainerAsync<AxonServer>>,
+    client: Option<Arc<AxonServerClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -26,6 +27,7 @@ impl AxonServerStoreManager {
         Self {
             uri: format!("http://127.0.0.1:{}", AXONSERVER_GRPC_PORT.as_u16()),
             container: None,
+            client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
         }
@@ -66,11 +68,11 @@ impl StoreManager for AxonServerStoreManager {
         self.container = Some(container);
 
         // Wait for the container to be ready
-        wait_for_ready("Axon Server", || async {
+        self.client = Some(Arc::new(wait_for_ready("Axon Server", || async {
             let mut client = AxonServerClient::connect(self.uri.clone()).await?;
             client.get_head().await?;
-            Ok(())
-        }, Duration::from_secs(60)).await?;
+            Ok(client)
+        }, Duration::from_secs(60)).await?));
 
         Ok(())
     }
@@ -97,11 +99,10 @@ impl StoreManager for AxonServerStoreManager {
     }
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        let adapter = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { AxonServerAdapter::new(&self.uri.clone()).await })
-        })?;
-        Ok(Arc::new(adapter))
+        let client = self.client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Axon Server client not initialized. Did you call start()?"))?
+            .clone();
+        Ok(Arc::new(AxonServerAdapter { client }))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -122,13 +123,12 @@ impl StoreManager for AxonServerStoreManager {
 
 // Lightweight adapter - just wraps a client
 pub struct AxonServerAdapter {
-    client: AxonServerClient,
+    client: Arc<AxonServerClient>,
 }
 
 impl AxonServerAdapter {
-    pub async fn new(uri: &str) -> Result<Self> {
-        let client = AxonServerClient::connect(uri.to_string()).await?;
-        Ok(Self { client })
+    pub fn new(client: Arc<AxonServerClient>) -> Self {
+        Self { client }
     }
 }
 
@@ -138,7 +138,8 @@ impl EventStoreAdapter for AxonServerAdapter {
         // Note: AxonServerClient requires &mut self for operations,
         // but we need &self for the trait. We'll need to clone the client.
         // This is a limitation of the axonserver_client API design.
-        let mut client = self.client.clone();
+        // Cloning the client is cheap as it only clones the underlying gRPC channel.
+        let mut client = (*self.client).clone();
 
         let tagged_events: Vec<TaggedEvent> = events.into_iter().map(|evt| {
             let tags: Vec<Tag> = evt
@@ -169,7 +170,7 @@ impl EventStoreAdapter for AxonServerAdapter {
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let mut client = self.client.clone();
+        let mut client = (*self.client).clone();
 
         let from = req.from_offset.unwrap_or(0) as i64;
         let criterion = Criterion {
