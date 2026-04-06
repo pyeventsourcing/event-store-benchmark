@@ -198,7 +198,7 @@ The benchmark follows a consistent "One Client Per Worker" model:
 * **Concurrency**: The number of these connections is strictly controlled by the `concurrency` settings in the benchmark configuration (e.g., `writers: [1, 4]`), ensuring that all databases are tested with the same number of active client connections.
 
 #### 3. Implementation Consistency
-* **Minimalist Clients**: The suite uses "minimal" gRPC client implementations for KurrentDB, Axon Server, and UmaDB. These implementations strip away high-level background state machines or complex coordination logic found in some official SDKs, ensuring the benchmark measures the database's performance rather than the client library's overhead.
+* **Minimalist Clients**: The suite uses "minimal" gRPC client implementations for KurrentDB. This implementation strips away high-level background state machines or complex coordination logic found in the official client SDK, ensuring the benchmark measures the database's performance rather than the client library's overhead. A Rust gRPC client for Axon Server has also been implemented with the same design, because no official SDK exists.
 * **Standardized Payload**: All adapters transform the internal `EventData` (binary payload + type + tags) into their respective proto formats just before the gRPC call, keeping the transformation overhead comparable across all tests.
 
 ### Workload Types
