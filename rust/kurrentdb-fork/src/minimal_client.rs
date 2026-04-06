@@ -1,4 +1,5 @@
-use tonic::transport::Channel;
+use std::time::Duration;
+use tonic::transport::{Channel, Endpoint};
 use crate::event_store::client::streams::streams_client::StreamsClient;
 use crate::event_store::client::streams::{AppendReq, ReadReq, append_req, read_req};
 use crate::event_store::generated::common::StreamIdentifier;
@@ -18,12 +19,35 @@ impl KurrentDbClient {
     pub async fn new(uri: String) -> crate::Result<Self> {
         let settings: ClientSettings = uri.parse().map_err(|e: crate::ClientSettingsParseError| crate::Error::InitializationError(e.to_string()))?;
 
-        let endpoint = settings.hosts().first()
+        let host_endpoint = settings.hosts().first()
             .ok_or_else(|| crate::Error::InitializationError("No hosts provided in settings".to_string()))?;
 
-        let uri = settings.to_uri(endpoint);
-        let channel = Channel::builder(uri)
-            .connect()
+        let uri = settings.to_uri(host_endpoint);
+        let mut endpoint = Endpoint::from_shared(uri.to_string())
+            .map_err(|e| crate::Error::InitializationError(e.to_string()))?
+            .tcp_nodelay(true)
+            .http2_keep_alive_interval(Duration::from_secs(5))
+            .keep_alive_timeout(Duration::from_secs(10))
+            .initial_stream_window_size(Some(4 * 1024 * 1024))
+            .initial_connection_window_size(Some(8 * 1024 * 1024));
+
+        if settings.is_secure_mode_enabled() {
+            let mut tls_config = tonic::transport::ClientTlsConfig::new();
+            if let Some(domain) = settings.hosts().first().map(|h| h.host.clone()) {
+                tls_config = tls_config.domain_name(domain);
+            }
+
+            if let Some(ca_file) = settings.tls_ca_file() {
+                let ca_cert = std::fs::read(ca_file)
+                    .map_err(|e| crate::Error::InitializationError(format!("Failed to read CA file: {}", e)))?;
+                tls_config = tls_config.ca_certificate(tonic::transport::Certificate::from_pem(ca_cert));
+            }
+
+            endpoint = endpoint.tls_config(tls_config)
+                .map_err(|e| crate::Error::InitializationError(e.to_string()))?;
+        }
+
+        let channel = endpoint.connect()
             .await
             .map_err(|e| crate::Error::InitializationError(e.to_string()))?;
 
