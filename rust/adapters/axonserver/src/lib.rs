@@ -69,7 +69,7 @@ impl StoreManager for AxonServerStoreManager {
 
         // Wait for the container to be ready
         self.client = Some(Arc::new(wait_for_ready("Axon Server", || async {
-            let mut client = AxonServerClient::connect(self.uri.clone()).await?;
+            let client = AxonServerClient::connect(self.uri.clone()).await?;
             client.get_head().await?;
             Ok(client)
         }, Duration::from_secs(60)).await?));
@@ -135,12 +135,6 @@ impl AxonServerAdapter {
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        // Note: AxonServerClient requires &mut self for operations,
-        // but we need &self for the trait. We'll need to clone the client.
-        // This is a limitation of the axonserver_client API design.
-        // Cloning the client is cheap as it only clones the underlying gRPC channel.
-        let mut client = (*self.client).clone();
-
         let tagged_events: Vec<TaggedEvent> = events.into_iter().map(|evt| {
             let tags: Vec<Tag> = evt
                 .tags
@@ -165,13 +159,11 @@ impl EventStoreAdapter for AxonServerAdapter {
             }
         }).collect();
 
-        client.append(tagged_events).await?;
+        self.client.append(tagged_events).await?;
         Ok(())
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let mut client = (*self.client).clone();
-
         let from = req.from_offset.unwrap_or(0) as i64;
         let criterion = Criterion {
             tags_and_names: Some(TagsAndNamesCriterion {
@@ -182,7 +174,7 @@ impl EventStoreAdapter for AxonServerAdapter {
                 }],
             }),
         };
-        let responses = client.source(from, vec![criterion]).await?;
+        let responses = self.client.source(from, vec![criterion]).await?;
 
         let mut out = Vec::new();
         for resp in responses {

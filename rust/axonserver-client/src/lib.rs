@@ -42,18 +42,19 @@ impl AxonServerClient {
     }
 
     /// Append a batch of tagged events unconditionally.
-    pub async fn append(&mut self, events: Vec<TaggedEvent>) -> Result<i64> {
+    pub async fn append(&self, events: Vec<TaggedEvent>) -> Result<i64> {
+        let mut inner = self.inner.clone();
         let req = AppendEventsRequest {
             condition: None,
             event: events,
         };
-        let response = self.inner.append(once(req)).await?.into_inner();
+        let response = inner.append(once(req)).await?.into_inner();
         Ok(response.sequence_of_the_first_event)
     }
 
     /// Convenience: append a single event with tags derived from string labels.
     pub async fn append_event(
-        &mut self,
+        &self,
         name: &str,
         payload: Vec<u8>,
         tags: &[(&str, &str)],
@@ -82,15 +83,16 @@ impl AxonServerClient {
 
     /// Source (read) events matching criteria from a given sequence.
     pub async fn source(
-        &mut self,
+        &self,
         from_sequence: i64,
         criteria: Vec<proto::dcb::Criterion>,
     ) -> Result<Vec<SourceEventsResponse>> {
+        let mut inner = self.inner.clone();
         let req = SourceEventsRequest {
             from_sequence,
             criterion: criteria,
         };
-        let mut stream = self.inner.source(req).await?.into_inner();
+        let mut stream = inner.source(req).await?.into_inner();
         let mut results = Vec::new();
         while let Some(resp) = stream.message().await? {
             results.push(resp);
@@ -99,8 +101,9 @@ impl AxonServerClient {
     }
 
     /// Get the current head sequence of the event store.
-    pub async fn get_head(&mut self) -> Result<i64> {
-        let resp = self.inner.get_head(GetHeadRequest {}).await?.into_inner();
+    pub async fn get_head(&self) -> Result<i64> {
+        let mut inner = self.inner.clone();
+        let resp = inner.get_head(GetHeadRequest {}).await?.into_inner();
         Ok(resp.sequence)
     }
 }

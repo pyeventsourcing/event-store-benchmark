@@ -195,8 +195,7 @@ The benchmark follows a consistent "One Client Per Worker" model:
 
 * **Shared Connection/Channel**: For each store, a single shared gRPC connection (or `Channel`) is established during the `start()` phase of the `StoreManager`.
 * **Adapter Instances**: When the benchmark starts worker tasks (readers or writers), it calls `create_adapter()` for each worker.
-    * For **KurrentDB** and **UmaDB**, this clones the underlying `Arc<Client>`, which in `tonic` effectively shares the same connection pool/channel but provides a distinct handle for the worker.
-    * For **Axon Server**, because its specific client API requires mutable access for operations, the adapter clones the client for each request (internally cloning the gRPC channel), ensuring thread-safety while still utilizing the shared underlying connection.
+    * For **KurrentDB**, **Axon Server**, and **UmaDB**, this clones the underlying `Arc<Client>`, which in `tonic` effectively shares the same connection pool/channel but provides a distinct handle for the worker.
 * **Concurrency**: The number of these instances is strictly controlled by the `concurrency` settings in the benchmark configuration (e.g., `writers: [1, 4]`), ensuring that all databases are tested with the same number of active client handles.
 
 #### 3. Implementation Consistency
