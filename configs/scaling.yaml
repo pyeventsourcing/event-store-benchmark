@@ -21,7 +21,7 @@ performance:
   name: scaling-readers
   mode: read
   warmup_seconds: 0
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 10
   concurrency:
     readers: [1, 2, 4, 8, 16, 32]
