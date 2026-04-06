@@ -29,21 +29,21 @@ jobs:
         run: make build
 
       - name: Upload benchmark tool
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: es-bench
           path: target/release/es-bench
           retention-days: 1
 
       - name: Upload configs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: configs
           path: configs/
           retention-days: 1
 
       - name: Upload Makefile
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Makefile
           path: Makefile
@@ -56,19 +56,19 @@ jobs:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-A
     steps:
       - name: Download benchmark tool
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: es-bench
           path: target/release/
 
       - name: Download configs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: configs
           path: configs/
 
       - name: Download Makefile
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: Makefile
           path: .
@@ -82,7 +82,7 @@ jobs:
           sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload smoke-test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: results-smoke-test
           path: results/raw/
@@ -99,19 +99,19 @@ jobs:
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
       - name: Download benchmark tool
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: es-bench
           path: target/release/
 
       - name: Download configs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: configs
           path: configs/
 
       - name: Download Makefile
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: Makefile
           path: .
@@ -125,7 +125,7 @@ jobs:
           sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload scaling results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: results-scaling-${{ matrix.store }}
           path: results/raw/
@@ -150,7 +150,7 @@ jobs:
         run: make venv
 
       - name: Download results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: results-*
           path: results/raw/
@@ -160,7 +160,7 @@ jobs:
         run: make report
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: benchmark-report
           path: results/published
