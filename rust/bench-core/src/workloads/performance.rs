@@ -262,7 +262,7 @@ impl PerformanceWorkload {
                 continue;
             }
 
-            let adapter = store.create_adapter()?;
+            let adapter = store.create_adapter().await?;
 
             let stream_prefix = self.stream_prefix.clone();
             setup_set.spawn(async move {
@@ -309,7 +309,7 @@ impl PerformanceWorkload {
         if readers > 0 {
             println!("Creating {} reader clients...", readers);
             for i in 0..readers {
-                match store.create_adapter() {
+                match store.create_adapter().await {
                     Ok(adapter) => reader_adapters.push(adapter),
                     Err(e) => {
                         eprintln!("Failed to create reader {}: {}", i, e);
@@ -325,7 +325,7 @@ impl PerformanceWorkload {
         if writers > 0 {
             println!("Creating {} writer clients...", writers);
             for i in 0..writers {
-                match store.create_adapter() {
+                match store.create_adapter().await {
                     Ok(adapter) => writer_adapters.push(adapter),
                     Err(e) => {
                         eprintln!("Failed to create writer {}: {}", i, e);

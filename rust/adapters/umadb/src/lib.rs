@@ -17,7 +17,6 @@ use umadb_dcb::{DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 pub struct UmaDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<UmaDb>>,
-    client: Option<Arc<umadb_client::AsyncUmaDbClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -27,7 +26,6 @@ impl UmaDbStoreManager {
         Self {
             uri: Self::format_uri(UMADB_PORT.as_u16()),
             container: None,
-            client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
         }
@@ -49,12 +47,12 @@ impl StoreManager for UmaDbStoreManager {
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
 
-        // Wait for container to be ready and create shared client
-        self.client = Some(Arc::new(wait_for_ready("UmaDb", || async {
+        // Wait for container to be ready
+        wait_for_ready("UmaDb", || async {
             let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
             client.head().await?;
-            Ok(client)
-        }, Duration::from_secs(60)).await?));
+            Ok(())
+        }, Duration::from_secs(60)).await?;
 
         Ok(())
     }
@@ -82,11 +80,8 @@ impl StoreManager for UmaDbStoreManager {
         "umadb"
     }
 
-    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        let client = self.client.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("UmaDb client not initialized. Did you call start()?"))?
-            .clone();
-        Ok(Arc::new(UmaDbAdapter { client }))
+    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+        Ok(Arc::new(UmaDbAdapter::new(self.uri.clone()).await?))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -105,9 +100,19 @@ impl StoreManager for UmaDbStoreManager {
     }
 }
 
-// Lightweight adapter - just wraps a shared client
+// Lightweight adapter - just wraps a client
 pub struct UmaDbAdapter {
-    client: Arc<umadb_client::AsyncUmaDbClient>,
+    client: umadb_client::AsyncUmaDbClient,
+}
+
+impl UmaDbAdapter {
+    pub async fn new(uri: String) -> Result<Self> {
+        let client = umadb_client::UmaDbClient::new(uri)
+            .connect_async()
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(Self { client })
+    }
 }
 
 #[async_trait]
@@ -130,8 +135,7 @@ impl EventStoreAdapter for UmaDbAdapter {
                 tags: vec![req.stream],
             }],
         };
-        let mut rr = self
-            .client
+        let mut rr = self.client
             .read(
                 Some(query),
                 req.from_offset,

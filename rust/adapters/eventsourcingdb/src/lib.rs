@@ -87,7 +87,7 @@ impl StoreManager for EventsourcingDbStoreManager {
         "eventsourcingdb"
     }
 
-    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(EventsourcingDbAdapter::new(&self.uri, &self.options)?))
     }
 

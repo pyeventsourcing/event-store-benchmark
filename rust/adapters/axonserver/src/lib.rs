@@ -17,7 +17,6 @@ use tokio::time::Duration;
 pub struct AxonServerStoreManager {
     uri: String,
     container: Option<ContainerAsync<AxonServer>>,
-    client: Option<Arc<AxonServerClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -27,7 +26,6 @@ impl AxonServerStoreManager {
         Self {
             uri: format!("http://127.0.0.1:{}", AXONSERVER_GRPC_PORT.as_u16()),
             container: None,
-            client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
         }
@@ -68,11 +66,11 @@ impl StoreManager for AxonServerStoreManager {
         self.container = Some(container);
 
         // Wait for the container to be ready
-        self.client = Some(Arc::new(wait_for_ready("Axon Server", || async {
+        wait_for_ready("Axon Server", || async {
             let client = AxonServerClient::connect(self.uri.clone()).await?;
             client.get_head().await?;
-            Ok(client)
-        }, Duration::from_secs(60)).await?));
+            Ok(())
+        }, Duration::from_secs(60)).await?;
 
         Ok(())
     }
@@ -98,11 +96,8 @@ impl StoreManager for AxonServerStoreManager {
         "axonserver"
     }
 
-    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        let client = self.client.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Axon Server client not initialized. Did you call start()?"))?
-            .clone();
-        Ok(Arc::new(AxonServerAdapter { client }))
+    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+        Ok(Arc::new(AxonServerAdapter::new(self.uri.clone()).await?))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -123,12 +118,15 @@ impl StoreManager for AxonServerStoreManager {
 
 // Lightweight adapter - just wraps a client
 pub struct AxonServerAdapter {
-    client: Arc<AxonServerClient>,
+    client: AxonServerClient,
 }
 
 impl AxonServerAdapter {
-    pub fn new(client: Arc<AxonServerClient>) -> Self {
-        Self { client }
+    pub async fn new(uri: String) -> Result<Self> {
+        let client = AxonServerClient::connect(uri)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(Self { client })
     }
 }
 

@@ -43,7 +43,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new() -> Arc<Self> {
+    pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<ScheduledRequest>();
         
         std::thread::Builder::new()
@@ -84,7 +84,7 @@ impl Scheduler {
             })
             .expect("failed to spawn scheduler thread");
 
-        Arc::new(Self { tx, delay: Duration::from_micros(1000) })
+        Self { tx, delay: Duration::from_micros(1000) }
     }
 
     pub async fn wait(&self, release_at: Instant) {
@@ -101,7 +101,7 @@ pub struct DummyStoreManager {
 impl DummyStoreManager {
     pub fn new() -> Self {
         Self {
-            scheduler: Scheduler::new(),
+            scheduler: Arc::new(Scheduler::new()),
         }
     }
 }
@@ -124,7 +124,7 @@ impl StoreManager for DummyStoreManager {
     fn name(&self) -> &'static str {
         "dummy"
     }
-    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(DummyAdapter {
             scheduler: self.scheduler.clone(),
         }))

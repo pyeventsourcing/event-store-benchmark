@@ -16,7 +16,6 @@ use uuid::Uuid;
 pub struct KurrentDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<KurrentDb>>,
-    client: Option<Arc<KurrentDbClient>>,
     local: bool,
     data_dir: StoreDataDir,
 }
@@ -26,7 +25,6 @@ impl KurrentDbStoreManager {
         Self {
             uri: Self::format_uri(KURRENTDB_PORT.as_u16()),
             container: None,
-            client: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "kurrentdb"),
         }
@@ -51,7 +49,7 @@ impl StoreManager for KurrentDbStoreManager {
         }
 
         // Wait for the container to be ready
-        self.client = Some(Arc::new(wait_for_ready("KurrentDB", || async {
+        wait_for_ready("KurrentDB", || async {
             let client = KurrentDbClient::new(self.uri.clone())
                 .await
                 .map_err(|e| anyhow::anyhow!(e))?;
@@ -60,8 +58,8 @@ impl StoreManager for KurrentDbStoreManager {
             client
                 .append_to_stream("_ping", &options, vec![event])
                 .await?;
-            Ok(client)
-        }, Duration::from_secs(60)).await?));
+            Ok(())
+        }, Duration::from_secs(60)).await?;
 
         Ok(())
     }
@@ -87,11 +85,8 @@ impl StoreManager for KurrentDbStoreManager {
         "kurrentdb"
     }
 
-    fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        let client = self.client.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("KurrentDB client not initialized. Did you call start()?"))?
-            .clone();
-        Ok(Arc::new(KurrentDbAdapter { client }))
+    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+        Ok(Arc::new(KurrentDbAdapter::new(self.uri.clone()).await?))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -110,9 +105,18 @@ impl StoreManager for KurrentDbStoreManager {
     }
 }
 
-// Lightweight adapter - just wraps a shared client
+// Lightweight adapter - just wraps a client
 pub struct KurrentDbAdapter {
-    client: Arc<KurrentDbClient>,
+    client: KurrentDbClient,
+}
+
+impl KurrentDbAdapter {
+    pub async fn new(uri: String) -> Result<Self> {
+        let client = KurrentDbClient::new(uri)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(Self { client })
+    }
 }
 
 #[async_trait]
