@@ -392,6 +392,18 @@ pub struct ReadStream {
 }
 
 impl ReadStream {
+    pub(crate) fn new(
+        sender: tokio::sync::mpsc::UnboundedSender<Msg>,
+        channel_id: uuid::Uuid,
+        inner: Streaming<crate::event_store::client::streams::ReadResp>,
+    ) -> Self {
+        Self {
+            sender,
+            channel_id,
+            inner,
+        }
+    }
+
     pub async fn next_read_event(&mut self) -> crate::Result<Option<ReadEvent>> {
         loop {
             match self.inner.try_next().await.map_err(crate::Error::from_grpc) {
@@ -506,11 +518,11 @@ pub async fn read_stream(
             Err(e)
         }
 
-        Ok(resp) => Ok(ReadStream {
-            sender: connection.sender.clone(),
+        Ok(resp) => Ok(ReadStream::new(
+            connection.sender.clone(),
             channel_id,
-            inner: resp.into_inner(),
-        }),
+            resp.into_inner(),
+        )),
     }
 }
 
@@ -582,11 +594,11 @@ pub async fn read_all(
             Err(e)
         }
 
-        Ok(resp) => Ok(ReadStream {
-            sender: connection.sender.clone(),
+        Ok(resp) => Ok(ReadStream::new(
+            connection.sender.clone(),
             channel_id,
-            inner: resp.into_inner(),
-        }),
+            resp.into_inner(),
+        )),
     }
 }
 
