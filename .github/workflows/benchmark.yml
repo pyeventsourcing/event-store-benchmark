@@ -56,19 +56,19 @@ jobs:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-A
     steps:
       - name: Download benchmark tool
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: es-bench
           path: target/release/
 
       - name: Download configs
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: configs
           path: configs/
 
       - name: Download Makefile
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: Makefile
           path: .
@@ -99,19 +99,19 @@ jobs:
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
       - name: Download benchmark tool
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: es-bench
           path: target/release/
 
       - name: Download configs
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: configs
           path: configs/
 
       - name: Download Makefile
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: Makefile
           path: .
@@ -150,7 +150,7 @@ jobs:
         run: make venv
 
       - name: Download results
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: results-*
           path: results/raw/
