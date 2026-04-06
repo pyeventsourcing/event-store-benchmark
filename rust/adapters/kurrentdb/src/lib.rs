@@ -5,7 +5,7 @@ use bench_core::adapter::{
 };
 use bench_core::wait_for_ready;
 use bench_testcontainers::kurrentdb::{KurrentDb, KURRENTDB_PORT};
-use kurrentdb::{AppendToStreamOptions, Client, ClientSettings, ReadStreamOptions, StreamPosition};
+use kurrentdb::{AppendToStreamOptions, KurrentDbClient, ReadStreamOptions, StreamPosition};
 use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
@@ -50,12 +50,13 @@ impl StoreManager for KurrentDbStoreManager {
 
         // Wait for the container to be ready
         wait_for_ready("KurrentDB", || async {
-            let settings = self.uri.clone().parse::<ClientSettings>()?;
-            let client = Client::new(settings).map_err(|e| anyhow::anyhow!(e))?;
+            let client = KurrentDbClient::new(self.uri.clone())
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
             let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
             let options = AppendToStreamOptions::default();
             client
-                .append_to_stream("_ping", &options, event)
+                .append_to_stream("_ping", &options, vec![event])
                 .await?;
             Ok(())
         }, Duration::from_secs(60)).await?;
@@ -85,7 +86,8 @@ impl StoreManager for KurrentDbStoreManager {
     }
 
     fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(KurrentDbAdapter::new(&self.uri.clone())?))
+        let uri = self.uri.clone();
+        Ok(Arc::new(KurrentDbAdapter::new(uri)))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -106,14 +108,26 @@ impl StoreManager for KurrentDbStoreManager {
 
 // Lightweight adapter - just wraps a client
 pub struct KurrentDbAdapter {
-    client: Client,
+    client: Arc<tokio::sync::OnceCell<KurrentDbClient>>,
+    uri: String,
 }
 
 impl KurrentDbAdapter {
-    pub fn new(uri: &str) -> Result<Self> {
-        let settings: ClientSettings = uri.parse()?;
-        let client = Client::new(settings).map_err(|e| anyhow::anyhow!("{}", e))?;
-        Ok(Self { client })
+    pub fn new(uri: String) -> Self {
+        Self {
+            client: Arc::new(tokio::sync::OnceCell::new()),
+            uri,
+        }
+    }
+
+    async fn get_client(&self) -> Result<&KurrentDbClient> {
+        self.client
+            .get_or_try_init(|| async {
+                KurrentDbClient::new(self.uri.clone())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))
+            })
+            .await
     }
 }
 
@@ -123,18 +137,23 @@ impl EventStoreAdapter for KurrentDbAdapter {
         if events.is_empty() {
             return Ok(());
         }
+        let client = self.get_client().await?;
         let stream_name = events[0].tags[0].clone();
-        let k_events: Vec<kurrentdb::EventData> = events.into_iter().map(|evt| {
-            kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4())
-        }).collect();
+        let k_events: Vec<kurrentdb::EventData> = events
+            .into_iter()
+            .map(|evt| {
+                kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4())
+            })
+            .collect();
         let options = AppendToStreamOptions::default();
-        self.client
+        client
             .append_to_stream(stream_name, &options, k_events)
             .await?;
         Ok(())
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+        let client = self.get_client().await?;
         let count = req.limit.unwrap_or(4096) as usize;
         let options = ReadStreamOptions::default()
             .position(match req.from_offset {
@@ -142,7 +161,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 None => StreamPosition::Start,
             })
             .max_count(count);
-        let mut stream = self.client.read_stream(req.stream, &options).await?;
+        let mut stream = client.read_stream(req.stream, &options).await?;
         let mut out = Vec::new();
         while let Some(event) = stream.next().await? {
             let recorded = event.get_original_event();
