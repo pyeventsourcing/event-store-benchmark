@@ -174,6 +174,35 @@ In alphabetical order:
 * KurrentDB
 * UmaDB
 
+### Level Playing Ground (Technical Summary)
+
+To ensure fair and reproducible comparisons between KurrentDB, Axon Server, and UmaDB, the benchmark suite establishes
+a "level playing ground" by standardizing low-level transport settings and client instantiation strategies.
+
+#### 1. Standardized gRPC Transport Settings
+
+All three adapters utilize the `tonic` gRPC library in Rust, and they are configured with identical network and flow control parameters:
+
+* **TCP NoDelay**: Set to `true` for all clients. This disables Nagle's algorithm, ensuring that small packets (like event append requests) are sent immediately, which is critical for accurate latency measurement.
+* **HTTP/2 Keep-Alive**: Configured with a 5-second interval and a 10-second timeout.
+* **Window Sizes (Flow Control)**: 
+    * **Initial Stream Window Size**: 4 MB (`4 * 1024 * 1024`).
+    * **Initial Connection Window Size**: 8 MB (`8 * 1024 * 1024`).
+    * These enlarged window sizes prevent the benchmark from being throttled by default small gRPC flow-control limits, allowing higher throughput over single connections.
+
+#### 2. Client Instance Management
+The benchmark follows a consistent "One Client Per Worker" model:
+
+* **Shared Connection/Channel**: For each store, a single shared gRPC connection (or `Channel`) is established during the `start()` phase of the `StoreManager`.
+* **Adapter Instances**: When the benchmark starts worker tasks (readers or writers), it calls `create_adapter()` for each worker.
+    * For **KurrentDB** and **UmaDB**, this clones the underlying `Arc<Client>`, which in `tonic` effectively shares the same connection pool/channel but provides a distinct handle for the worker.
+    * For **Axon Server**, because its specific client API requires mutable access for operations, the adapter clones the client for each request (internally cloning the gRPC channel), ensuring thread-safety while still utilizing the shared underlying connection.
+* **Concurrency**: The number of these instances is strictly controlled by the `concurrency` settings in the benchmark configuration (e.g., `writers: [1, 4]`), ensuring that all databases are tested with the same number of active client handles.
+
+#### 3. Implementation Consistency
+* **Minimalist Clients**: The suite uses "minimal" gRPC client implementations for KurrentDB and Axon Server. These implementations strip away high-level background state machines or complex coordination logic found in the official SDKs, ensuring the benchmark measures the database's performance rather than the client library's overhead.
+* **Standardized Payload**: All adapters transform the internal `EventData` (binary payload + type + tags) into their respective proto formats just before the gRPC call, keeping the transformation overhead comparable across all tests.
+
 ### Workload Types
 
 The benchmark supports four workload categories:
