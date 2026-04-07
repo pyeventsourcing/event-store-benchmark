@@ -281,22 +281,42 @@ jobs:
 
   run-axonserver-local:
 #    needs: setup
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
     steps:
+#      - name: Install axonserver (needs ubuntu 20.24 but we build es-bench for later glibc)
+#        run: |
+#          sudo apt install ca-certificates lsb-release curl
+#          sudo curl https://pkg.axoniq.io/axoniq.pub -o /etc/apt/trusted.gpg.d/axoniq.asc
+#          echo "deb [arch=all signed-by=/etc/apt/trusted.gpg.d/axoniq.asc] https://pkg.axoniq.io/apt $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/axoniq.list > /dev/null
+#          sudo apt-get update
+#          sudo apt-get install axonserver
+
       - name: Install axonserver
         run: |
-          sudo apt install ca-certificates lsb-release curl
-          sudo curl https://pkg.axoniq.io/axoniq.pub -o /etc/apt/trusted.gpg.d/axoniq.asc
-          echo "deb [arch=all signed-by=/etc/apt/trusted.gpg.d/axoniq.asc] https://pkg.axoniq.io/apt $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/axoniq.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install axonserver
+          curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip
+          unzip axonserver.zip
 
       - name: Start axonserver
         run: |
-          sudo systemctl start axonserver
-          sleep 30
+          cd axonserver
+          java -jar axonserver.jar
+
+      - name: Wait for Axon Server
+        run: |
+          echo "=== Waiting for port 8124 ==="
+          for i in {1..30}; do
+            if ss -ltn | grep 8124; then
+              echo "Axon Server is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          
+          echo "Axon Server failed to start"
+#          cat kurrentdb.log
+          exit 1
 
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
