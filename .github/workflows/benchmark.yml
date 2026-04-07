@@ -315,7 +315,6 @@ jobs:
           done
           
           echo "Axon Server failed to start"
-#          cat kurrentdb.log
           exit 1
 
       - name: Download benchmark tool
