@@ -143,27 +143,6 @@ jobs:
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
     steps:
-      - name: Download benchmark tool
-        uses: actions/download-artifact@v8
-        with:
-          name: es-bench
-          path: target/release/
-
-      - name: Download configs
-        uses: actions/download-artifact@v8
-        with:
-          name: configs
-          path: configs/
-
-      - name: Download Makefile
-        uses: actions/download-artifact@v8
-        with:
-          name: Makefile
-          path: .
-
-      - name: Make benchmark tool executable
-        run: chmod +x target/release/es-bench
-
       - name: Install kurrentdb
         run: |
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
@@ -171,15 +150,38 @@ jobs:
           sudo cat /etc/kurrentdb/kurrentdb.conf
 
       - name: Start kurrentdb
+#        run: |
+#          sudo systemctl start kurrentdb
+#          sleep 15
         run: |
-          sudo systemctl start kurrentdb
-          sleep 15
+          mkdir -p /tmp/kurrentdb-data
+          
+          /opt/kurrentdb/kurrentdb \
+            --data-dir /tmp/kurrentdb-data \
+            --insecure > kurrentdb.log 2>&1 &
+          
+          echo $! > kurrentdb.pid
 
       # Debug the startup / connection / TLS
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y curl openssl net-tools iproute2 lsof
+
+      - name: Wait for KurrentDB
+        run: |
+          echo "=== Waiting for port 2113 ==="
+          for i in {1..30}; do
+            if ss -ltn | grep 2113; then
+              echo "KurrentDB is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          
+          echo "KurrentDB failed to start"
+          cat kurrentdb.log
+          exit 1
 
       - name: Check if KurrentDB process is running
         run: |
@@ -246,22 +248,6 @@ jobs:
           sudo journalctl -u kurrentdb -n 100 || true
           echo
 
-      - name: Run kurrentdb-local workload
-        run: make run-kurrentdb-local
-
-      - name: Upload kurrentdb-local results
-        uses: actions/upload-artifact@v6
-        with:
-          name: results-kurrentdb-local
-          path: results/raw/
-          retention-days: 1
-
-  run-axonserver-local:
-    needs: setup
-    runs-on: ubuntu-22.04
-    env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
-    steps:
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
         with:
@@ -283,6 +269,22 @@ jobs:
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
+      - name: Run kurrentdb-local workload
+        run: make run-kurrentdb-local
+
+      - name: Upload kurrentdb-local results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-kurrentdb-local
+          path: results/raw/
+          retention-days: 1
+
+  run-axonserver-local:
+#    needs: setup
+    runs-on: ubuntu-22.04
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
+    steps:
       - name: Install axonserver
         run: |
           sudo apt install ca-certificates lsb-release curl
@@ -295,6 +297,27 @@ jobs:
         run: |
           sudo systemctl start axonserver
           sleep 30
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
 
       - name: Run axonserver-local workload
         run: make run-axonserver-local
