@@ -408,6 +408,12 @@ jobs:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-SCL
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
       - name: Install and start axonserver
         if: ${{ matrix.store == 'axonserver' }}
         run: |
@@ -461,12 +467,6 @@ jobs:
         with:
           name: configs
           path: configs/
-
-      - name: Download Makefile
-        uses: actions/download-artifact@v8
-        with:
-          name: Makefile
-          path: .
 
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
