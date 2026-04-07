@@ -167,7 +167,7 @@ jobs:
         run: |
           mkdir -p /tmp/kurrentdb-data
           
-          /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
+          sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
           
           echo $! > kurrentdb.pid
 
