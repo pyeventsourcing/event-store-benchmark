@@ -60,6 +60,10 @@ run-umadb-local:
 run-kurrentdb-local:
 	@make ./configs/kurrentdb-local.yaml
 
+# Run the axonserver-local workload
+run-axonserver-local:
+	@make ./configs/axonserver-local.yaml
+
 # Run the smoke-test workload
 run-smoke-test:
 	@make ./configs/smoke-test.yaml

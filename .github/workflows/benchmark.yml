@@ -185,6 +185,56 @@ jobs:
           path: results/raw/
           retention-days: 1
 
+  run-axonserver-local:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
+    steps:
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Install axonserver
+        run: |
+          sudo apt install ca-certificates lsb-release curl
+          sudo curl https://pkg.axoniq.io/axoniq.pub -o /etc/apt/trusted.gpg.d/axoniq.asc
+          echo "deb [arch=all signed-by=/etc/apt/trusted.gpg.d/axoniq.asc] https://pkg.axoniq.io/apt $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/axoniq.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install axonserver
+
+      - name: Start axonserver
+        run: |
+          sudo systemctl start axonserver
+          sleep 30
+
+      - name: Run axonserver-local workload
+        run: make run-axonserver-local
+
+      - name: Upload axonserver-local results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-axonserver-local
+          path: results/raw/
+          retention-days: 1
+
 #  run-scaling:
 #    needs: setup
 #    runs-on: ubuntu-latest
