@@ -312,20 +312,19 @@ jobs:
       - name: Start axonserver
         run: |
           cd AxonServer-2025.2.7
-          java -jar axonserver.jar
+          nohup java -jar axonserver.jar > axon.log 2>&1 &
 
       - name: Wait for Axon Server
         run: |
-          echo "=== Waiting for port 8124 ==="
           for i in {1..30}; do
-            if ss -ltn | grep 8124; then
-              echo "Axon Server is up"
+            if curl -s http://localhost:8024/actuator/health | grep -q '"status":"UP"'; then
+              echo "Axon Server is ready"
               exit 0
             fi
-            sleep 1
+            sleep 2
           done
-          
           echo "Axon Server failed to start"
+          cat AxonServer-2025.2.7/axon.log
           exit 1
 
       - name: Download benchmark tool
