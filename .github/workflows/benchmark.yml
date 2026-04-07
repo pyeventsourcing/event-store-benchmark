@@ -289,7 +289,7 @@ jobs:
           retention-days: 1
 
   run-axonserver-local:
-#    needs: setup
+    needs: setup
     runs-on: ubuntu-latest
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
@@ -310,7 +310,7 @@ jobs:
       - name: Start axonserver
         run: |
           cd AxonServer-2025.2.7
-          nohup java -jar axonserver.jar > axon.log 2>&1 &
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > axon.log 2>&1 &
 
       - name: Wait for Axon Server
         run: |
