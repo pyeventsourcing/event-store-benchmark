@@ -11,6 +11,7 @@ ESB_SEED ?= 42
 .PHONY: run-kurrentdb-local
 .PHONY: run-smoke-test
 .PHONY: run-scaling
+.PHONY: run-scaling-local
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
 .PHONY: help
@@ -79,6 +80,10 @@ run-scaling-writers:
 # Run the scaling-writers workload
 run-scaling:
 	@make ./configs/scaling.yaml
+
+# Run the scaling-writers workload
+run-scaling-local:
+	@make ./configs/scaling-local.yaml
 
 # Run the Python KurrentDB benchmark
 run-kurrentdb-bench-python:
