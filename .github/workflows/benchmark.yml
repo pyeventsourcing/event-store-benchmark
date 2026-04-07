@@ -167,8 +167,8 @@ jobs:
       - name: Install kurrentdb
         run: |
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
-          apt-get install kurrentdb=26.0.2
-          cat /etc/kurrentdb/kurrentdb.conf
+          sudo apt-get install kurrentdb=26.0.2
+          sudo cat /etc/kurrentdb/kurrentdb.conf
 
       - name: Start kurrentdb
         run: |
