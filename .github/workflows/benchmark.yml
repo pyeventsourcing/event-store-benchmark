@@ -149,16 +149,16 @@ jobs:
           sudo apt-get install kurrentdb=26.0.2
           sudo cat /etc/kurrentdb/kurrentdb.conf
 
-      - name: Locate kurrentdb binary
-        run: |
-          echo "=== which ==="
-          which kurrentdb || true
-          
-          echo "=== command -v ==="
-          command -v kurrentdb || true
-          
-          echo "=== dpkg contents ==="
-          dpkg -L kurrentdb | grep bin || true
+#      - name: Locate kurrentdb binary
+#        run: |
+#          echo "=== which ==="
+#          which kurrentdb || true
+#
+#          echo "=== command -v ==="
+#          command -v kurrentdb || true
+#
+#          echo "=== dpkg contents ==="
+#          dpkg -L kurrentdb | grep bin || true
 
       - name: Start kurrentdb
 #        run: |
@@ -167,7 +167,7 @@ jobs:
         run: |
           mkdir -p /tmp/kurrentdb-data
           
-          /opt/kurrentdb/kurrentdb \
+          /usr/bin/kurrentd \
             --data-dir /tmp/kurrentdb-data \
             --insecure > kurrentdb.log 2>&1 &
           
