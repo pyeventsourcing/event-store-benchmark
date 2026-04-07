@@ -8,6 +8,7 @@ ESB_SEED ?= 42
 .PHONY: install-umadb
 .PHONY: start-umadb
 .PHONY: run-umadb-local
+.PHONY: run-kurrentdb-local
 .PHONY: run-smoke-test
 .PHONY: run-scaling
 .PHONY: run-scaling-readers
@@ -54,6 +55,10 @@ start-umadb:
 # Run the umadb-local workload
 run-umadb-local:
 	@make ./configs/umadb-local.yaml
+
+# Run the kurrentdb-local workload
+run-kurrentdb-local:
+	@make ./configs/kurrentdb-local.yaml
 
 # Run the smoke-test workload
 run-smoke-test:
