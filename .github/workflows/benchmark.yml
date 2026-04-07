@@ -401,7 +401,7 @@ jobs:
 
   report:
 #    needs: [run-smoke-test, run-scaling]
-    needs: [run-smoke-test, run-umadb-local, run-kurrentdb-local]
+    needs: [run-smoke-test, run-umadb-local, run-kurrentdb-local, run-axonserver-local]
     runs-on: ubuntu-latest
     if: always()
     steps:
