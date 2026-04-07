@@ -292,7 +292,7 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-KUR
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-AXN
     steps:
 #      - name: Install axonserver (needs ubuntu 20.24 but we build es-bench for later glibc)
 #        run: |
