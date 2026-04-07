@@ -175,6 +175,77 @@ jobs:
           sudo systemctl start kurrentdb
           sleep 15
 
+      # Debug the startup / connection / TLS
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl openssl net-tools iproute2 lsof
+
+      - name: Check if KurrentDB process is running
+        run: |
+          echo "=== PROCESS CHECK ==="
+          ps aux | grep -i kurrentdb || true
+          echo
+
+      - name: Check listening ports
+        run: |
+          echo "=== LISTENING PORTS (looking for 2113) ==="
+          ss -ltnp || true
+          echo
+          echo "Filtered:"
+          ss -ltnp | grep 2113 || echo "Nothing on 2113"
+          echo
+
+      - name: Check with lsof
+        run: |
+          echo "=== LSOF PORT 2113 ==="
+          lsof -i :2113 || echo "No process bound to 2113"
+          echo
+
+      - name: Probe TLS with openssl
+        run: |
+          echo "=== TLS PROBE (openssl) ==="
+          set -x
+          timeout 5 openssl s_client -connect localhost:2113 < /dev/null || true
+          set +x
+          echo
+
+      - name: Probe HTTP
+        run: |
+          echo "=== HTTP PROBE ==="
+          set -x
+          curl -v --max-time 5 http://localhost:2113 || true
+          set +x
+          echo
+
+      - name: Probe HTTPS
+        run: |
+          echo "=== HTTPS PROBE ==="
+          set -x
+          curl -vk --max-time 5 https://localhost:2113 || true
+          set +x
+          echo
+
+      - name: Try raw TCP connection
+        run: |
+          echo "=== RAW TCP TEST ==="
+          (echo > /dev/tcp/localhost/2113) >/dev/null 2>&1 \
+            && echo "TCP connection succeeded" \
+            || echo "TCP connection failed"
+          echo
+
+      - name: Dump service status (if using systemd)
+        run: |
+          echo "=== SYSTEMD STATUS ==="
+          sudo systemctl status kurrentdb || true
+          echo
+
+      - name: Dump recent logs
+        run: |
+          echo "=== JOURNAL LOGS ==="
+          sudo journalctl -u kurrentdb -n 100 || true
+          echo
+
       - name: Run kurrentdb-local workload
         run: make run-kurrentdb-local
 
