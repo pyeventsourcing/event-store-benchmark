@@ -88,15 +88,11 @@ jobs:
           path: results/raw/
           retention-days: 1
 
-  run-scaling:
+  run-umadb-local:
     needs: setup
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        store: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
     env:
-      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-B
-      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-A
     steps:
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
@@ -119,20 +115,74 @@ jobs:
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
-      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
-        run: |
-          sudo -E make run-scaling  
-          sudo chown -R $(id -u):$(id -g) ./results
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Upload scaling results
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install umadb
+        run: make install-umadb
+
+      - name: Start umadb
+        run: make start-umadb
+
+      - name: Run umadb-local workload
+        run: make run-umadb-local
+
+      - name: Upload umadb-local results
         uses: actions/upload-artifact@v6
         with:
-          name: results-scaling-${{ matrix.store }}
+          name: results-umadb-local
           path: results/raw/
           retention-days: 1
 
+#  run-scaling:
+#    needs: setup
+#    runs-on: ubuntu-latest
+#    strategy:
+#      matrix:
+#        store: [umadb, kurrentdb, axonserver, eventsourcingdb, dummy]
+#    env:
+#      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}-B
+#      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+#    steps:
+#      - name: Download benchmark tool
+#        uses: actions/download-artifact@v8
+#        with:
+#          name: es-bench
+#          path: target/release/
+#
+#      - name: Download configs
+#        uses: actions/download-artifact@v8
+#        with:
+#          name: configs
+#          path: configs/
+#
+#      - name: Download Makefile
+#        uses: actions/download-artifact@v8
+#        with:
+#          name: Makefile
+#          path: .
+#
+#      - name: Make benchmark tool executable
+#        run: chmod +x target/release/es-bench
+#
+#      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+#        run: |
+#          sudo -E make run-scaling
+#          sudo chown -R $(id -u):$(id -g) ./results
+#
+#      - name: Upload scaling results
+#        uses: actions/upload-artifact@v6
+#        with:
+#          name: results-scaling-${{ matrix.store }}
+#          path: results/raw/
+#          retention-days: 1
+
   report:
-    needs: [run-smoke-test, run-scaling]
+#    needs: [run-smoke-test, run-scaling]
+    needs: [run-smoke-test, run-umadb-local]
     runs-on: ubuntu-latest
     if: always()
     steps:

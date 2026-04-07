@@ -8,7 +8,7 @@ use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
 use std::sync::Arc;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::ContainerAsync;
+use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use umadb_client::UmaDbClient;
 use umadb_dcb::{DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
@@ -58,7 +58,11 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = UmaDb::new(None).pull_image().await?;
+        let server = UmaDb::new(None);
+        let image: ContainerRequest<UmaDb> = server.clone().into();
+        if image.descriptor() != "umadb:local" {
+            let _ = server.pull_image().await?;
+        }
         Ok(())
     }
 

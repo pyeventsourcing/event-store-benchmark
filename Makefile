@@ -5,7 +5,11 @@ ESB_SEED ?= 42
 .PHONY: build
 .PHONY: venv
 .PHONY: report
+.PHONY: install-umadb
+.PHONY: start-umadb
+.PHONY: run-umadb-local
 .PHONY: run-smoke-test
+.PHONY: run-scaling
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
 .PHONY: help
@@ -38,6 +42,18 @@ venv:
 # Generate report from raw results
 report:
 	PYTHONPATH=./python ./.venv/bin/python -m report_generator.main --raw results/raw --out results/published
+
+# Install UmaDB
+install-umadb:
+	@cargo install umadb
+
+# Start UmaDB
+start-umadb:
+	umadb &
+
+# Run the umadb-local workload
+run-umadb-local:
+	@make ./configs/umadb-local.yaml
 
 # Run the smoke-test workload
 run-smoke-test:
