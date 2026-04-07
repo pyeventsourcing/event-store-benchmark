@@ -172,7 +172,7 @@ jobs:
 
       - name: Start kurrentdb
         run: |
-          systemctl start kurrentdb
+          sudo systemctl start kurrentdb
           sleep 15
 
       - name: Run kurrentdb-local workload
