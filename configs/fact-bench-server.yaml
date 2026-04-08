@@ -1,0 +1,39 @@
+performance:
+  name: fact-write
+  mode: write
+  local: false
+  warmup_seconds: 0
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency:
+    writers: [1, 2, 4, 8, 16, 32]
+  operations:
+    read:
+      limit: 10
+    write:
+      event_size_bytes: 256
+  setup:
+    prepopulate_events: 500
+    prepopulate_streams: 50
+  stores:
+    - fact
+---
+performance:
+  name: fact-read
+  mode: read
+  local: false
+  warmup_seconds: 0
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency:
+      readers: [1, 2, 4, 8, 16, 32]
+  operations:
+    read:
+      limit: 10
+    write:
+      event_size_bytes: 256
+  setup:
+    prepopulate_events: 500
+    prepopulate_streams: 50
+  stores:
+    - fact

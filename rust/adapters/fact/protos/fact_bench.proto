@@ -1,0 +1,45 @@
+syntax = "proto3";
+package fact.bench;
+
+service FactBench {
+  rpc Append (AppendRequest) returns (AppendResponse);
+  rpc Read (ReadRequest) returns (ReadResponse);
+  rpc Healthz (HealthzRequest) returns (HealthzResponse);
+}
+
+message AppendRequest {
+  repeated EventData events = 1;
+}
+
+message EventData {
+  bytes payload = 1;
+  string event_type = 2;
+  repeated string tags = 3;
+}
+
+message AppendResponse {
+  bool ok = 1;
+}
+
+message ReadRequest {
+  string stream = 1;
+  optional uint64 from_offset = 2;
+  optional uint64 limit = 3;
+}
+
+message ReadResponse {
+  repeated ReadEvent events = 1;
+}
+
+message ReadEvent {
+  uint64 offset = 1;
+  string event_type = 2;
+  bytes payload = 3;
+  uint64 timestamp_ms = 4;
+}
+
+message HealthzRequest {}
+
+message HealthzResponse {
+  string status = 1;
+}

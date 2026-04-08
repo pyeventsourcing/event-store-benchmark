@@ -866,6 +866,7 @@ dependencies = [
  "clap",
  "dummy-adapter",
  "eventsourcingdb-adapter",
+ "fact-adapter",
  "kurrentdb-adapter",
  "rand 0.10.0",
  "serde",
@@ -946,6 +947,22 @@ checksum = "7cd915d99f24784cdc19fd37ef22b97e3ff0ae756c7e492e9fbfe897d61e2aec"
 dependencies = [
  "indenter",
  "once_cell",
+]
+
+[[package]]
+name = "fact-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bench-core",
+ "bench-testcontainers",
+ "prost",
+ "testcontainers",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]
