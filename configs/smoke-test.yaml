@@ -13,14 +13,15 @@ performance:
     write:
       event_size_bytes: 256
   setup:
-    prepopulate_events: 500
-    prepopulate_streams: 50
+    prepopulate_events: 0
+    prepopulate_streams: 0
   stores:
     - umadb
     - kurrentdb
     - axonserver
     - eventsourcingdb
     - dummy
+    - fact
 ---
 performance:
   name: smoke-test-performance-read
@@ -45,3 +46,4 @@ performance:
     - axonserver
     - eventsourcingdb
     - dummy
+    - fact

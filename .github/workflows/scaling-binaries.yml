@@ -1,0 +1,168 @@
+name: Benchmark Suite
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      session_id: ${{ steps.session.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate Session ID
+        id: session
+        run: echo "session_id=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Upload benchmark tool
+        uses: actions/upload-artifact@v6
+        with:
+          name: es-bench
+          path: target/release/es-bench
+          retention-days: 1
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v6
+        with:
+          name: configs
+          path: configs/
+          retention-days: 1
+
+      - name: Upload Makefile
+        uses: actions/upload-artifact@v6
+        with:
+          name: Makefile
+          path: Makefile
+          retention-days: 1
+
+  run-scaling-binaries:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        store: [umadb, kurrentdb, axonserver]
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+    steps:
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Install and start axonserver
+        if: ${{ matrix.store == 'axonserver' }}
+        run: |
+          curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip
+          unzip axonserver.zip
+          cd AxonServer-2025.2.7
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > axon.log 2>&1 &
+          for i in {1..30}; do
+            if curl -s http://localhost:8024/actuator/health | grep -q '"status":"UP"'; then
+              echo "Axon Server is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Axon Server failed to start"
+          cat AxonServer-2025.2.7/axon.log
+          exit 1
+
+      - name: Install and start kurrentdb
+        if: ${{ matrix.store == 'kurrentdb' }}
+        run: |
+          curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
+          sudo apt-get install kurrentdb=26.0.2
+          sudo cat /etc/kurrentdb/kurrentdb.conf
+          mkdir -p /tmp/kurrentdb-data
+          sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
+          echo $! > kurrentdb.pid
+
+      - name: Set up Rust
+        if: ${{ matrix.store == 'umadb' }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        if: ${{ matrix.store == 'umadb' }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install and start umadb
+        if: ${{ matrix.store == 'umadb' }}
+        run: |
+          cargo install umadb
+          umadb &
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          make run-scaling-binaries
+
+      - name: Upload scaling results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-scaling-${{ matrix.store }}
+          path: results/raw/
+          retention-days: 1
+
+  report:
+    needs: [setup, run-scaling-binaries]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python/requirements.txt'
+
+      - name: Create Python virtual environment for reporting
+        run: make venv
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: results/raw/
+          merge-multiple: true
+
+      - name: Generate report
+        run: make report
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: results/published

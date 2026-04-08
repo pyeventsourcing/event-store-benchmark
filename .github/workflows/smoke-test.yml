@@ -1,4 +1,4 @@
-name: Benchmark FactDB in Docker
+name: Benchmark Suite
 
 on:
   workflow_dispatch:
@@ -7,10 +7,8 @@ on:
       - main
 
 jobs:
-  setup:
+  run-smoke-test:
     runs-on: ubuntu-latest
-    outputs:
-      session_id: ${{ steps.session.outputs.session_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -24,8 +22,10 @@ jobs:
       - name: Build benchmark tool
         run: make build
 
-      - name: Run benchmark
-        run: make ./configs/fact-bench-server.yaml
+      - name: Run smoke-test workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          sudo -E make run-smoke-test
+          sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Generate report
         run: make report

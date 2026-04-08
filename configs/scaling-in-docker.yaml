@@ -15,6 +15,7 @@ performance:
     - kurrentdb
     - axonserver
     - eventsourcingdb
+    - fact
     - dummy
 ---
 performance:
@@ -39,4 +40,5 @@ performance:
     - kurrentdb
     - axonserver
     - eventsourcingdb
+    - fact
     - dummy
