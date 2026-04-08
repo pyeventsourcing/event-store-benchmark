@@ -1,4 +1,4 @@
-name: Benchmark Suite
+name: Scaling Binaries
 
 on:
   workflow_dispatch:
@@ -72,6 +72,7 @@ jobs:
           unzip axonserver.zip
           cd AxonServer-2025.2.7
           AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > axon.log 2>&1 &
+          echo $! > kurrentdb.pid
           for i in {1..30}; do
             if curl -s http://localhost:8024/actuator/health | grep -q '"status":"UP"'; then
               echo "Axon Server is ready"
@@ -89,9 +90,18 @@ jobs:
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
           sudo apt-get install kurrentdb=26.0.2
           sudo cat /etc/kurrentdb/kurrentdb.conf
-          mkdir -p /tmp/kurrentdb-data
           sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
           echo $! > kurrentdb.pid
+          for i in {1..30}; do
+            if curl -si http://localhost:8024/health/live | grep -q 'HTTP/1.1 204'; then
+              echo "KurrentDB is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "KurrentDB failed to start"
+          cat kurrentdb.log
+          exit 1
 
       - name: Set up Rust
         if: ${{ matrix.store == 'umadb' }}

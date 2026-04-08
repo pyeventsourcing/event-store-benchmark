@@ -1,4 +1,4 @@
-name: Benchmark Suite
+name: Smoke Test
 
 on:
   workflow_dispatch:

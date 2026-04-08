@@ -1,4 +1,4 @@
-name: Benchmark Suite
+name: Scaling in Docker
 
 on:
   workflow_dispatch:
