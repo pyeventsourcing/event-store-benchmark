@@ -6,6 +6,7 @@ ADAPTER_COLORS = {
     'axonserver': '#2ca02c',   # Green
     'eventsourcingdb': '#ff7f0e',  # Orange
     'dummy': '#888888',        # Grey
+    'fact': '#a6674c',        # Amber Brown
 }
 
 
