@@ -73,14 +73,14 @@ jobs:
           cd AxonServer-2025.2.7
           AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > axon.log 2>&1 &
           echo $! > kurrentdb.pid
-          for i in {1..30}; do
-            if curl -s http://localhost:8024/actuator/health | grep -q '"status":"UP"'; then
-              echo "Axon Server is ready"
+          for i in {1..60}; do
+            if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
+              echo "Axon Server is ready after $((i-1)) seconds"
               exit 0
             fi
-            sleep 2
+            sleep 1
           done
-          echo "Axon Server failed to start"
+          echo "Axon Server failed to start after 60 seconds"
           cat AxonServer-2025.2.7/axon.log
           exit 1
 
@@ -92,14 +92,14 @@ jobs:
           sudo cat /etc/kurrentdb/kurrentdb.conf
           sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
           echo $! > kurrentdb.pid
-          for i in {1..30}; do
-            if curl -si http://localhost:8024/health/live | grep -q 'HTTP/1.1 204'; then
-              echo "KurrentDB is ready"
+          for i in {1..60}; do
+            if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
+              echo "KurrentDB is ready after $((i-1)) seconds"
               exit 0
             fi
-            sleep 2
+            sleep 1
           done
-          echo "KurrentDB failed to start"
+          echo "KurrentDB failed to start after 60 seconds"
           cat kurrentdb.log
           exit 1
 
