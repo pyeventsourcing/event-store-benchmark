@@ -113,6 +113,12 @@ def generate_plots(results, output_dir):
     plt.figure(figsize=(10, 6))
     plt.bar(x, throughput, color='skyblue', alpha=0.9)
     plt.yscale('log')
+
+    # Set y-axis minimum to 0.5 * smallest plotted value
+    if throughput:
+        min_throughput = min(t for t in throughput if t > 0)
+        plt.ylim(bottom=0.5 * min_throughput)
+
     plt.xlabel('Number of Clients')
     plt.ylabel('Throughput (reqs/sec) [log]')
     plt.title('Throughput vs Number of Clients')
@@ -134,6 +140,11 @@ def generate_plots(results, output_dir):
     
     # Latency is often plotted on log scale too
     plt.yscale('log')
+
+    # Set y-axis minimum to 0.5 * smallest plotted value
+    all_latencies = [val for sublist in [p50, p99, p999] for val in sublist if val > 0]
+    if all_latencies:
+        plt.ylim(bottom=0.5 * min(all_latencies))
     
     color = 'salmon'
     plt.bar(x, p50, label='p50', color=color, alpha=1.0)
