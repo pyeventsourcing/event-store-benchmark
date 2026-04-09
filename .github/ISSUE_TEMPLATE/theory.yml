@@ -1,0 +1,73 @@
+name: Theory
+description: Track a benchmark theory for systematic verification
+labels: ["theory", "untested"]
+body:
+  - type: input
+    id: theory
+    attributes:
+      label: Theory
+      placeholder: "e.g. noatime reduces throughput"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: event_store
+    attributes:
+      label: Event Store
+      description: Which event store adapter this theory applies to (leave blank if cross-cutting)
+      options:
+        - ""
+        - AxonServer
+        - EventSourcingDB
+        - FACT
+        - KurrentDB
+        - UmaDB
+        - Cross-cutting / all
+        - Other
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: System configuration, workload characteristics, relevant constraints
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_procedure
+    attributes:
+      label: Test Procedure
+      description: Concrete steps to test this theory
+    validations:
+      required: true
+
+  - type: input
+    id: measurable_outcome
+    attributes:
+      label: Measurable Outcome
+      description: What metric, and what threshold, would confirm or refute this theory
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      description: Populated when closing the issue
+      options:
+        - Pending
+        - Verified
+        - Refuted
+        - Inconclusive
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_outcome
+    attributes:
+      label: Actual Outcome
+      description: Observed data, measurements, or reasoning that led to the result
+    validations:
+      required: false
