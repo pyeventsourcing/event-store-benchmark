@@ -30,6 +30,6 @@ jobs:
 
       - name: Run write flood
         run: |
-          ls /usr/bin/kurrent*
-          /usr/bin/kurrent-testclient --help
-          /usr/bin/kurrent-testclient wrfl 10 1000000 256
+          curl -L https://github.com/kurrent-io/KurrentDB/releases/download/oss-v21.10.9/EventStore-OSS-Linux-v21.10.9.tar.gz -o esdb.tar.gz
+          tar -zxvf esdb.tar.gz
+          ./EventStore-OSS-Linux-v21.10.9/testclient wrfl 10 1000000 256
