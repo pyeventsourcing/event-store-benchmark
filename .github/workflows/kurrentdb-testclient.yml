@@ -1,0 +1,36 @@
+name: KurrentDB Test Client
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  write-flood:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install and start kurrentdb
+        if: ${{ matrix.store == 'kurrentdb' }}
+        run: |
+          curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
+          sudo apt-get install kurrentdb=26.0.2
+          sudo cat /etc/kurrentdb/kurrentdb.conf
+          sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
+          echo $! > kurrentdb.pid
+          for i in {1..60}; do
+            if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
+              echo "KurrentDB is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "KurrentDB failed to start after 60 seconds"
+          cat kurrentdb.log
+          exit 1
+
+      - name: Run write flood
+        run: |
+          ls /usr/bin
+          /usr/bin/kurrent-testclient --help
+          /usr/bin/kurrent-testclient wrfl 10 1000000 256
