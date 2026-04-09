@@ -10,6 +10,14 @@ jobs:
   write-flood:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install matplotlib numpy
+
       - name: Install and start kurrentdb
         run: |
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
@@ -49,37 +57,32 @@ jobs:
       - name: Run write flood (1 client)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 1 100000 10000 256 1 test1-" | tee client_1.log
+           --command "WRFLGRPC 1 1000000 100000 256 1 test1-" | tee client_1.log
 
       - name: Run write flood (2 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 2 100000 10000 256 1 test2-" | tee client_2.log
+           --command "WRFLGRPC 2 1000000 100000 256 1 test2-" | tee client_2.log
 
       - name: Run write flood (4 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 4 100000 10000 256 1 test4-" | tee client_4.log
+           --command "WRFLGRPC 4 1000000 100000 256 1 test4-" | tee client_4.log
 
       - name: Run write flood (8 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 8 100000 10000 256 1 test8-" | tee client_8.log
+           --command "WRFLGRPC 8 1000000 100000 256 1 test8-" | tee client_8.log
 
       - name: Run write flood (16 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 16 100000 10000 256 1 test16-" | tee client_16.log
+           --command "WRFLGRPC 16 1000000 100000 256 1 test16-" | tee client_16.log
 
       - name: Run write flood (32 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 32 100000 10000 256 1 test32-" | tee client_32.log
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install matplotlib numpy
+           --command "WRFLGRPC 32 1000000 100000 256 1 test32-" | tee client_32.log
 
       - name: Generate plots
         run: python python/kurrentdb_testclient_plots.py client_*.log
