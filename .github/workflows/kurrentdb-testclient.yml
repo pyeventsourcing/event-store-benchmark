@@ -49,31 +49,47 @@ jobs:
       - name: Run write flood (1 client)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 1 100000 10000 256 1 test1-"
+           --command "WRFLGRPC 1 100000 10000 256 1 test1-" | tee client_1.log
 
       - name: Run write flood (2 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 2 100000 10000 256 1 test2-"
+           --command "WRFLGRPC 2 100000 10000 256 1 test2-" | tee client_2.log
 
       - name: Run write flood (4 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 4 100000 10000 256 1 test4-"
+           --command "WRFLGRPC 4 100000 10000 256 1 test4-" | tee client_4.log
 
       - name: Run write flood (8 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 8 100000 10000 256 1 test8-"
+           --command "WRFLGRPC 8 100000 10000 256 1 test8-" | tee client_8.log
 
       - name: Run write flood (16 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 16 100000 10000 256 1 test16-"
+           --command "WRFLGRPC 16 100000 10000 256 1 test16-" | tee client_16.log
 
       - name: Run write flood (32 clients)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 32 100000 10000 256 1 test32-"
+           --command "WRFLGRPC 32 100000 10000 256 1 test32-" | tee client_32.log
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install matplotlib numpy
+
+      - name: Generate plots
+        run: python python/kurrentdb_testclient_plots.py client_*.log
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurrentdb-testclient-results
+          path: |
+            client_*.log
+            plots/*.png
 
       # WRFLGRPC [<CLIENTS> <REQUESTS> [<STREAMS-CNT> [<SIZE> [<BATCHSIZE> [<STREAM-PREFIX>]]]]]
