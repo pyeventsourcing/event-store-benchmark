@@ -41,14 +41,14 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
+        run: dotnet restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
 
       - name: Build project
-        run: dotnet build --no-restore src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
+        run: dotnet build --no-restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
 
       - name: Run write flood
         run: |
-          dotnet run --project src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
            --command "WRFLGRPC 1 10000 10000 256 1 test-"
 
       # WRFLGRPC [<CLIENTS> <REQUESTS> [<STREAMS-CNT> [<SIZE> [<BATCHSIZE> [<STREAM-PREFIX>]]]]]
