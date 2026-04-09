@@ -134,15 +134,6 @@ def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
         plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
 
     plt.yscale("log")
-
-    # Set y-axis minimum to 0.5 * smallest plotted value
-    all_vals = []
-    for adapter in adapters:
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
-        all_vals.extend([v for v in vals if v > 0])
-    if all_vals:
-        plt.ylim(bottom=0.5 * min(all_vals))
-
     plt.ylabel("Throughput (events/sec) [log]")
     plt.xlabel(xlabel)
     plt.title(title)
@@ -204,17 +195,6 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
         plt.bar(x + offset, np.maximum(0, p999_vals - p99_vals), width, bottom=p99_vals, color=color, alpha=0.3)
 
     plt.yscale("log")
-
-    # Set y-axis minimum to 0.5 * smallest plotted value
-    all_vals = []
-    for adapter in adapters:
-        p50_vals = [data[wc].get(adapter, {}).get("p50", 0) for wc in worker_counts]
-        p99_vals = [data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts]
-        p999_vals = [data[wc].get(adapter, {}).get("p999", 0) for wc in worker_counts]
-        all_vals.extend([v for v in p50_vals + p99_vals + p999_vals if v > 0])
-    if all_vals:
-        plt.ylim(bottom=0.5 * min(all_vals))
-
     plt.ylabel("Latency (ms) [log]")
     plt.xlabel(xlabel)
     plt.title(title)
