@@ -109,53 +109,46 @@ def generate_plots(results, output_dir):
     p999 = [r['p999'] for r in results]
 
     x = np.arange(len(clients))
-
     color = '#1f77b4'
 
-# Throughput Plot
-    plt.figure(figsize=(10, 6))
-    plt.bar(x, throughput, color=color, alpha=0.9)
+    # Create one figure with two subplots: Throughput on top, Latency on bottom
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+    fig.suptitle('KurrentDB WRFLGRPC', fontsize=16)
 
-    # Set y-axis minimum to 0
-    plt.ylim(bottom=0)
+    # --- Throughput Plot (Top) ---
+    ax1.bar(x, throughput, color=color, alpha=0.9)
+    ax1.set_ylim(bottom=0)
+    ax1.set_ylabel('Throughput (reqs/sec)')
+    # ax1.set_title('Throughput vs Number of Clients')
+    ax1.grid(True, axis='y', ls=':', alpha=0.6)
 
-    plt.xlabel('Number of Clients')
-    plt.ylabel('Throughput (reqs/sec)')
-    plt.title('Throughput vs Number of Clients')
-    plt.xticks(x, clients)
-    
-    plt.grid(True, axis='y', ls=':', alpha=0.6)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'throughput_scaling.png'), dpi=150)
-    plt.close()
-
-    print(f"Generating latency plot for clients={clients}")
+    # --- Latency Plot (Bottom) ---
+    print(f"Generating latency subplot for clients={clients}")
     print(f"  p50:   {p50}")
     print(f"  p99:   {p99}")
     print(f"  p99.9: {p999}")
     
-    # Latency Plot
-    plt.figure(figsize=(10, 6))
-    
-    # Linear plotting with zero-based y-axis
-    # We use OVERLAYING instead of STACKING:
-    plt.bar(x, p999, label='p99.9', color=color, alpha=0.3)
-    plt.bar(x, p99, label='p99', color=color, alpha=0.6)
-    plt.bar(x, p50, label='p50', color=color, alpha=1.0)
+    # Linear plotting with zero-based y-axis (OVERLAYING)
+    ax2.bar(x, p999, label='p99.9', color=color, alpha=0.3)
+    ax2.bar(x, p99, label='p99', color=color, alpha=0.6)
+    ax2.bar(x, p50, label='p50', color=color, alpha=1.0)
 
-    # Set y-axis minimum to 0
-    plt.ylim(bottom=0)
-
-    plt.xlabel('Number of Clients')
-    plt.ylabel('Latency (ms)')
-    plt.title('Latency vs Number of Clients')
-    plt.xticks(x, clients)
+    ax2.set_ylim(bottom=0)
+    ax2.set_xlabel('Number of Clients')
+    ax2.set_ylabel('Latency (ms)')
+    # ax2.set_title('Latency vs Number of Clients')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(clients)
     
-    plt.legend()
-    plt.grid(True, axis='y', ls=':', alpha=0.6)
+    ax2.legend()
+    ax2.grid(True, axis='y', ls=':', alpha=0.6)
+
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'latency_scaling.png'), dpi=150)
+    output_path = os.path.join(output_dir, 'kurrentdb_performance_scaling.png')
+    plt.savefig(output_path, dpi=150)
     plt.close()
+
+    print(f"Combined performance plot saved to: {output_path}")
 
 if __name__ == "__main__":
     import sys
