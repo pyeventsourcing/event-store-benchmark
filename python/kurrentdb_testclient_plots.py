@@ -85,6 +85,7 @@ def parse_log_file(file_path):
     p99 /= 1000.0
     p999 /= 1000.0
 
+    print(f"Parsed {file_path}: clients={clients}, throughput={throughput}, p50={p50}, p99={p99}, p999={p999}")
     return {
         'clients': clients,
         'throughput': throughput,
@@ -108,65 +109,47 @@ def generate_plots(results, output_dir):
     p999 = [r['p999'] for r in results]
 
     x = np.arange(len(clients))
-    
-    # Throughput Plot
-    plt.figure(figsize=(10, 6))
-    plt.bar(x, throughput, color='skyblue', alpha=0.9)
-    plt.yscale('log')
 
-    # Set y-axis minimum to 0.5 * smallest plotted value
-    if throughput:
-        min_throughput = min(t for t in throughput if t > 0)
-        plt.ylim(bottom=0.5 * min_throughput)
+    color = '#1f77b4'
+
+# Throughput Plot
+    plt.figure(figsize=(10, 6))
+    plt.bar(x, throughput, color=color, alpha=0.9)
+
+    # Set y-axis minimum to 0
+    plt.ylim(bottom=0)
 
     plt.xlabel('Number of Clients')
-    plt.ylabel('Throughput (reqs/sec) [log]')
+    plt.ylabel('Throughput (reqs/sec)')
     plt.title('Throughput vs Number of Clients')
     plt.xticks(x, clients)
-    
-    formatter = ScalarFormatter()
-    formatter.set_scientific(False)
-    plt.gca().yaxis.set_major_formatter(formatter)
-    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
-    plt.gca().yaxis.set_minor_formatter(NullFormatter())
     
     plt.grid(True, axis='y', ls=':', alpha=0.6)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'throughput_scaling.png'), dpi=150)
     plt.close()
 
+    print(f"Generating latency plot for clients={clients}")
+    print(f"  p50:   {p50}")
+    print(f"  p99:   {p99}")
+    print(f"  p99.9: {p999}")
+    
     # Latency Plot
     plt.figure(figsize=(10, 6))
     
-    # Latency is often plotted on log scale too
-    plt.yscale('log')
-
-    # Set y-axis minimum to 0.5 * smallest plotted value
-    all_latencies = [val for sublist in [p50, p99, p999] for val in sublist if val > 0]
-    if all_latencies:
-        plt.ylim(bottom=0.5 * min(all_latencies))
-    
-    color = 'salmon'
+    # Linear plotting with zero-based y-axis
+    # We use OVERLAYING instead of STACKING:
+    plt.bar(x, p999, label='p99.9', color=color, alpha=0.3)
+    plt.bar(x, p99, label='p99', color=color, alpha=0.6)
     plt.bar(x, p50, label='p50', color=color, alpha=1.0)
-    # Using bottom to stack or just overlaying with alpha? 
-    # The requirement: "bar chart with alpha values indicating the difference"
-    # This usually means overlapping bars with decreasing alpha or stacked.
-    # If I use overlapping bars, the highest (p999) should be plotted first?
-    # Or plot p50, then p99 on top, then p99.9 on top.
-    
-    # Let's do stacked-like as in report_generator:
-    plt.bar(x, [max(0, p99[i] - p50[i]) for i in range(len(p99))], bottom=p50, label='p99', color=color, alpha=0.6)
-    plt.bar(x, [max(0, p999[i] - p99[i]) for i in range(len(p999))], bottom=p99, label='p99.9', color=color, alpha=0.3)
+
+    # Set y-axis minimum to 0
+    plt.ylim(bottom=0)
 
     plt.xlabel('Number of Clients')
-    plt.ylabel('Latency (ms) [log]')
+    plt.ylabel('Latency (ms)')
     plt.title('Latency vs Number of Clients')
     plt.xticks(x, clients)
-    
-    formatter = FormatStrFormatter('%.1f')
-    plt.gca().yaxis.set_major_formatter(formatter)
-    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
-    plt.gca().yaxis.set_minor_formatter(NullFormatter())
     
     plt.legend()
     plt.grid(True, axis='y', ls=':', alpha=0.6)
