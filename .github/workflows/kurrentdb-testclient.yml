@@ -46,9 +46,34 @@ jobs:
       - name: Build project
         run: dotnet build --no-restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
 
-      - name: Run write flood
+      - name: Run write flood (1 client)
         run: |
           dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
-           --command "WRFLGRPC 1 10000 10000 256 1 test-"
+           --command "WRFLGRPC 1 100000 10000 256 1 test1-"
+
+      - name: Run write flood (2 clients)
+        run: |
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+           --command "WRFLGRPC 2 100000 10000 256 1 test2-"
+
+      - name: Run write flood (4 clients)
+        run: |
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+           --command "WRFLGRPC 4 100000 10000 256 1 test4-"
+
+      - name: Run write flood (8 clients)
+        run: |
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+           --command "WRFLGRPC 8 100000 10000 256 1 test8-"
+
+      - name: Run write flood (16 clients)
+        run: |
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+           --command "WRFLGRPC 16 100000 10000 256 1 test16-"
+
+      - name: Run write flood (32 clients)
+        run: |
+          dotnet run --project ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -- \
+           --command "WRFLGRPC 32 100000 10000 256 1 test32-"
 
       # WRFLGRPC [<CLIENTS> <REQUESTS> [<STREAMS-CNT> [<SIZE> [<BATCHSIZE> [<STREAM-PREFIX>]]]]]
