@@ -20,8 +20,8 @@ performance:
     - kurrentdb
     - axonserver
     - eventsourcingdb
-    - dummy
     - fact
+    - dummy
 ---
 performance:
   name: smoke-test-performance-read
@@ -45,5 +45,5 @@ performance:
     - kurrentdb
     - axonserver
     - eventsourcingdb
-    - dummy
     - fact
+    - dummy
