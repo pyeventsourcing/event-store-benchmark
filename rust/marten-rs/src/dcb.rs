@@ -151,6 +151,24 @@ pub async fn append_events_conditionally(
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let tx = client.transaction().await?;
     
+    // We can use a multi-statement query to reduce round trips.
+    // PostgreSQL allows multiple statements separated by semicolons in a single query call.
+    // However, tokio-postgres `query` and `execute` methods only return the result of the first statement.
+    // To get all results, one would typically use `simple_query` which doesn't support parameters,
+    // or use a more advanced approach.
+    
+    // BUT, we can use a PL/pgSQL `DO` block or a custom function to execute everything in one round trip.
+    // Marten's "Rich Append" actually sends individual statements but relies on Npgsql's internal pipelining.
+    // In tokio-postgres, pipelining is automatic if you don't await immediately, but since we use `&mut tx`,
+    // we have to await. 
+    
+    // So, let's replicate the intent by building a single multi-statement SQL for the appends
+    // and use CTEs (Common Table Expressions) to link them, ensuring only one round trip for all appends.
+
+    let mut sql = String::new();
+    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
+    let mut param_index = 1;
+
     // 1. Check DCB
     if let Some(query) = query {
         let exists_sql = generate_dcb_exists_sql(query);
@@ -162,28 +180,51 @@ pub async fn append_events_conditionally(
         }
     }
     
-    // 2. Append events
-    for event in events {
-        // We might need to ensure stream exists
-        tx.execute(
-            "INSERT INTO mt_streams (id, type) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
-            &[&event.stream_id, &"default"]
-        ).await?;
+    // 2. Append events in a single batch query using CTEs
+    if !events.is_empty() {
+        sql.push_str("WITH ");
+        for (i, event) in events.iter().enumerate() {
+            if i > 0 {
+                sql.push_str(", ");
+            }
+            
+            // Stream creation
+            sql.push_str(&format!("s{} AS (INSERT INTO mt_streams (id, type) VALUES (${}, 'default') ON CONFLICT (id) DO NOTHING), ", i, param_index));
+            params.push(Box::new(event.stream_id));
+            param_index += 1;
 
-        let rows = tx.query(
-            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
-            &[&event.id, &event.stream_id, &event.version, &event.data, &event.event_type]
-        ).await?;
-        let seq_id: i64 = rows[0].get(0);
-        
-        for tag in event.tags {
-            tx.execute(
-                "INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                &[&tag, &seq_id]
-            ).await?;
+            // Event insertion
+            sql.push_str(&format!(
+                "e{} AS (INSERT INTO mt_events (id, stream_id, version, data, type) VALUES (${}, ${}, ${}, ${}, ${}) RETURNING seq_id)",
+                i, param_index, param_index + 1, param_index + 2, param_index + 3, param_index + 4
+            ));
+            params.push(Box::new(event.id));
+            params.push(Box::new(event.stream_id));
+            params.push(Box::new(event.version));
+            params.push(Box::new(event.data.clone()));
+            params.push(Box::new(event.event_type.clone()));
+            param_index += 5;
+            
+            // Tag insertion
+            if !event.tags.is_empty() {
+                sql.push_str(&format!(", t{} AS (INSERT INTO mt_event_tag_string (value, seq_id) ", i));
+                for (j, tag) in event.tags.iter().enumerate() {
+                    if j > 0 {
+                        sql.push_str(" UNION ALL ");
+                    }
+                    sql.push_str(&format!("SELECT ${}, seq_id FROM e{}", param_index, i));
+                    params.push(Box::new(tag.clone()));
+                    param_index += 1;
+                }
+                sql.push_str(" ON CONFLICT DO NOTHING)");
+            }
         }
+        sql.push_str(" SELECT 1;");
+
+        let params_ref: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
+        tx.execute(&sql, &params_ref).await?;
     }
-    
+
     tx.commit().await?;
     Ok(true)
 }
