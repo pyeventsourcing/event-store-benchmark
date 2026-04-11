@@ -192,6 +192,11 @@ mod tests {
         let success = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events).await?;
         assert!(success);
         
+        // Verify result of first conditional append
+        let results = dcb::select_events_for_query(&client, &cond_query).await?;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], json!({"cond": "append"}));
+        
         // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
         let cond_events2 = vec![
             dcb::TaggedEvent {
@@ -205,6 +210,11 @@ mod tests {
         ];
         let success2 = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events2).await?;
         assert!(!success2);
+
+        // Verify result of second conditional append (should NOT contain the failed event)
+        let results2 = dcb::select_events_for_query(&client, &cond_query).await?;
+        assert_eq!(results2.len(), 1);
+        assert_eq!(results2[0], json!({"cond": "append"}));
 
         // Test append_events_conditionally with None query
         let cond_events_none = vec![
@@ -220,6 +230,14 @@ mod tests {
         // This should ALWAYS SUCCEED because there is no DCB check
         let success_none = dcb::append_events_conditionally(&mut client, None, cond_events_none).await?;
         assert!(success_none);
+
+        // Verify result of append without query (should be able to see it using its own tag)
+        let query_none = dcb::EventTagQuery::new(new_seq).with_tag("dcb-tag");
+        let results_none = dcb::select_events_for_query(&client, &query_none).await?;
+        // Should have "cond": "append" and "cond": "none"
+        assert_eq!(results_none.len(), 2);
+        assert!(results_none.contains(&json!({"cond": "append"})));
+        assert!(results_none.contains(&json!({"cond": "none"})));
 
         Ok(())
     }
