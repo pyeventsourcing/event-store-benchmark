@@ -189,7 +189,7 @@ mod tests {
         ];
         
         // This should SUCCEED because no new events with "dcb-tag" since new_seq
-        let success = dcb::append_events_conditionally(&mut client, &cond_query, cond_events).await?;
+        let success = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events).await?;
         assert!(success);
         
         // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
@@ -203,8 +203,23 @@ mod tests {
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
-        let success2 = dcb::append_events_conditionally(&mut client, &cond_query, cond_events2).await?;
+        let success2 = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events2).await?;
         assert!(!success2);
+
+        // Test append_events_conditionally with None query
+        let cond_events_none = vec![
+            dcb::TaggedEvent {
+                id: Uuid::new_v4(),
+                stream_id: Uuid::new_v4(),
+                version: 1,
+                data: json!({"cond": "none"}),
+                event_type: "cond_event".to_string(),
+                tags: vec!["dcb-tag".to_string()],
+            }
+        ];
+        // This should ALWAYS SUCCEED because there is no DCB check
+        let success_none = dcb::append_events_conditionally(&mut client, None, cond_events_none).await?;
+        assert!(success_none);
 
         Ok(())
     }

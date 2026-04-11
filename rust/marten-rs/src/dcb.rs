@@ -121,18 +121,20 @@ pub struct TaggedEvent {
 
 pub async fn append_events_conditionally(
     client: &mut Client,
-    query: &EventTagQuery<'_>,
+    query: Option<&EventTagQuery<'_>>,
     events: Vec<TaggedEvent>
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let tx = client.transaction().await?;
     
     // 1. Check DCB
-    let exists_sql = generate_dcb_exists_sql(query);
-    let conflict: bool = tx.query_one(&exists_sql, &[]).await?.get(0);
-    
-    if conflict {
-        tx.rollback().await?;
-        return Ok(false);
+    if let Some(query) = query {
+        let exists_sql = generate_dcb_exists_sql(query);
+        let conflict: bool = tx.query_one(&exists_sql, &[]).await?.get(0);
+        
+        if conflict {
+            tx.rollback().await?;
+            return Ok(false);
+        }
     }
     
     // 2. Append events
