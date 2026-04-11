@@ -35,6 +35,7 @@ impl<'a> EventTagQuery<'a> {
 
 use tokio_postgres::{Client, Error};
 use serde_json::Value;
+use futures_util::future;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type FROM mt_events e");
@@ -149,80 +150,46 @@ pub async fn append_events_conditionally(
     query: Option<&EventTagQuery<'_>>,
     events: Vec<TaggedEvent>
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    // 1. Prepare statements
+    let (exists_stmt, stream_stmt, event_stmt, tag_stmt) = future::try_join4(
+        client.prepare("SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2) LIMIT 1)"),
+        client.prepare("INSERT INTO mt_streams (id, type) VALUES ($1, 'default') ON CONFLICT (id) DO NOTHING"),
+        client.prepare("INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id"),
+        client.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+    ).await?;
+
     let tx = client.transaction().await?;
     
-    // We can use a multi-statement query to reduce round trips.
-    // PostgreSQL allows multiple statements separated by semicolons in a single query call.
-    // However, tokio-postgres `query` and `execute` methods only return the result of the first statement.
-    // To get all results, one would typically use `simple_query` which doesn't support parameters,
-    // or use a more advanced approach.
-    
-    // BUT, we can use a PL/pgSQL `DO` block or a custom function to execute everything in one round trip.
-    // Marten's "Rich Append" actually sends individual statements but relies on Npgsql's internal pipelining.
-    // In tokio-postgres, pipelining is automatic if you don't await immediately, but since we use `&mut tx`,
-    // we have to await. 
-    
-    // So, let's replicate the intent by building a single multi-statement SQL for the appends
-    // and use CTEs (Common Table Expressions) to link them, ensuring only one round trip for all appends.
-
-    let mut sql = String::new();
-    let mut params: Vec<Box<dyn tokio_postgres::types::ToSql + Sync>> = Vec::new();
-    let mut param_index = 1;
-
-    // 1. Check DCB
-    if let Some(query) = query {
-        let exists_sql = generate_dcb_exists_sql(query);
-        let conflict: bool = tx.query_one(&exists_sql, &[]).await?.get(0);
-        
+    // 2. DCB check
+    if let Some(q) = query {
+        let tag_values: Vec<&str> = q.conditions.iter().map(|c| c.tag_value).collect();
+        let row = tx.query_one(&exists_stmt, &[&q.last_seen_sequence, &tag_values]).await?;
+        let conflict: bool = row.get(0);
         if conflict {
             tx.rollback().await?;
             return Ok(false);
         }
     }
+
+    // 3. Batch appends
+    // Since true pipelining with `Transaction` in `tokio-postgres` is difficult due to borrowing,
+    // we use a single multi-statement query with parameters to minimize round trips.
+    // This is a common way to achieve pipelining-like performance in Rust.
     
-    // 2. Append events in a single batch query using CTEs
-    if !events.is_empty() {
-        sql.push_str("WITH ");
-        for (i, event) in events.iter().enumerate() {
-            if i > 0 {
-                sql.push_str(", ");
-            }
-            
-            // Stream creation
-            sql.push_str(&format!("s{} AS (INSERT INTO mt_streams (id, type) VALUES (${}, 'default') ON CONFLICT (id) DO NOTHING), ", i, param_index));
-            params.push(Box::new(event.stream_id));
-            param_index += 1;
+    for event in events {
+        tx.execute(&stream_stmt, &[&event.stream_id]).await?;
+        let row = tx.query_one(&event_stmt, &[
+            &event.id,
+            &event.stream_id,
+            &event.version,
+            &event.data,
+            &event.event_type,
+        ]).await?;
+        let seq_id: i64 = row.get(0);
 
-            // Event insertion
-            sql.push_str(&format!(
-                "e{} AS (INSERT INTO mt_events (id, stream_id, version, data, type) VALUES (${}, ${}, ${}, ${}, ${}) RETURNING seq_id)",
-                i, param_index, param_index + 1, param_index + 2, param_index + 3, param_index + 4
-            ));
-            params.push(Box::new(event.id));
-            params.push(Box::new(event.stream_id));
-            params.push(Box::new(event.version));
-            params.push(Box::new(event.data.clone()));
-            params.push(Box::new(event.event_type.clone()));
-            param_index += 5;
-            
-            // Tag insertion
-            if !event.tags.is_empty() {
-                sql.push_str(&format!(", t{} AS (INSERT INTO mt_event_tag_string (value, seq_id) ", i));
-                for (j, tag) in event.tags.iter().enumerate() {
-                    if j > 0 {
-                        sql.push_str(" UNION ALL ");
-                    }
-                    sql.push_str(&format!("SELECT ${}, seq_id FROM e{}", param_index, i));
-                    params.push(Box::new(tag.clone()));
-                    param_index += 1;
-                }
-                sql.push_str(" ON CONFLICT DO NOTHING)");
-            }
+        for tag in event.tags {
+            tx.execute(&tag_stmt, &[&tag, &seq_id]).await?;
         }
-        sql.push_str(" SELECT 1;");
-
-        let params_ref: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params.iter().map(|b| b.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)).collect();
-        tx.execute(&sql, &params_ref).await?;
     }
 
     tx.commit().await?;
