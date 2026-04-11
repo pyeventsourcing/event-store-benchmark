@@ -99,13 +99,28 @@ pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
     sql
 }
 
-pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>) -> Result<Vec<Value>, Error> {
+pub struct RecordedEvent {
+    pub seq_id: i64,
+    pub id: uuid::Uuid,
+    pub stream_id: uuid::Uuid,
+    pub version: i32,
+    pub data: Value,
+    pub event_type: String,
+}
+
+pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
     let sql = generate_select_events_sql(query);
     let rows = client.query(&sql, &[]).await?;
     let mut events = Vec::new();
     for row in rows {
-        let data: Value = row.get(4);
-        events.push(data);
+        events.push(RecordedEvent {
+            seq_id: row.get(0),
+            id: row.get(1),
+            stream_id: row.get(2),
+            version: row.get(3),
+            data: row.get(4),
+            event_type: row.get(5),
+        });
     }
     Ok(events)
 }

@@ -161,7 +161,11 @@ mod tests {
         // Test select_events_for_query
         let events = dcb::select_events_for_query(&client, &query).await?;
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0], json!({"dcb": "test"}));
+        assert_eq!(events[0].data, json!({"dcb": "test"}));
+        assert_eq!(events[0].event_type, "dcb_event");
+        assert_eq!(events[0].id, event_id);
+        assert_eq!(events[0].stream_id, stream_id);
+        assert_eq!(events[0].version, 1);
 
         // 4. Check DCB with last_seen_sequence = new_seq (after append)
         // This should return FALSE (no conflict)
@@ -195,7 +199,7 @@ mod tests {
         // Verify result of first conditional append
         let results = dcb::select_events_for_query(&client, &cond_query).await?;
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0], json!({"cond": "append"}));
+        assert_eq!(results[0].data, json!({"cond": "append"}));
         
         // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
         let cond_events2 = vec![
@@ -214,7 +218,7 @@ mod tests {
         // Verify result of second conditional append (should NOT contain the failed event)
         let results2 = dcb::select_events_for_query(&client, &cond_query).await?;
         assert_eq!(results2.len(), 1);
-        assert_eq!(results2[0], json!({"cond": "append"}));
+        assert_eq!(results2[0].data, json!({"cond": "append"}));
 
         // Test append_events_conditionally with None query
         let cond_events_none = vec![
@@ -236,8 +240,9 @@ mod tests {
         let results_none = dcb::select_events_for_query(&client, &query_none).await?;
         // Should have "cond": "append" and "cond": "none"
         assert_eq!(results_none.len(), 2);
-        assert!(results_none.contains(&json!({"cond": "append"})));
-        assert!(results_none.contains(&json!({"cond": "none"})));
+        let datas: Vec<serde_json::Value> = results_none.into_iter().map(|e| e.data).collect();
+        assert!(datas.contains(&json!({"cond": "append"})));
+        assert!(datas.contains(&json!({"cond": "none"})));
 
         Ok(())
     }
