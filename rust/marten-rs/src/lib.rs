@@ -94,6 +94,41 @@ mod tests {
         assert_eq!(data2, event_data2);
         assert_eq!(tag2, "tag2");
 
+        // Test multi-statement approach (Rich Append) for multiple tags of the same type
+        let stream_id = Uuid::new_v4();
+        let event_id = Uuid::new_v4();
+        let event_data = json!({"multi": "tags"});
+
+        // 1. Insert stream
+        client.execute(
+            "INSERT INTO mt_streams (id, type) VALUES ($1, $2)",
+            &[&stream_id, &"multi_tag_stream"]
+        ).await?;
+
+        // 2. Insert event
+        let rows = client.query(
+            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
+            &[&event_id, &stream_id, &1i32, &event_data, &"multi_tag_event"]
+        ).await?;
+        let seq_id: i64 = rows[0].get(0);
+
+        // 3. Insert multiple tags (multi-statement approach)
+        let insert_tag_sql = schema::get_insert_tag_sql("string");
+        client.execute(&insert_tag_sql, &[&"tagA", &seq_id]).await?;
+        client.execute(&insert_tag_sql, &[&"tagB", &seq_id]).await?;
+
+        // 4. Verify both tags are present
+        let rows = client.query(
+            "SELECT value FROM mt_event_tag_string WHERE seq_id = $1 ORDER BY value",
+            &[&seq_id]
+        ).await?;
+
+        assert_eq!(rows.len(), 2);
+        let tag_a: &str = rows[0].get(0);
+        let tag_b: &str = rows[1].get(0);
+        assert_eq!(tag_a, "tagA");
+        assert_eq!(tag_b, "tagB");
+
         Ok(())
     }
 }

@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS mt_events (
 
 pub const CREATE_EVENT_TAG_TABLE_PREFIX: &str = "CREATE TABLE IF NOT EXISTS mt_event_tag_";
 
+pub const INSERT_EVENT_TAG: &str = r#"
+INSERT INTO mt_event_tag_{suffix} (value, seq_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
+"#;
+
+pub fn get_insert_tag_sql(suffix: &str) -> String {
+    INSERT_EVENT_TAG.replace("{suffix}", suffix)
+}
+
 pub fn get_create_tag_table_sql(suffix: &str) -> String {
     format!(
         r#"
