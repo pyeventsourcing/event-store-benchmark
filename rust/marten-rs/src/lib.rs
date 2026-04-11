@@ -1,5 +1,6 @@
 pub mod schema;
 pub mod append;
+pub mod dcb;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
@@ -128,6 +129,57 @@ mod tests {
         let tag_b: &str = rows[1].get(0);
         assert_eq!(tag_a, "tagA");
         assert_eq!(tag_b, "tagB");
+
+        // Test DCB (Dynamic Consistency Boundaries) check
+        // 1. Get current sequence
+        let row = client.query_one("SELECT last_value FROM mt_events_sequence", &[]).await?;
+        let current_seq: i64 = row.get(0);
+
+        // 2. Append a new tagged event
+        let stream_id = Uuid::new_v4();
+        let event_id = Uuid::new_v4();
+        client.execute(
+            "INSERT INTO mt_streams (id, type) VALUES ($1, $2)",
+            &[&stream_id, &"dcb_stream"]
+        ).await?;
+        let row = client.query_one(
+            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
+            &[&event_id, &stream_id, &1i32, &json!({"dcb": "test"}), &"dcb_event"]
+        ).await?;
+        let new_seq: i64 = row.get(0);
+        client.execute(&schema::get_insert_tag_sql("string"), &[&"dcb-tag", &new_seq]).await?;
+
+        // 3. Check DCB with last_seen_sequence = current_seq (before append)
+        // This should return TRUE (conflict detected)
+        let query = dcb::DcbQuery {
+            conditions: vec![
+                dcb::DcbCondition {
+                    tag_type: "string",
+                    tag_value: "dcb-tag",
+                    event_type: Some("dcb_event"),
+                }
+            ],
+            last_seen_sequence: current_seq,
+        };
+        let dcb_sql = dcb::generate_dcb_exists_sql(&query);
+        let conflict: bool = client.query_one(&dcb_sql, &[]).await?.get(0);
+        assert!(conflict, "Expected DCB conflict not detected");
+
+        // 4. Check DCB with last_seen_sequence = new_seq (after append)
+        // This should return FALSE (no conflict)
+        let query_no_conflict = dcb::DcbQuery {
+            conditions: vec![
+                dcb::DcbCondition {
+                    tag_type: "string",
+                    tag_value: "dcb-tag",
+                    event_type: Some("dcb_event"),
+                }
+            ],
+            last_seen_sequence: new_seq,
+        };
+        let dcb_sql_no_conflict = dcb::generate_dcb_exists_sql(&query_no_conflict);
+        let no_conflict: bool = client.query_one(&dcb_sql_no_conflict, &[]).await?.get(0);
+        assert!(!no_conflict, "Unexpected DCB conflict detected");
 
         Ok(())
     }
