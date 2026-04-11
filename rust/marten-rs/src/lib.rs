@@ -151,35 +151,60 @@ mod tests {
 
         // 3. Check DCB with last_seen_sequence = current_seq (before append)
         // This should return TRUE (conflict detected)
-        let query = dcb::DcbQuery {
-            conditions: vec![
-                dcb::DcbCondition {
-                    tag_type: "string",
-                    tag_value: "dcb-tag",
-                    event_type: Some("dcb_event"),
-                }
-            ],
-            last_seen_sequence: current_seq,
-        };
+        let query = dcb::EventTagQuery::new(current_seq)
+            .with_tag_and_type("dcb-tag", "dcb_event");
+            
         let dcb_sql = dcb::generate_dcb_exists_sql(&query);
         let conflict: bool = client.query_one(&dcb_sql, &[]).await?.get(0);
         assert!(conflict, "Expected DCB conflict not detected");
 
+        // Test select_events_for_query
+        let events = dcb::select_events_for_query(&client, &query).await?;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], json!({"dcb": "test"}));
+
         // 4. Check DCB with last_seen_sequence = new_seq (after append)
         // This should return FALSE (no conflict)
-        let query_no_conflict = dcb::DcbQuery {
-            conditions: vec![
-                dcb::DcbCondition {
-                    tag_type: "string",
-                    tag_value: "dcb-tag",
-                    event_type: Some("dcb_event"),
-                }
-            ],
-            last_seen_sequence: new_seq,
-        };
+        let query_no_conflict = dcb::EventTagQuery::new(new_seq)
+            .with_tag_and_type("dcb-tag", "dcb_event");
+            
         let dcb_sql_no_conflict = dcb::generate_dcb_exists_sql(&query_no_conflict);
         let no_conflict: bool = client.query_one(&dcb_sql_no_conflict, &[]).await?.get(0);
         assert!(!no_conflict, "Unexpected DCB conflict detected");
+
+        // Test append_events_conditionally
+        let mut client = client; // need to take ownership or use &mut
+        let cond_query = dcb::EventTagQuery::new(new_seq)
+            .with_tag("dcb-tag");
+            
+        let cond_events = vec![
+            dcb::TaggedEvent {
+                id: Uuid::new_v4(),
+                stream_id: Uuid::new_v4(),
+                version: 1,
+                data: json!({"cond": "append"}),
+                event_type: "cond_event".to_string(),
+                tags: vec!["dcb-tag".to_string()],
+            }
+        ];
+        
+        // This should SUCCEED because no new events with "dcb-tag" since new_seq
+        let success = dcb::append_events_conditionally(&mut client, &cond_query, cond_events).await?;
+        assert!(success);
+        
+        // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
+        let cond_events2 = vec![
+            dcb::TaggedEvent {
+                id: Uuid::new_v4(),
+                stream_id: Uuid::new_v4(),
+                version: 1,
+                data: json!({"cond": "fail"}),
+                event_type: "cond_event".to_string(),
+                tags: vec!["dcb-tag".to_string()],
+            }
+        ];
+        let success2 = dcb::append_events_conditionally(&mut client, &cond_query, cond_events2).await?;
+        assert!(!success2);
 
         Ok(())
     }
