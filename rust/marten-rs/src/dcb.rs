@@ -37,23 +37,24 @@ use tokio_postgres::{Client, Error};
 use serde_json::Value;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
-    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type FROM mt_events e");
-    sql.push_str(" INNER JOIN mt_event_tag_string t0 ON e.seq_id = t0.seq_id");
+    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, array_agg(t.value) FROM mt_events e");
+    sql.push_str(" INNER JOIN mt_event_tag_string t ON e.seq_id = t.seq_id");
     
-    // We already have t0 joined, so we can use it.
-    // If we have multiple conditions, they are ORed in Marten's EventTagQuery if they are for the same tag table?
-    // Actually, Marten's EventTagQuery usually filters events that match ANY of the conditions if they are combined.
+    // We already have t joined, so we can use it for filtering.
+    // If we have multiple conditions, they are ORed.
     
     sql.push_str(&format!(" WHERE e.seq_id > {}", query.last_seen_sequence));
 
     if !query.conditions.is_empty() {
-        sql.push_str(" AND (");
+        sql.push_str(" AND e.seq_id IN (SELECT seq_id FROM mt_event_tag_string t0 WHERE ");
         for (i, condition) in query.conditions.iter().enumerate() {
             if i > 0 {
                 sql.push_str(" OR ");
             }
             sql.push_str(&format!("(t0.value = '{}'", condition.tag_value));
             if let Some(event_type) = condition.event_type {
+                // To filter by event type we need to join mt_events inside the IN clause or just use e.type if we moved it outside
+                // But e.type is available here.
                 sql.push_str(&format!(" AND e.type = '{}'", event_type));
             }
             sql.push_str(")");
@@ -61,6 +62,7 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
         sql.push_str(")");
     }
     
+    sql.push_str(" GROUP BY e.seq_id, e.id, e.stream_id, e.version, e.data, e.type");
     sql.push_str(" ORDER BY e.seq_id");
     sql
 }
@@ -106,6 +108,7 @@ pub struct RecordedEvent {
     pub version: i32,
     pub data: Value,
     pub event_type: String,
+    pub tags: Vec<String>,
 }
 
 pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
@@ -120,6 +123,7 @@ pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>)
             version: row.get(3),
             data: row.get(4),
             event_type: row.get(5),
+            tags: row.get(6),
         });
     }
     Ok(events)

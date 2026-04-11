@@ -166,6 +166,29 @@ mod tests {
         assert_eq!(events[0].id, event_id);
         assert_eq!(events[0].stream_id, stream_id);
         assert_eq!(events[0].version, 1);
+        assert_eq!(events[0].tags, vec!["dcb-tag".to_string()]);
+
+        // Test with multiple tags
+        let stream_id_multi = Uuid::new_v4();
+        let event_id_multi = Uuid::new_v4();
+        client.execute(
+            "INSERT INTO mt_streams (id, type) VALUES ($1, $2)",
+            &[&stream_id_multi, &"multi_tag_stream"]
+        ).await?;
+        let row_multi = client.query_one(
+            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
+            &[&event_id_multi, &stream_id_multi, &1i32, &json!({"multi": "tags"}), &"multi_tag_event"]
+        ).await?;
+        let multi_seq: i64 = row_multi.get(0);
+        client.execute(&schema::get_insert_tag_sql("string"), &[&"tag-1", &multi_seq]).await?;
+        client.execute(&schema::get_insert_tag_sql("string"), &[&"tag-2", &multi_seq]).await?;
+
+        let query_multi = dcb::EventTagQuery::new(current_seq).with_tag("tag-1");
+        let events_multi = dcb::select_events_for_query(&client, &query_multi).await?;
+        assert_eq!(events_multi.len(), 1);
+        assert_eq!(events_multi[0].tags.len(), 2);
+        assert!(events_multi[0].tags.contains(&"tag-1".to_string()));
+        assert!(events_multi[0].tags.contains(&"tag-2".to_string()));
 
         // 4. Check DCB with last_seen_sequence = new_seq (after append)
         // This should return FALSE (no conflict)
