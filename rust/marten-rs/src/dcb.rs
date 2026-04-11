@@ -37,24 +37,24 @@ use tokio_postgres::{Client, Error};
 use serde_json::Value;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
-    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, array_agg(t.value) FROM mt_events e");
-    sql.push_str(" INNER JOIN mt_event_tag_string t ON e.seq_id = t.seq_id");
+    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, array_agg(t_all.value) FROM mt_events e");
     
-    // We already have t joined, so we can use it for filtering.
-    // If we have multiple conditions, they are ORed.
+    // Marten joins to the tag table(s) to apply filters
+    sql.push_str(" LEFT JOIN mt_event_tag_string t0 ON e.seq_id = t0.seq_id");
     
-    sql.push_str(&format!(" WHERE e.seq_id > {}", query.last_seen_sequence));
+    // We also join again to get ALL tags for each event (this is an enhancement over Marten's basic fetch)
+    sql.push_str(" LEFT JOIN mt_event_tag_string t_all ON e.seq_id = t_all.seq_id");
+    
+    sql.push_str(&format!(" WHERE (e.seq_id > {})", query.last_seen_sequence));
 
     if !query.conditions.is_empty() {
-        sql.push_str(" AND e.seq_id IN (SELECT seq_id FROM mt_event_tag_string t0 WHERE ");
+        sql.push_str(" AND (");
         for (i, condition) in query.conditions.iter().enumerate() {
             if i > 0 {
                 sql.push_str(" OR ");
             }
             sql.push_str(&format!("(t0.value = '{}'", condition.tag_value));
             if let Some(event_type) = condition.event_type {
-                // To filter by event type we need to join mt_events inside the IN clause or just use e.type if we moved it outside
-                // But e.type is available here.
                 sql.push_str(&format!(" AND e.type = '{}'", event_type));
             }
             sql.push_str(")");
@@ -76,7 +76,7 @@ pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
         sql.push_str(" INNER JOIN mt_events e ON t0.seq_id = e.seq_id");
     }
 
-    sql.push_str(&format!(" WHERE t0.seq_id > {}", query.last_seen_sequence));
+    sql.push_str(&format!(" WHERE (t0.seq_id > {})", query.last_seen_sequence));
 
     if !query.conditions.is_empty() {
         // Build OR conditions
