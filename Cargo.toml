@@ -9,5 +9,6 @@ members = [
     "rust/adapters/fact",
     "rust/cli",
     "rust/kurrentdb-benchmark",
+    "rust/marten-rs",
 ]
 resolver = "2"
