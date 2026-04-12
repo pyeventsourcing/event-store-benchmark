@@ -152,7 +152,7 @@ mod tests {
         // 3. Check DCB with last_seen_sequence = current_seq (before append)
         // This should return TRUE (conflict detected)
         let query = dcb::EventTagQuery::new(current_seq)
-            .with_tag_and_type("dcb-tag", "dcb_event");
+            .with_tag("dcb-tag");
             
         let dcb_sql = dcb::generate_dcb_exists_sql(&query);
         let conflict: bool = client.query_one(&dcb_sql, &[]).await?.get(0);
@@ -192,14 +192,13 @@ mod tests {
         // 4. Check DCB with last_seen_sequence = new_seq (after append)
         // This should return FALSE (no conflict)
         let query_no_conflict = dcb::EventTagQuery::new(new_seq)
-            .with_tag_and_type("dcb-tag", "dcb_event");
+            .with_tag("dcb-tag");
             
         let dcb_sql_no_conflict = dcb::generate_dcb_exists_sql(&query_no_conflict);
         let no_conflict: bool = client.query_one(&dcb_sql_no_conflict, &[]).await?.get(0);
         assert!(!no_conflict, "Unexpected DCB conflict detected");
 
-        // Test append_events_conditionally
-        let mut client = client; // need to take ownership or use &mut
+        // Test append_events_marten_style
         let cond_query = dcb::EventTagQuery::new(new_seq)
             .with_tag("dcb-tag");
             
@@ -215,8 +214,9 @@ mod tests {
         ];
         
         // This should SUCCEED because no new events with "dcb-tag" since new_seq
-        let success = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events).await?;
+        let (success, seq_ids) = dcb::append_events_marten_style(&client, Some(&cond_query), cond_events).await?;
         assert!(success);
+        assert_eq!(seq_ids.len(), 1);
         
         // Verify result of first conditional append
         let results = dcb::select_events_for_query(&client, &cond_query).await?;
@@ -234,15 +234,16 @@ mod tests {
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
-        let success2 = dcb::append_events_conditionally(&mut client, Some(&cond_query), cond_events2).await?;
+        let (success2, seq_ids2) = dcb::append_events_marten_style(&client, Some(&cond_query), cond_events2).await?;
         assert!(!success2);
+        assert_eq!(seq_ids2.len(), 0);
 
         // Verify result of second conditional append (should NOT contain the failed event)
         let results2 = dcb::select_events_for_query(&client, &cond_query).await?;
         assert_eq!(results2.len(), 1);
         assert_eq!(results2[0].data, json!({"cond": "append"}));
 
-        // Test append_events_conditionally with None query
+        // Test append_events_marten_style with None query
         let cond_events_none = vec![
             dcb::TaggedEvent {
                 id: Uuid::new_v4(),
@@ -254,8 +255,9 @@ mod tests {
             }
         ];
         // This should ALWAYS SUCCEED because there is no DCB check
-        let success_none = dcb::append_events_conditionally(&mut client, None, cond_events_none).await?;
+        let (success_none, seq_ids_none) = dcb::append_events_marten_style(&client, None, cond_events_none).await?;
         assert!(success_none);
+        assert_eq!(seq_ids_none.len(), 1);
 
         // Verify result of append without query (should be able to see it using its own tag)
         let query_none = dcb::EventTagQuery::new(new_seq).with_tag("dcb-tag");

@@ -1,41 +1,31 @@
-pub struct DcbCondition<'a> {
+pub struct TagCondition<'a> {
     pub tag_value: &'a str,
-    pub event_type: Option<&'a str>,
 }
 
 pub struct EventTagQuery<'a> {
-    pub conditions: Vec<DcbCondition<'a>>,
     pub last_seen_sequence: i64,
+    pub conditions: Vec<TagCondition<'a>>,
 }
 
 impl<'a> EventTagQuery<'a> {
     pub fn new(last_seen_sequence: i64) -> Self {
         Self {
-            conditions: Vec::new(),
             last_seen_sequence,
+            conditions: Vec::new(),
         }
     }
 
-    pub fn with_tag(mut self, value: &'a str) -> Self {
-        self.conditions.push(DcbCondition {
-            tag_value: value,
-            event_type: None,
-        });
-        self
-    }
-
-    pub fn with_tag_and_type(mut self, tag_value: &'a str, event_type: &'a str) -> Self {
-        self.conditions.push(DcbCondition {
-            tag_value,
-            event_type: Some(event_type),
-        });
+    pub fn with_tag(mut self, tag_value: &'a str) -> Self {
+        self.conditions.push(TagCondition { tag_value });
         self
     }
 }
 
-use tokio_postgres::{Client, Error};
+use tokio_postgres::{Client, Error, Row};
 use serde_json::Value;
 use futures_util::future;
+use std::pin::Pin;
+use std::future::Future;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type FROM mt_events e");
@@ -51,11 +41,7 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
             if i > 0 {
                 sql.push_str(" OR ");
             }
-            sql.push_str(&format!("(t0.value = '{}'", condition.tag_value));
-            if let Some(event_type) = condition.event_type {
-                sql.push_str(&format!(" AND e.type = '{}'", event_type));
-            }
-            sql.push_str(")");
+            sql.push_str(&format!("(t0.value = '{}')", condition.tag_value));
         }
         sql.push_str(")");
     }
@@ -67,12 +53,6 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
 pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0");
 
-    // Join to mt_events only if we need event type filtering
-    let has_event_type_filter = query.conditions.iter().any(|c| c.event_type.is_some());
-    if has_event_type_filter {
-        sql.push_str(" INNER JOIN mt_events e ON t0.seq_id = e.seq_id");
-    }
-
     sql.push_str(&format!(" WHERE (t0.seq_id > {})", query.last_seen_sequence));
 
     if !query.conditions.is_empty() {
@@ -83,18 +63,12 @@ pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
                 sql.push_str(" OR ");
             }
 
-            sql.push_str(&format!("(t0.value = '{}'", condition.tag_value));
-
-            if let Some(event_type) = condition.event_type {
-                sql.push_str(&format!(" AND e.type = '{}'", event_type));
-            }
-
-            sql.push_str(")");
+            sql.push_str(&format!("(t0.value = '{}')", condition.tag_value));
         }
         sql.push_str(")");
     }
 
-    sql.push_str(" LIMIT 1)");
+    sql.push_str(")");
     sql
 }
 
@@ -145,63 +119,114 @@ pub struct TaggedEvent {
     pub tags: Vec<String>,
 }
 
-pub async fn append_events_conditionally(
-    client: &mut Client,
+pub async fn append_events_marten_style(
+    client: &Client,
     query: Option<&EventTagQuery<'_>>,
     events: Vec<TaggedEvent>
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<(bool, Vec<i64>), Error> {
     // 1. Prepare statements (pipelined)
-    let (exists_stmt, stream_stmt, event_stmt, tag_stmt) = future::try_join4(
-        client.prepare("SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2) LIMIT 1)"),
-        client.prepare("INSERT INTO mt_streams (id, type) VALUES ($1, 'default') ON CONFLICT (id) DO NOTHING"),
-        client.prepare("INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id"),
-        client.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, currval('mt_events_sequence')) ON CONFLICT DO NOTHING")
+    let (
+        exists_stmt,
+        stream_stmt,
+        event_stmt,
+        tag_stmt,
+    ) = future::try_join4(
+        client.prepare(
+            "SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2))"
+        ),
+        client.prepare(
+            "INSERT INTO mt_streams (id, type) VALUES ($1, 'default') ON CONFLICT (id) DO NOTHING"
+        ),
+        client.prepare(
+            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id"
+        ),
+        client.prepare(
+            "INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, currval('mt_events_sequence')) ON CONFLICT DO NOTHING"
+        ),
     ).await?;
 
     // 2. Start transaction
     client.batch_execute("BEGIN").await?;
 
-    // 3. DCB check
+    // 3. Build futures for pipelining
+    #[derive(Clone, Copy)]
+    enum Op {
+        Exists,
+        EventInsert,
+        Other,
+    }
+
+    let mut futures: Vec<Pin<Box<dyn Future<Output = Result<Vec<Row>, Error>> + Send>>> = Vec::new();
+    let mut ops = Vec::new();
+
     if let Some(q) = query {
-        let tag_values: Vec<&str> = q.conditions.iter().map(|c| c.tag_value).collect();
-        let row = client.query_one(&exists_stmt, &[&q.last_seen_sequence, &tag_values]).await?;
-        let conflict: bool = row.get(0);
-        if conflict {
-            client.batch_execute("ROLLBACK").await?;
-            return Ok(false);
+        let last_seen = q.last_seen_sequence;
+        let tag_values: Vec<String> = q.conditions.iter().map(|c| c.tag_value.to_string()).collect();
+        let stmt = exists_stmt.clone();
+        futures.push(Box::pin(async move {
+            client.query(&stmt, &[&last_seen, &tag_values]).await
+        }));
+        ops.push(Op::Exists);
+    }
+
+    for event in events {
+        let stream_id = event.stream_id;
+        let s_stmt = stream_stmt.clone();
+        futures.push(Box::pin(async move {
+            client.query(&s_stmt, &[&stream_id]).await
+        }));
+        ops.push(Op::Other);
+
+        let e_stmt = event_stmt.clone();
+        let id = event.id;
+        let version = event.version;
+        let data = event.data;
+        let event_type = event.event_type;
+        futures.push(Box::pin(async move {
+            client.query(&e_stmt, &[&id, &stream_id, &version, &data, &event_type]).await
+        }));
+        ops.push(Op::EventInsert);
+
+        for tag in event.tags {
+            let t_stmt = tag_stmt.clone();
+            futures.push(Box::pin(async move {
+                client.query(&t_stmt, &[&tag]).await
+            }));
+            ops.push(Op::Other);
         }
     }
 
-    // 4. Pipeline append operations
-    // Note: In tokio-postgres, awaiting each call actually still benefits from 
-    // pipelining if multiple requests are in flight, but here we are awaiting 
-    // them sequentially. To match the user's intent of "pipelining", 
-    // we would need to handle lifetimes of parameters carefully.
-    // However, the current structure is safer and already reduces round trips 
-    // compared to a non-batched approach because of prepared statements.
-    for event in &events {
-        if let Err(e) = client.execute(&stream_stmt, &[&event.stream_id]).await {
-            client.batch_execute("ROLLBACK").await?;
-            return Err(e.into());
-        }
-        if let Err(e) = client.execute(&event_stmt, &[
-            &event.id,
-            &event.stream_id,
-            &event.version,
-            &event.data,
-            &event.event_type,
-        ]).await {
-            client.batch_execute("ROLLBACK").await?;
-            return Err(e.into());
-        }
-        for tag in &event.tags {
-            if let Err(e) = client.execute(&tag_stmt, &[tag]).await {
-                client.batch_execute("ROLLBACK").await?;
-                return Err(e.into());
+    // 4. Execute all (pipelining happens here)
+    let results = future::try_join_all(futures).await?;
+
+    // 5. Process results
+    let mut conflict = false;
+    let mut seq_ids = Vec::new();
+
+    for (i, op) in ops.iter().enumerate() {
+        let rows = &results[i];
+        match op {
+            Op::Exists => {
+                if !rows.is_empty() {
+                    conflict = rows[0].get(0);
+                }
             }
+            Op::EventInsert => {
+                if !rows.is_empty() {
+                    let seq_id: i64 = rows[0].get(0);
+                    seq_ids.push(seq_id);
+                }
+            }
+            Op::Other => {}
         }
     }
 
-    client.batch_execute("COMMIT").await?;
-    Ok(true)
+    // 6. Commit or rollback
+    if conflict {
+        client.batch_execute("ROLLBACK").await?;
+        Ok((false, Vec::new()))
+    } else {
+        client.batch_execute("COMMIT").await?;
+        Ok((true, seq_ids))
+    }
 }
