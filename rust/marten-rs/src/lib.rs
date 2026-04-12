@@ -270,4 +270,63 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_throughput() -> Result<(), Box<dyn std::error::Error>> {
+        let connection_string = "host=localhost user=marten password=marten dbname=marten";
+        let (client, connection) = match tokio_postgres::connect(connection_string, NoTls).await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to connect to Postgres: {}. Skipping throughput test.", e);
+                return Ok(());
+            }
+        };
+
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+
+        // Schema setup (ensure clean slate)
+        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
+        client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
+        client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
+        client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
+        client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
+        client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
+        client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
+        client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
+
+        let payload_size = 256;
+        let iterations = 1000; // Increased to get more representative throughput
+        let total_events = iterations;
+        let payload_data = "a".repeat(payload_size);
+
+        println!("Starting throughput test: {} iterations of 1 event with {} byte payload", iterations, payload_size);
+
+        let start = std::time::Instant::now();
+
+        for _ in 0..iterations {
+            let events = vec![dcb::TaggedEvent {
+                id: Uuid::new_v4(),
+                stream_id: Uuid::new_v4(),
+                version: 1,
+                data: json!({"payload": payload_data}),
+                event_type: "benchmark_event".to_string(),
+                tags: vec!["benchmark".to_string()],
+            }];
+            
+            let (success, _) = dcb::append_events_marten_style(&client, None, events).await?;
+            assert!(success);
+        }
+
+        let duration = start.elapsed();
+        let eps = total_events as f64 / duration.as_secs_f64();
+
+        println!("Throughput: {:.2} events/second", eps);
+        println!("Total time: {:?}", duration);
+
+        Ok(())
+    }
 }
