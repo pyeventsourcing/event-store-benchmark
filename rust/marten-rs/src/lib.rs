@@ -288,6 +288,83 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_evaluate_append_condition() -> Result<(), Box<dyn std::error::Error>> {
+        let marten = setup_marten().await?;
+        let client = &marten.client;
+
+        // Test Case 1: No events exist -> returns false
+        let query = EventTagQuery::new(-1).with_tag("tag1");
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(!result, "Should return false when no events exist");
+
+        // Set up some data
+        let stream_id = Uuid::new_v4();
+        append::insert_stream(client, &stream_id, "test_stream", 0, "DEFAULT").await?;
+        
+        let timestamp = chrono::Utc::now();
+        let seq_ids = get_next_sequence_numbers(client, 2).await?;
+        
+        // Event 1 with tag1, seq_id = seq_ids[0]
+        append::insert_event(
+            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
+            &stream_id, 1, &timestamp, "DEFAULT", seq_ids[0]
+        ).await?;
+        append::insert_tag(client, "string", "tag1", seq_ids[0]).await?;
+
+        // Event 2 with tag2, seq_id = seq_ids[1]
+        append::insert_event(
+            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
+            &stream_id, 2, &timestamp, "DEFAULT", seq_ids[1]
+        ).await?;
+        append::insert_tag(client, "string", "tag2", seq_ids[1]).await?;
+
+        // Event 3 with NO tags, seq_id = seq_ids[2] (if we had a third)
+        let seq_ids_more = get_next_sequence_numbers(client, 1).await?;
+        append::insert_event(
+            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
+            &stream_id, 3, &timestamp, "DEFAULT", seq_ids_more[0]
+        ).await?;
+
+        // Test Case 8: Event with NO tags exists with seq_id > last_seen_seq_id, query with NO conditions -> returns false because it only checks tags
+        let query = EventTagQuery::new(seq_ids[1]);
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(!result, "Should return false if an event exists with higher seq_id but no tags exist for it");
+
+        // Test Case 2: Events exist but seq_id <= last_seen_seq_id -> returns false
+        let query = EventTagQuery::new(seq_ids[1]).with_tag("tag1").with_tag("tag2");
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(!result, "Should return false when all matching events have seq_id <= last_seen_seq_id");
+
+        // Test Case 3: Events exist with seq_id > last_seen_seq_id but different tags -> returns false
+        let query = EventTagQuery::new(seq_ids[0]).with_tag("tag1");
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(!result, "Should return false when only event with higher seq_id has a different tag");
+
+        // Test Case 4: Events exist with seq_id > last_seen_seq_id and matching tags -> returns true
+        let query = EventTagQuery::new(seq_ids[0]).with_tag("tag2");
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(result, "Should return true when an event with higher seq_id matches a tag");
+
+        // Test Case 5: Multiple tags, one matches -> returns true
+        let query = EventTagQuery::new(seq_ids[0]).with_tag("nonexistent").with_tag("tag2");
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(result, "Should return true when at least one tag matches an event with higher seq_id");
+
+        // Test Case 6: No conditions -> returns true if ANY event exists with seq_id > last_seen_seq_id
+        let query = EventTagQuery::new(seq_ids[0]);
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(result, "Should return true if any event exists with seq_id > last_seen_seq_id when no conditions are specified");
+
+        // Test Case 7: No conditions, all events have seq_id <= last_seen_seq_id -> returns false
+        let query = EventTagQuery::new(seq_ids[1]);
+        let result = read::evaluate_append_condition(client, &query).await?;
+        assert!(!result, "Should return false if all events have seq_id <= last_seen_seq_id when no conditions are specified");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_mt_quick_append_events() -> Result<(), Box<dyn std::error::Error>> {
         let client = match setup_postgres_client().await? {
             Some(c) => c,
