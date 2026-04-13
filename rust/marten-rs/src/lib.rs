@@ -72,19 +72,17 @@ mod tests {
         let bodies = vec![event_data1.clone(), event_data2.clone()];
         let tags = vec![Some("tag1".to_string()), Some("tag2".to_string())];
 
-        let result: Vec<i32> = client.query_one(
-            "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
-            &[
-                &stream_id,
-                &"test_stream",
-                &"DEFAULT",
-                &event_ids,
-                &event_types,
-                &dotnet_types,
-                &bodies,
-                &tags,
-            ]
-        ).await?.get(0);
+        let result = append::quick_append_events(
+            &client,
+            stream_id,
+            "test_stream",
+            "DEFAULT",
+            &event_ids,
+            &event_types,
+            &dotnet_types,
+            &bodies,
+            &tags,
+        ).await?;
 
         // Marten's result is [new_version, seq_id1, seq_id2, ...]
         assert_eq!(result.len(), 3);

@@ -1,3 +1,7 @@
+use tokio_postgres::{Client, Error};
+use uuid::Uuid;
+use serde_json::Value;
+
 pub const CREATE_APPEND_EVENTS_FUNCTION: &str = r#"
 CREATE OR REPLACE FUNCTION mt_quick_append_events(
     stream_id uuid,
@@ -63,3 +67,31 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 "#;
+
+pub async fn quick_append_events(
+    client: &Client,
+    stream_id: Uuid,
+    stream_type: &str,
+    tenant_id: &str,
+    event_ids: &[Uuid],
+    event_types: &[&str],
+    dotnet_types: &[Option<String>],
+    bodies: &[Value],
+    tags: &[Option<String>],
+) -> Result<Vec<i32>, Error> {
+    let result: Vec<i32> = client.query_one(
+        "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
+        &[
+            &stream_id,
+            &stream_type,
+            &tenant_id,
+            &event_ids,
+            &event_types,
+            &dotnet_types,
+            &bodies,
+            &tags,
+        ]
+    ).await?.get(0);
+
+    Ok(result)
+}
