@@ -100,23 +100,27 @@ impl Marten {
         let mut pending_events = boundary.pending_events;
         let query = boundary.query;
 
-        let result_seq_ids = self.append_events(&mut pending_events, &query).await?;
+        let result_seq_ids = self.append_events(&mut pending_events, Some(&query)).await?;
         Ok(result_seq_ids)
     }
 
-    pub async fn append_events(&mut self, pending_events: &mut Vec<(Value, String, Vec<String>)>, query: &EventTagQuery<'_>) -> Result<Vec<i64>, MartenError> {
+    pub async fn append_events(&mut self, events: &mut Vec<MartenDcbEvent>, query: Option<&EventTagQuery<'_>>) -> Result<Vec<i64>, MartenError> {
         // Ensure the default stream exists or get its current version
         let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
         let current_version = append::get_stream_version(&self.client, &default_stream_id).await?;
 
-        let mut new_events = Vec::new();
-        let num_events = pending_events.len();
+        let mut marten_events = Vec::new();
+        let num_events = events.len();
 
         // Get new sequence numbers from the database
         let seq_ids = get_next_sequence_numbers(&self.client, num_events).await?;
 
-        for (i, (data, event_type, tags)) in pending_events.drain(..).enumerate() {
-            new_events.push(read::MartenEvent {
+        // let mut can_quick_append = true;
+        for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
+            // if tags.len() > 1 {
+            //     can_quick_append = false;
+            // }
+            marten_events.push(read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id: default_stream_id,
                 version: current_version + (i as i32) + 1,
@@ -129,7 +133,12 @@ impl Marten {
         }
 
         // Call conditional_rich_append
-        let result_seq_ids = append::conditional_rich_append_events(&mut self.client, new_events, &query).await?;
+        let result_seq_ids = if let Some(query) = query {
+            append::conditional_rich_append_events(&mut self.client, marten_events, &query).await?
+        } else {
+            append::rich_append_events(&mut self.client, marten_events).await?
+        };
+
         Ok(result_seq_ids)
     }
 
@@ -144,10 +153,16 @@ impl Marten {
 
 }
 
+pub struct MartenDcbEvent {
+    pub data: Value,
+    pub event_type: String,
+    pub tags: Vec<String>,
+}
+
 pub struct Boundary<'a> {
     pub query: EventTagQuery<'a>,
     pub selected_events: Vec<MartenEvent>,
-    pub pending_events: Vec<(Value, String, Vec<String>)>,
+    pub pending_events: Vec<MartenDcbEvent>,
 }
 
 impl<'a> Boundary<'a> {
@@ -159,8 +174,8 @@ impl<'a> Boundary<'a> {
         }
     }
 
-    pub fn add_event(&mut self, data: Value, event_type: String, tags: Vec<String>) {
-        self.pending_events.push((data, event_type, tags));
+    pub fn add_event(&mut self, event: MartenDcbEvent) {
+        self.pending_events.push(event);
     }
 }
 
@@ -370,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_mt_quick_append_events() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_quick_append_events() -> Result<(), Box<dyn std::error::Error>> {
         let client = match setup_postgres_client().await? {
             Some(c) => c,
             None => return Ok(()),
@@ -866,10 +881,10 @@ mod tests {
         // 2. Initialize a session and add events
         let mut boundary1 = marten.new_boundary(query1.clone()).await?;
         let mut boundary2 = marten.new_boundary(query1.clone()).await?;
-        boundary1.add_event(json!({"event": 1}), "type1".to_string(), vec!["target-tag".to_string()]);
-        boundary1.add_event(json!({"event": 2}), "type2".to_string(), vec!["target-tag".to_string()]);
-        boundary2.add_event(json!({"event": 3}), "type1".to_string(), vec!["target-tag".to_string()]);
-        boundary2.add_event(json!({"event": 4}), "type2".to_string(), vec!["target-tag".to_string()]);
+        boundary1.add_event(MartenDcbEvent { data: json!({"event": 1}), event_type: "type1".to_string(), tags: vec!["target-tag".to_string()] });
+        boundary1.add_event(MartenDcbEvent { data: json!({"event": 2}), event_type: "type2".to_string(), tags: vec!["target-tag".to_string()] });
+        boundary2.add_event(MartenDcbEvent { data: json!({"event": 3}), event_type: "type1".to_string(), tags: vec!["target-tag".to_string()] });
+        boundary2.add_event(MartenDcbEvent { data: json!({"event": 4}), event_type: "type2".to_string(), tags: vec!["target-tag".to_string()] });
 
         // 3. Save the session
         let seq_ids = marten.save_boundary(boundary1).await?;
