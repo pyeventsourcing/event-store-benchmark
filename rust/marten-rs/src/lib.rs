@@ -1,6 +1,6 @@
 pub mod schema;
 pub mod append;
-pub mod dcb;
+pub mod read;
 
 pub async fn get_next_sequence_numbers(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
     if count == 0 {

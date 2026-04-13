@@ -1,7 +1,7 @@
 use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
 use serde_json::Value;
-use crate::dcb::EventTagQuery;
+use crate::read::EventTagQuery;
 
 pub const CREATE_APPEND_EVENTS_FUNCTION: &str = r#"
 CREATE OR REPLACE FUNCTION mt_quick_append_events(
@@ -183,7 +183,7 @@ pub async fn conditional_rich_append_events(
 
     // 2. Consistency check
     if let Some(q) = query {
-        if crate::dcb::evaluate_append_condition(&tx, q).await? {
+        if crate::read::evaluate_append_condition(&tx, q).await? {
             tx.rollback().await?;
             return Ok((false, Vec::new()));
         }
