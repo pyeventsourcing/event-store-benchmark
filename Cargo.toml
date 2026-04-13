@@ -7,6 +7,7 @@ members = [
     "rust/testcontainers",
     "rust/adapters/eventsourcingdb",
     "rust/adapters/fact",
+    "rust/adapters/marten",
     "rust/cli",
     "rust/kurrentdb-benchmark",
     "rust/marten-rs",

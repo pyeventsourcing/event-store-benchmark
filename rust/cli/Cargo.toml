@@ -24,3 +24,4 @@ kurrentdb-adapter = { path = "../adapters/kurrentdb" }
 axonserver-adapter = { path = "../adapters/axonserver" }
 eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb" }
 fact-adapter = { path = "../adapters/fact" }
+marten-adapter = { path = "../adapters/marten" }

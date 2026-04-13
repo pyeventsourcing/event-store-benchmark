@@ -46,6 +46,7 @@ fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
         Box::new(axonserver_adapter::AxonServerFactory),
         Box::new(eventsourcingdb_adapter::EventsourcingDbFactory),
         Box::new(fact_adapter::FactFactory),
+        Box::new(marten_adapter::MartenFactory),
     ]
 }
 
