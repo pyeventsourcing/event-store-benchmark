@@ -1,0 +1,38 @@
+performance:
+  name: scaling-writers
+  mode: write
+  local: true
+  warmup_seconds: 0
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency:
+    readers: 0
+#    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    writers: [1, 2, 4]
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - marten
+---
+performance:
+  name: scaling-readers
+  mode: read
+  local: true
+  warmup_seconds: 0
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency:
+#    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    readers: [1, 2, 4]
+    writers: 0
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 10
+  setup:
+    prepopulate_events: 5000
+    prepopulate_streams: 500
+  stores:
+    - marten
