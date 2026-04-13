@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tokio_postgres::{Client, NoTls};
 use postgres_types::{ToSql, FromSql};
 use anyhow::{Result, anyhow};
@@ -44,8 +45,9 @@ pub struct DcbAppendCondition {
     pub after: Option<i64>,
 }
 
+#[derive(Debug, Clone)]
 pub struct PostgresDCBRecorderTT {
-    client: Client,
+    pub client: Arc<Client>,
     pub schema: String,
     pub events_table: String,
     pub tags_table: String,
@@ -61,7 +63,7 @@ impl PostgresDCBRecorderTT {
         let tags_table = "dcb_events_tt_tag".to_string();
 
         Self {
-            client,
+            client: Arc::new(client),
             schema: schema.to_string(),
             events_table,
             tags_table,
@@ -70,6 +72,12 @@ impl PostgresDCBRecorderTT {
             unconditional_append_fn: "dcb_unconditional_append_tt".to_string(),
             conditional_append_fn: "dcb_conditional_append_tt".to_string(),
         }
+    }
+
+    pub fn with_schema(&self, schema: &str) -> Self {
+        let mut new = self.clone();
+        new.schema = schema.to_string();
+        new
     }
 
     pub async fn connect(config: &str, schema: &str) -> Result<Self> {
@@ -84,7 +92,7 @@ impl PostgresDCBRecorderTT {
         let tags_table = "dcb_events_tt_tag".to_string();
 
         Ok(Self {
-            client,
+            client: Arc::new(client),
             schema: schema.to_string(),
             events_table,
             tags_table,

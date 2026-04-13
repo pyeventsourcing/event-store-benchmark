@@ -121,6 +121,7 @@ impl UmaDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let dcb_events: Vec<DcbEvent> = events.into_iter().map(|evt| DcbEvent {
             event_type: evt.event_type,

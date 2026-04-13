@@ -39,6 +39,7 @@ pub struct ReadEvent {
 /// Multiple instances can be created to connect to the same server/container
 #[async_trait]
 pub trait EventStoreAdapter: Send + Sync {
+    fn as_any(&self) -> &dyn std::any::Any;
     async fn append(&self, events: Vec<EventData>) -> anyhow::Result<()>;
     async fn read(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
 }

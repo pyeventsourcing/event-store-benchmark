@@ -125,6 +125,7 @@ impl EventsourcingDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for EventsourcingDbAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let candidates: Vec<EventCandidate> = events.into_iter().map(|evt| {
             let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {

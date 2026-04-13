@@ -10,7 +10,6 @@ use std::sync::Arc;
 use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, Image};
-use tokio::sync::Mutex;
 use tokio::time::Duration;
 use std::borrow::Cow;
 
@@ -99,6 +98,10 @@ impl MartenStoreManager {
         }
     }
 
+    pub fn uri(&self) -> &str {
+        &self.uri
+    }
+
     fn format_uri(host_port: u16) -> String {
         format!("postgres://eventsourcing:eventsourcing@127.0.0.1:{}/eventsourcing", host_port)
         // format!("host=127.0.0.1 user=eventsourcing password=eventsourcing dbname=eventsourcing port={}", host_port)
@@ -166,20 +169,31 @@ impl StoreManager for MartenStoreManager {
 }
 
 pub struct MartenAdapter {
-    client: Mutex<MartenClient>,
+    client: MartenClient,
+    uri: String,
 }
 
 impl MartenAdapter {
     pub async fn new(uri: String) -> Result<Self> {
         let client = MartenClient::connect(&uri).await?;
         Ok(Self {
-            client: Mutex::new(client),
+            client,
+            uri,
         })
+    }
+
+    pub fn client(&self) -> &MartenClient {
+        &self.client
+    }
+
+    pub fn uri(&self) -> &str {
+        &self.uri
     }
 }
 
 #[async_trait]
 impl EventStoreAdapter for MartenAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let mut marten_events: Vec<MartenDcbEvent> = events
             .into_iter()
@@ -190,8 +204,7 @@ impl EventStoreAdapter for MartenAdapter {
             })
             .collect();
 
-        let mut client = self.client.lock().await;
-        client
+        self.client
             .append_events(&mut marten_events, None)
             .await
             .map_err(|e| {
@@ -206,8 +219,7 @@ impl EventStoreAdapter for MartenAdapter {
             query = query.with_tag(&req.stream);
         }
 
-        let client = self.client.lock().await;
-        let events = client.read_events(&query).await?;
+        let events = self.client.read_events(&query).await?;
 
         let mut out = Vec::new();
         for (i, se) in events.into_iter().enumerate() {

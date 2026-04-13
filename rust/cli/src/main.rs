@@ -36,6 +36,14 @@ enum Commands {
     },
     /// List available store adapters
     ListStores,
+    /// Create tables for py-eventsourcing adapter
+    CreatePyEventsourcingTables,
+    /// Drop tables for py-eventsourcing adapter
+    DropPyEventsourcingTables,
+    /// Create tables for marten adapter
+    CreateMartenTables,
+    /// Drop tables for marten adapter
+    DropMartenTables,
 }
 
 fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
@@ -77,6 +85,68 @@ fn main() -> Result<()> {
             for f in store_manager_factories() {
                 println!("{}", f.name());
             }
+            Ok(())
+        }
+        Commands::CreatePyEventsourcingTables => {
+            rt.block_on(async {
+                let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
+                let manager = factory.create_store_manager(None, true)?;
+                let adapter = manager.create_adapter().await?;
+                // We know it's a PyEventsourcingAdapter
+                let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
+                    .expect("Adapter should be PyEventsourcingAdapter");
+                adapter.recorder().create_tables().await?;
+                println!("py-eventsourcing tables created successfully");
+                Ok::<(), anyhow::Error>(())
+            })?;
+            Ok(())
+        }
+        Commands::DropPyEventsourcingTables => {
+            rt.block_on(async {
+                let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
+                let manager = factory.create_store_manager(None, true)?;
+                let adapter = manager.create_adapter().await?;
+                // We know it's a PyEventsourcingAdapter
+                let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
+                    .expect("Adapter should be PyEventsourcingAdapter");
+                adapter.recorder().drop_tables().await?;
+                println!("py-eventsourcing tables dropped successfully");
+                Ok::<(), anyhow::Error>(())
+            })?;
+            Ok(())
+        }
+        Commands::CreateMartenTables => {
+            rt.block_on(async {
+                let factory = marten_adapter::MartenFactory {};
+                let manager = factory.create_store_manager(None, true)?;
+                let adapter = manager.create_adapter().await?;
+                // We know it's a MartenAdapter
+                let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                    .expect("Adapter should be MartenAdapter");
+                // We need a way to use the client. Marten is not Clone easily if it has a client.
+                // Actually, let's just use the connect if we can.
+                adapter.client().create_tables().await?;
+
+                println!("marten tables created successfully");
+                Ok::<(), anyhow::Error>(())
+            })?;
+            Ok(())
+        }
+        Commands::DropMartenTables => {
+            rt.block_on(async {
+                let factory = marten_adapter::MartenFactory {};
+                let manager = factory.create_store_manager(None, true)?;
+                let adapter = manager.create_adapter().await?;
+                // We know it's a MartenAdapter
+                let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                    .expect("Adapter should be MartenAdapter");
+                // We need a way to use the client. Marten is not Clone easily if it has a client.
+                // Actually, let's just use the connect if we can.
+                adapter.client().drop_tables().await?;
+
+                println!("marten tables dropped successfully");
+                Ok::<(), anyhow::Error>(())
+            })?;
             Ok(())
         }
         Commands::Run { config, seed, data_dir } => {

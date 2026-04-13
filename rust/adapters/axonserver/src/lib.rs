@@ -132,6 +132,7 @@ impl AxonServerAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let tagged_events: Vec<TaggedEvent> = events.into_iter().map(|evt| {
             let tags: Vec<Tag> = evt

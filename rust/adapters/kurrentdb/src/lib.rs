@@ -121,6 +121,7 @@ impl KurrentDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for KurrentDbAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         if events.is_empty() {
             return Ok(());

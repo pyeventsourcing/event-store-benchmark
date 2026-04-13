@@ -140,6 +140,7 @@ pub struct DummyAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, _events: Vec<EventData>) -> Result<()> {
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok(())

@@ -129,6 +129,7 @@ pub struct FactAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for FactAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let request = proto::AppendRequest {
             events: events

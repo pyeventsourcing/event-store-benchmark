@@ -26,3 +26,6 @@ eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb" }
 fact-adapter = { path = "../adapters/fact" }
 marten-adapter = { path = "../adapters/marten" }
 py-eventsourcing-adapter = { path = "../adapters/py-eventsourcing" }
+marten-rs = { path = "../marten-rs" }
+py-eventsourcing = { path = "../py-eventsourcing" }
+tokio-postgres = "0.7"

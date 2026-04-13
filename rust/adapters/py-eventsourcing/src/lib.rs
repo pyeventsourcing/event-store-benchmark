@@ -31,6 +31,10 @@ impl PyEventsourcingStoreManager {
         }
     }
 
+    pub fn uri(&self) -> &str {
+        &self.uri
+    }
+
     fn format_uri(host_port: u16) -> String {
         format!("postgres://eventsourcing:eventsourcing@localhost:{}/eventsourcing", host_port)
     }
@@ -127,10 +131,15 @@ impl PyEventsourcingAdapter {
         let recorder = PostgresDCBRecorderTT::from_client(client, "public");
         Ok(Self { recorder })
     }
+
+    pub fn recorder(&self) -> &PostgresDCBRecorderTT {
+        &self.recorder
+    }
 }
 
 #[async_trait]
 impl EventStoreAdapter for PyEventsourcingAdapter {
+    fn as_any(&self) -> &dyn std::any::Any { self }
     async fn append(&self, events: Vec<EventData>) -> Result<()> {
         let pg_events: Vec<DcbEvent> = events.into_iter().map(|evt| {
             DcbEvent {
