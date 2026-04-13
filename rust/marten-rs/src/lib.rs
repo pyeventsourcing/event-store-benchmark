@@ -12,15 +12,16 @@ mod tests {
     use tokio_postgres::NoTls;
     use uuid::Uuid;
     use serde_json::json;
+    use tokio_postgres::Client;
+    use serial_test::serial;
 
-    #[tokio::test]
-    async fn test_postgres_integration() -> Result<(), Box<dyn std::error::Error>> {
+    async fn setup_postgres_client() -> Result<Option<Client>, Box<dyn std::error::Error>> {
         let connection_string = "host=localhost user=marten password=marten dbname=marten";
         let (client, connection) = match tokio_postgres::connect(connection_string, NoTls).await {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("Failed to connect to Postgres: {}. Skipping test as database might not be available in this environment.", e);
-                return Ok(());
+                return Ok(None);
             }
         };
 
@@ -31,12 +32,12 @@ mod tests {
         });
 
         // Cleanup
-        client.batch_execute("DROP FUNCTION IF EXISTS mt_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
-        client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
+        let _ = client.batch_execute("DROP FUNCTION IF EXISTS mt_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await;
+        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await;
+        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await;
+        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_events").await;
+        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_streams").await;
+        let _ = client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await;
 
         // Create schema
         client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
@@ -46,6 +47,17 @@ mod tests {
 
         // Create append function
         client.batch_execute(append::CREATE_APPEND_EVENTS_FUNCTION).await?;
+
+        Ok(Some(client))
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_append_events_function() -> Result<(), Box<dyn std::error::Error>> {
+        let client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
 
         // Test insertion via mt_append_events
         let stream_id = Uuid::new_v4();
@@ -95,6 +107,17 @@ mod tests {
         assert_eq!(data2, event_data2);
         assert_eq!(tag2, "tag2");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_multi_statement_append() -> Result<(), Box<dyn std::error::Error>> {
+        let client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
         // Test multi-statement approach (Rich Append) for multiple tags of the same type
         let stream_id = Uuid::new_v4();
         let event_id = Uuid::new_v4();
@@ -130,21 +153,32 @@ mod tests {
         assert_eq!(tag_a, "tagA");
         assert_eq!(tag_b, "tagB");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_dcb_marten_style_append() -> Result<(), Box<dyn std::error::Error>> {
+        let client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
         // Test DCB (Dynamic Consistency Boundaries) check
         // 1. Get current sequence
-        let row = client.query_one("SELECT last_value FROM mt_events_sequence", &[]).await?;
-        let current_seq: i64 = row.get(0);
+        let is_called: bool = client.query_one("SELECT is_called FROM mt_events_sequence", &[]).await?.get(0);
+        let current_seq: i64 = if !is_called { 0 } else { client.query_one("SELECT last_value FROM mt_events_sequence", &[]).await?.get(0) };
 
         // 2. Append a new tagged event
-        let stream_id = Uuid::new_v4();
+        let dcb_stream_id = Uuid::new_v4();
         let event_id = Uuid::new_v4();
         client.execute(
             "INSERT INTO mt_streams (id, type) VALUES ($1, $2)",
-            &[&stream_id, &"dcb_stream"]
+            &[&dcb_stream_id, &"dcb_stream"]
         ).await?;
         let row = client.query_one(
             "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
-            &[&event_id, &stream_id, &1i32, &json!({"dcb": "test"}), &"dcb_event"]
+            &[&event_id, &dcb_stream_id, &1i32, &json!({"dcb": "test"}), &"dcb_event"]
         ).await?;
         let new_seq: i64 = row.get(0);
         client.execute(&schema::get_insert_tag_sql("string"), &[&"dcb-tag", &new_seq]).await?;
@@ -164,7 +198,7 @@ mod tests {
         assert_eq!(events[0].data, json!({"dcb": "test"}));
         assert_eq!(events[0].event_type, "dcb_event");
         assert_eq!(events[0].id, event_id);
-        assert_eq!(events[0].stream_id, stream_id);
+        assert_eq!(events[0].stream_id, dcb_stream_id);
         assert_eq!(events[0].version, 1);
         // Marten's fetch does not return tags; it only retrieves matching events.
         
@@ -199,13 +233,14 @@ mod tests {
         assert!(!no_conflict, "Unexpected DCB conflict detected");
 
         // Test append_events_marten_style
+        let stream_id = Uuid::new_v4();
         let cond_query = dcb::EventTagQuery::new(new_seq)
             .with_tag("dcb-tag");
             
         let cond_events = vec![
             dcb::TaggedEvent {
                 id: Uuid::new_v4(),
-                stream_id: Uuid::new_v4(),
+                stream_id,
                 version: 1,
                 data: json!({"cond": "append"}),
                 event_type: "cond_event".to_string(),
@@ -214,7 +249,8 @@ mod tests {
         ];
         
         // This should SUCCEED because no new events with "dcb-tag" since new_seq
-        let (success, seq_ids) = dcb::append_events_marten_style(&client, Some(&cond_query), cond_events).await?;
+        let mut client = client;
+        let (success, seq_ids) = dcb::append_events_marten_style(&mut client, Some(&cond_query), cond_events).await?;
         assert!(success);
         assert_eq!(seq_ids.len(), 1);
         
@@ -227,14 +263,14 @@ mod tests {
         let cond_events2 = vec![
             dcb::TaggedEvent {
                 id: Uuid::new_v4(),
-                stream_id: Uuid::new_v4(),
-                version: 1,
+                stream_id,
+                version: 2,
                 data: json!({"cond": "fail"}),
                 event_type: "cond_event".to_string(),
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
-        let (success2, seq_ids2) = dcb::append_events_marten_style(&client, Some(&cond_query), cond_events2).await?;
+        let (success2, seq_ids2) = dcb::append_events_marten_style(&mut client, Some(&cond_query), cond_events2).await?;
         assert!(!success2);
         assert_eq!(seq_ids2.len(), 0);
 
@@ -254,8 +290,10 @@ mod tests {
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
-        // This should ALWAYS SUCCEED because there is no DCB check
-        let (success_none, seq_ids_none) = dcb::append_events_marten_style(&client, None, cond_events_none).await?;
+        // cond_events_none stream_id should have version 1
+        // (We know its index and it was the only one in the batch)
+        let none_stream_id = cond_events_none[0].stream_id;
+        let (success_none, seq_ids_none) = dcb::append_events_marten_style(&mut client, None, cond_events_none).await?;
         assert!(success_none);
         assert_eq!(seq_ids_none.len(), 1);
 
@@ -268,35 +306,30 @@ mod tests {
         assert!(datas.contains(&json!({"cond": "append"})));
         assert!(datas.contains(&json!({"cond": "none"})));
 
+        // Check stream version
+        let rows = client.query("SELECT id, version FROM mt_streams", &[]).await?;
+        let mut versions = std::collections::HashMap::new();
+        for row in rows {
+            let id: Uuid = row.get(0);
+            let version: Option<i32> = row.get(1);
+            versions.insert(id, version);
+        }
+        
+        // stream_id from first conditional append should have version 1 (second append failed)
+        assert_eq!(versions.get(&stream_id).cloned().flatten(), Some(1));
+        // cond_events_none stream_id should have version 1
+        assert_eq!(versions.get(&none_stream_id).cloned().flatten(), Some(1));
+
         Ok(())
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_throughput() -> Result<(), Box<dyn std::error::Error>> {
-        let connection_string = "host=localhost user=marten password=marten dbname=marten";
-        let (client, connection) = match tokio_postgres::connect(connection_string, NoTls).await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Failed to connect to Postgres: {}. Skipping throughput test.", e);
-                return Ok(());
-            }
+        let mut client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
         };
-
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-
-        // Schema setup (ensure clean slate)
-        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
-        client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
-        client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
-        client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
-        client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
-        client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
 
         let payload_size = 256;
         let iterations = 1000; // Increased to get more representative throughput
@@ -317,7 +350,7 @@ mod tests {
                 tags: vec!["benchmark".to_string()],
             }];
             
-            let (success, _) = dcb::append_events_marten_style(&client, None, events).await?;
+            let (success, _) = dcb::append_events_marten_style(&mut client, None, events).await?;
             assert!(success);
         }
 

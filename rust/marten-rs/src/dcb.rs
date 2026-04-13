@@ -21,11 +21,8 @@ impl<'a> EventTagQuery<'a> {
     }
 }
 
-use tokio_postgres::{Client, Error, Row};
+use tokio_postgres::{Client, Error};
 use serde_json::Value;
-use futures_util::future;
-use std::pin::Pin;
-use std::future::Future;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type FROM mt_events e");
@@ -120,113 +117,56 @@ pub struct TaggedEvent {
 }
 
 pub async fn append_events_marten_style(
-    client: &Client,
+    client: &mut Client,
     query: Option<&EventTagQuery<'_>>,
     events: Vec<TaggedEvent>
 ) -> Result<(bool, Vec<i64>), Error> {
-    // 1. Prepare statements (pipelined)
-    let (
-        exists_stmt,
-        stream_stmt,
-        event_stmt,
-        tag_stmt,
-    ) = future::try_join4(
-        client.prepare(
-            "SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2))"
-        ),
-        client.prepare(
-            "INSERT INTO mt_streams (id, type) VALUES ($1, 'default') ON CONFLICT (id) DO NOTHING"
-        ),
-        client.prepare(
-            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id"
-        ),
-        client.prepare(
-            "INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, currval('mt_events_sequence')) ON CONFLICT DO NOTHING"
-        ),
-    ).await?;
+    // 1. Start transaction
+    let tx = client.transaction().await?;
 
-    // 2. Start transaction
-    client.batch_execute("BEGIN").await?;
-
-    // 3. Build futures for pipelining
-    #[derive(Clone, Copy)]
-    enum Op {
-        Exists,
-        EventInsert,
-        Other,
-    }
-
-    let mut futures: Vec<Pin<Box<dyn Future<Output = Result<Vec<Row>, Error>> + Send>>> = Vec::new();
-    let mut ops = Vec::new();
-
+    // 2. Consistency check
     if let Some(q) = query {
         let last_seen = q.last_seen_sequence;
         let tag_values: Vec<String> = q.conditions.iter().map(|c| c.tag_value.to_string()).collect();
-        let stmt = exists_stmt.clone();
-        futures.push(Box::pin(async move {
-            client.query(&stmt, &[&last_seen, &tag_values]).await
-        }));
-        ops.push(Op::Exists);
-    }
+        let conflict: bool = tx.query_one(
+            "SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2))",
+            &[&last_seen, &tag_values]
+        ).await?.get(0);
 
-    for event in events {
-        let stream_id = event.stream_id;
-        let s_stmt = stream_stmt.clone();
-        futures.push(Box::pin(async move {
-            client.query(&s_stmt, &[&stream_id]).await
-        }));
-        ops.push(Op::Other);
-
-        let e_stmt = event_stmt.clone();
-        let id = event.id;
-        let version = event.version;
-        let data = event.data;
-        let event_type = event.event_type;
-        futures.push(Box::pin(async move {
-            client.query(&e_stmt, &[&id, &stream_id, &version, &data, &event_type]).await
-        }));
-        ops.push(Op::EventInsert);
-
-        for tag in event.tags {
-            let t_stmt = tag_stmt.clone();
-            futures.push(Box::pin(async move {
-                client.query(&t_stmt, &[&tag]).await
-            }));
-            ops.push(Op::Other);
+        if conflict {
+            tx.rollback().await?;
+            return Ok((false, Vec::new()));
         }
     }
 
-    // 4. Execute all (pipelining happens here)
-    let results = future::try_join_all(futures).await?;
-
-    // 5. Process results
-    let mut conflict = false;
+    // 3. Append operations
     let mut seq_ids = Vec::new();
 
-    for (i, op) in ops.iter().enumerate() {
-        let rows = &results[i];
-        match op {
-            Op::Exists => {
-                if !rows.is_empty() {
-                    conflict = rows[0].get(0);
-                }
-            }
-            Op::EventInsert => {
-                if !rows.is_empty() {
-                    let seq_id: i64 = rows[0].get(0);
-                    seq_ids.push(seq_id);
-                }
-            }
-            Op::Other => {}
+    // Prepare statements for reuse
+    let stream_stmt = tx.prepare("INSERT INTO mt_streams (id, type, version) VALUES ($1, 'default', $2) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version").await?;
+    let event_stmt = tx.prepare("INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id").await?;
+    let tag_stmt = tx.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, currval('mt_events_sequence')) ON CONFLICT DO NOTHING").await?;
+
+    for event in &events {
+        // stream upsert
+        tx.execute(&stream_stmt, &[&event.stream_id, &event.version]).await?;
+
+        // event insert
+        let row = tx.query_one(
+            &event_stmt,
+            &[&event.id, &event.stream_id, &event.version, &event.data, &event.event_type]
+        ).await?;
+        let seq_id: i64 = row.get(0);
+        seq_ids.push(seq_id);
+
+        // tag inserts
+        for tag in &event.tags {
+            tx.execute(&tag_stmt, &[tag]).await?;
         }
     }
 
-    // 6. Commit or rollback
-    if conflict {
-        client.batch_execute("ROLLBACK").await?;
-        Ok((false, Vec::new()))
-    } else {
-        client.batch_execute("COMMIT").await?;
-        Ok((true, seq_ids))
-    }
+    // 4. Commit
+    tx.commit().await?;
+
+    Ok((true, seq_ids))
 }
