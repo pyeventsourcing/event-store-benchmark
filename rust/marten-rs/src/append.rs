@@ -1,7 +1,7 @@
+use std::collections::HashMap;
 use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
 use serde_json::Value;
-use crate::read::EventTagQuery;
 
 pub const CREATE_APPEND_EVENTS_FUNCTION: &str = r#"
 CREATE OR REPLACE FUNCTION mt_quick_append_events(
@@ -171,6 +171,7 @@ pub struct NewEvent {
     pub event_type: String,
     pub dotnet_type: Option<String>,
     pub tags: Vec<String>,
+    pub sequence: i64,
 }
 
 // pub async fn conditional_rich_append_events(
@@ -221,3 +222,53 @@ pub struct NewEvent {
 //
 //     Ok((true, seq_ids))
 // }
+
+pub async fn rich_append_events(
+    client: &mut Client,
+    events: Vec<NewEvent>
+) -> Result<Vec<i64>, Error> {
+    let tx = client.transaction().await?;
+    
+    let mut seq_ids = Vec::new();
+    let mut max_versions: HashMap<Uuid, i32> = HashMap::new();
+
+    for event in &events {
+        let entry = max_versions.entry(event.stream_id).or_insert(event.version);
+        if event.version > *entry {
+            *entry = event.version;
+        }
+    }
+
+    for (stream_id, version) in &max_versions {
+        if *version == 1 {
+            insert_stream(&tx, stream_id, "default", *version, "DEFAULT").await?;
+        } else {
+            update_stream_version(&tx, stream_id, *version).await?;
+        }
+    }
+
+    for event in &events {
+        let timestamp = chrono::Utc::now();
+        let seq_id = insert_event(
+            &tx,
+            &event.data,
+            &event.event_type,
+            &event.dotnet_type,
+            &event.id,
+            &event.stream_id,
+            event.version,
+            &timestamp,
+            "DEFAULT",
+            event.sequence,
+        ).await?;
+        
+        seq_ids.push(seq_id);
+
+        for tag in &event.tags {
+            insert_tag(&tx, "string", tag, seq_id).await?;
+        }
+    }
+
+    tx.commit().await?;
+    Ok(seq_ids)
+}

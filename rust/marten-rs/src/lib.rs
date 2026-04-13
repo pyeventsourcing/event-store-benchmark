@@ -78,7 +78,6 @@ mod tests {
             None => return Ok(()),
         };
 
-        // Test multi-statement approach (Rich Append) for multiple tags of the same type
         let stream_id = Uuid::new_v4();
         let event_id = Uuid::new_v4();
         let event_data = json!({"multi": "tags"});
@@ -471,4 +470,99 @@ mod tests {
     //
     //     Ok(())
     // }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_rich_append_events() -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let stream_id1 = Uuid::new_v4();
+        let stream_id2 = Uuid::new_v4();
+        
+        let events = vec![
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id: stream_id1,
+                version: 1,
+                data: json!({"event": 1}),
+                event_type: "test_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["tag1".to_string(), "tag2".to_string()],
+                sequence: 1,
+            },
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id: stream_id1,
+                version: 2,
+                data: json!({"event": 2}),
+                event_type: "test_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["tag1".to_string()],
+                sequence: 2,
+            },
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id: stream_id2,
+                version: 1,
+                data: json!({"event": 3}),
+                event_type: "test_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["tag2".to_string()],
+                sequence: 3,
+            },
+        ];
+
+        let seq_ids = append::rich_append_events(&mut client, events).await?;
+        assert_eq!(seq_ids.len(), 3);
+
+        // Verify events
+        let rows = client.query("SELECT id, stream_id, version, data FROM mt_events ORDER BY seq_id", &[]).await?;
+        assert_eq!(rows.len(), 3);
+        
+        assert_eq!(rows[0].get::<_, Uuid>(1), stream_id1);
+        assert_eq!(rows[0].get::<_, i32>(2), 1);
+        
+        assert_eq!(rows[1].get::<_, Uuid>(1), stream_id1);
+        assert_eq!(rows[1].get::<_, i32>(2), 2);
+        
+        assert_eq!(rows[2].get::<_, Uuid>(1), stream_id2);
+        assert_eq!(rows[2].get::<_, i32>(2), 1);
+
+        // Verify tags
+        let tag_rows = client.query("SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value", &[]).await?;
+        // event 1: tag1, tag2
+        // event 2: tag1
+        // event 3: tag2
+        // Total 4 tag entries
+        assert_eq!(tag_rows.len(), 4);
+        
+        assert_eq!(tag_rows[0].get::<_, &str>(0), "tag1");
+        assert_eq!(tag_rows[0].get::<_, i64>(1), seq_ids[0]);
+        
+        assert_eq!(tag_rows[1].get::<_, &str>(0), "tag2");
+        assert_eq!(tag_rows[1].get::<_, i64>(1), seq_ids[0]);
+
+        assert_eq!(tag_rows[2].get::<_, &str>(0), "tag1");
+        assert_eq!(tag_rows[2].get::<_, i64>(1), seq_ids[1]);
+
+        assert_eq!(tag_rows[3].get::<_, &str>(0), "tag2");
+        assert_eq!(tag_rows[3].get::<_, i64>(1), seq_ids[2]);
+
+        // Verify streams
+        let stream_rows = client.query("SELECT id, version FROM mt_streams ORDER BY id", &[]).await?;
+        assert_eq!(stream_rows.len(), 2);
+        
+        let mut stream_versions = std::collections::HashMap::new();
+        for row in stream_rows {
+            stream_versions.insert(row.get::<_, Uuid>(0), row.get::<_, i32>(1));
+        }
+        
+        assert_eq!(stream_versions.get(&stream_id1), Some(&2));
+        assert_eq!(stream_versions.get(&stream_id2), Some(&1));
+
+        Ok(())
+    }
 }
