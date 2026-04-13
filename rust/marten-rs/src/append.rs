@@ -182,7 +182,7 @@ pub async fn conditional_rich_append_events(
     query: &EventTagQuery<'_>,
 ) -> Result<Vec<i64>, MartenError> {
     let result = evaluate_append_condition(client, query).await?;
-    if result {
+    if !result {
         rich_append_events(client, events).await.map_err(MartenError::from)
     } else {
         Err(MartenError::AppendConditionFailed)
