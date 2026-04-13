@@ -79,6 +79,45 @@ pub struct RecordedEvent {
     pub dotnet_type: Option<String>,
 }
 
+pub struct RecordedTag {
+    pub value: String,
+    pub seq_id: i64,
+}
+
+pub async fn read_all_tags(client: &impl GenericClient) -> Result<Vec<RecordedTag>, Error> {
+    let rows = client.query("SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value", &[]).await?;
+    let mut tags = Vec::new();
+    for row in rows {
+        tags.push(RecordedTag {
+            value: row.get(0),
+            seq_id: row.get(1),
+        });
+    }
+    Ok(tags)
+}
+
+pub struct RecordedStream {
+    pub id: uuid::Uuid,
+    pub version: i32,
+}
+
+pub async fn read_all_streams(client: &impl GenericClient) -> Result<Vec<RecordedStream>, Error> {
+    let rows = client.query("SELECT id, version FROM mt_streams ORDER BY id", &[]).await?;
+    let mut streams = Vec::new();
+    for row in rows {
+        streams.push(RecordedStream {
+            id: row.get(0),
+            version: row.get(1),
+        });
+    }
+    Ok(streams)
+}
+
+pub async fn read_all_events(client: &impl GenericClient) -> Result<Vec<RecordedEvent>, Error> {
+    let query = EventTagQuery::new(-1);
+    select_events_for_query(client, &query).await
+}
+
 pub async fn evaluate_append_condition(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<bool, Error> {
     let sql = generate_dcb_exists_sql(query);
     let row = client.query_one(&sql, &[]).await?;

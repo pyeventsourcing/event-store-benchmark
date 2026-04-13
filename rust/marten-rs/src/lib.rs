@@ -110,16 +110,13 @@ mod tests {
         append::insert_tag(&client, "string", "tagB", seq_id).await?;
 
         // 4. Verify both tags are present
-        let rows = client.query(
-            "SELECT value FROM mt_event_tag_string WHERE seq_id = $1 ORDER BY value",
-            &[&seq_id]
-        ).await?;
+        let tags = read::read_all_tags(&client).await?;
 
-        assert_eq!(rows.len(), 2);
-        let tag_a: &str = rows[0].get(0);
-        let tag_b: &str = rows[1].get(0);
-        assert_eq!(tag_a, "tagA");
-        assert_eq!(tag_b, "tagB");
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].value, "tagA");
+        assert_eq!(tags[1].value, "tagB");
+        assert_eq!(tags[0].seq_id, seq_id);
+        assert_eq!(tags[1].seq_id, seq_id);
 
         // 5. Verify current stream version is 1
         let stream_version = append::get_stream_version(&client, &stream_id).await?;
@@ -196,47 +193,37 @@ mod tests {
         assert_eq!(result[2], 2); // new seq number
 
         // Verify data
-        let event_rows = client.query(
-            "SELECT seq_id, id, stream_id, version, data, type, tenant_id, mt_dotnet_type, is_archived FROM mt_events ORDER BY seq_id",
-            &[]
-        ).await?;
+        let event_rows = read::read_all_events(&client).await?;
 
         assert_eq!(event_rows.len(), 2);
 
         // First event
         let row1 = &event_rows[0];
-        assert_eq!(row1.get::<_, i64>(0), 1); // seq_id
-        assert_eq!(row1.get::<_, Uuid>(1), event_id1); // id
-        assert_eq!(row1.get::<_, Uuid>(2), stream_id); // stream_id
-        assert_eq!(row1.get::<_, i32>(3), 1); // version
-        assert_eq!(row1.get::<_, serde_json::Value>(4), event_data1); // data
-        assert_eq!(row1.get::<_, &str>(5), "test_event_1"); // type
-        assert_eq!(row1.get::<_, &str>(6), "DEFAULT"); // tenant_id
-        assert_eq!(row1.get::<_, Option<String>>(7), None); // mt_dotnet_type
-        assert_eq!(row1.get::<_, bool>(8), false); // is_archived
+        assert_eq!(row1.seq_id, 1); // seq_id
+        assert_eq!(row1.id, event_id1); // id
+        assert_eq!(row1.stream_id, stream_id); // stream_id
+        assert_eq!(row1.version, 1); // version
+        assert_eq!(row1.data, event_data1); // data
+        assert_eq!(row1.event_type, "test_event_1"); // type
+        assert_eq!(row1.dotnet_type, None);
 
         // Second event
         let row2 = &event_rows[1];
-        assert_eq!(row2.get::<_, i64>(0), 2); // seq_id
-        assert_eq!(row2.get::<_, Uuid>(1), event_id2); // id
-        assert_eq!(row2.get::<_, Uuid>(2), stream_id); // stream_id
-        assert_eq!(row2.get::<_, i32>(3), 2); // version
-        assert_eq!(row2.get::<_, serde_json::Value>(4), event_data2); // data
-        assert_eq!(row2.get::<_, &str>(5), "test_event_2"); // type
-        assert_eq!(row2.get::<_, &str>(6), "DEFAULT"); // tenant_id
-        assert_eq!(row2.get::<_, Option<String>>(7), None); // mt_dotnet_type
-        assert_eq!(row2.get::<_, bool>(8), false); // is_archived
+        assert_eq!(row2.seq_id, 2); // seq_id
+        assert_eq!(row2.id, event_id2); // id
+        assert_eq!(row2.stream_id, stream_id); // stream_id
+        assert_eq!(row2.version, 2); // version
+        assert_eq!(row2.data, event_data2); // data
+        assert_eq!(row2.event_type, "test_event_2"); // type
+        assert_eq!(row2.dotnet_type, None);
 
-        let tag_rows = client.query(
-            "SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id",
-            &[]
-        ).await?;
+        let tag_rows = read::read_all_tags(&client).await?;
 
         assert_eq!(tag_rows.len(), 2);
-        assert_eq!(tag_rows[0].get::<_, &str>(0), "tag1");
-        assert_eq!(tag_rows[0].get::<_, i64>(1), 1);
-        assert_eq!(tag_rows[1].get::<_, &str>(0), "tag2");
-        assert_eq!(tag_rows[1].get::<_, i64>(1), 2);
+        assert_eq!(tag_rows[0].value, "tag1");
+        assert_eq!(tag_rows[0].seq_id, 1);
+        assert_eq!(tag_rows[1].value, "tag2");
+        assert_eq!(tag_rows[1].seq_id, 2);
 
         Ok(())
     }
@@ -519,45 +506,45 @@ mod tests {
         assert_eq!(seq_ids.len(), 3);
 
         // Verify events
-        let rows = client.query("SELECT id, stream_id, version, data FROM mt_events ORDER BY seq_id", &[]).await?;
-        assert_eq!(rows.len(), 3);
+        let events = read::read_all_events(&client).await?;
+        assert_eq!(events.len(), 3);
         
-        assert_eq!(rows[0].get::<_, Uuid>(1), stream_id1);
-        assert_eq!(rows[0].get::<_, i32>(2), 1);
+        assert_eq!(events[0].stream_id, stream_id1);
+        assert_eq!(events[0].version, 1);
         
-        assert_eq!(rows[1].get::<_, Uuid>(1), stream_id1);
-        assert_eq!(rows[1].get::<_, i32>(2), 2);
+        assert_eq!(events[1].stream_id, stream_id1);
+        assert_eq!(events[1].version, 2);
         
-        assert_eq!(rows[2].get::<_, Uuid>(1), stream_id2);
-        assert_eq!(rows[2].get::<_, i32>(2), 1);
+        assert_eq!(events[2].stream_id, stream_id2);
+        assert_eq!(events[2].version, 1);
 
         // Verify tags
-        let tag_rows = client.query("SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value", &[]).await?;
+        let tags = read::read_all_tags(&client).await?;
         // event 1: tag1, tag2
         // event 2: tag1
         // event 3: tag2
         // Total 4 tag entries
-        assert_eq!(tag_rows.len(), 4);
+        assert_eq!(tags.len(), 4);
         
-        assert_eq!(tag_rows[0].get::<_, &str>(0), "tag1");
-        assert_eq!(tag_rows[0].get::<_, i64>(1), seq_ids[0]);
+        assert_eq!(tags[0].value, "tag1");
+        assert_eq!(tags[0].seq_id, seq_ids[0]);
         
-        assert_eq!(tag_rows[1].get::<_, &str>(0), "tag2");
-        assert_eq!(tag_rows[1].get::<_, i64>(1), seq_ids[0]);
+        assert_eq!(tags[1].value, "tag2");
+        assert_eq!(tags[1].seq_id, seq_ids[0]);
 
-        assert_eq!(tag_rows[2].get::<_, &str>(0), "tag1");
-        assert_eq!(tag_rows[2].get::<_, i64>(1), seq_ids[1]);
+        assert_eq!(tags[2].value, "tag1");
+        assert_eq!(tags[2].seq_id, seq_ids[1]);
 
-        assert_eq!(tag_rows[3].get::<_, &str>(0), "tag2");
-        assert_eq!(tag_rows[3].get::<_, i64>(1), seq_ids[2]);
+        assert_eq!(tags[3].value, "tag2");
+        assert_eq!(tags[3].seq_id, seq_ids[2]);
 
         // Verify streams
-        let stream_rows = client.query("SELECT id, version FROM mt_streams ORDER BY id", &[]).await?;
-        assert_eq!(stream_rows.len(), 2);
+        let streams = read::read_all_streams(&client).await?;
+        assert_eq!(streams.len(), 2);
         
         let mut stream_versions = std::collections::HashMap::new();
-        for row in stream_rows {
-            stream_versions.insert(row.get::<_, Uuid>(0), row.get::<_, i32>(1));
+        for s in streams {
+            stream_versions.insert(s.id, s.version);
         }
         
         assert_eq!(stream_versions.get(&stream_id1), Some(&2));
