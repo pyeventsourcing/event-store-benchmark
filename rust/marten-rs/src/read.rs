@@ -71,7 +71,7 @@ pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
     sql
 }
 
-pub struct RecordedEvent {
+pub struct MartenEvent {
     pub seq_id: i64,
     pub id: uuid::Uuid,
     pub stream_id: uuid::Uuid,
@@ -79,18 +79,19 @@ pub struct RecordedEvent {
     pub data: Value,
     pub event_type: String,
     pub dotnet_type: Option<String>,
+    pub tags: Vec<String>,
 }
 
-pub struct RecordedTag {
+pub struct MartenStringTag {
     pub value: String,
     pub seq_id: i64,
 }
 
-pub async fn read_all_tags(client: &impl GenericClient) -> Result<Vec<RecordedTag>, Error> {
+pub async fn read_all_tags(client: &impl GenericClient) -> Result<Vec<MartenStringTag>, Error> {
     let rows = client.query("SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value", &[]).await?;
     let mut tags = Vec::new();
     for row in rows {
-        tags.push(RecordedTag {
+        tags.push(MartenStringTag {
             value: row.get(0),
             seq_id: row.get(1),
         });
@@ -115,7 +116,7 @@ pub async fn read_all_streams(client: &impl GenericClient) -> Result<Vec<Recorde
     Ok(streams)
 }
 
-pub async fn read_all_events(client: &impl GenericClient) -> Result<Vec<RecordedEvent>, Error> {
+pub async fn read_all_events(client: &impl GenericClient) -> Result<Vec<MartenEvent>, Error> {
     let query = EventTagQuery::new(-1);
     select_events_for_query(client, &query).await
 }
@@ -126,7 +127,7 @@ pub async fn evaluate_append_condition(client: &impl GenericClient, query: &Even
     Ok(row.get(0))
 }
 
-pub async fn select_events_for_query(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
+pub async fn select_events_for_query(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, Error> {
     let sql = generate_select_events_sql(query);
     let rows = client.query(&sql, &[]).await?;
     let mut events = Vec::new();
@@ -143,7 +144,7 @@ pub async fn select_events_for_query(client: &impl GenericClient, query: &EventT
         }
         last_seq_id = seq_id;
 
-        events.push(RecordedEvent {
+        events.push(MartenEvent {
             seq_id,
             id: row.get(1),
             stream_id: row.get(2),
@@ -151,6 +152,7 @@ pub async fn select_events_for_query(client: &impl GenericClient, query: &EventT
             data: row.get(4),
             event_type: row.get(5),
             dotnet_type: row.get(6),
+            tags: Vec::new(),
         });
     }
     Ok(events)

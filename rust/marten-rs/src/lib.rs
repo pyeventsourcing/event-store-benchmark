@@ -2,7 +2,7 @@ use std::fmt;
 use tokio_postgres::{Client, Error, NoTls};
 use uuid::Uuid;
 use serde_json::Value;
-use crate::read::{EventTagQuery, RecordedEvent};
+use crate::read::{EventTagQuery, MartenEvent};
 
 #[derive(Debug)]
 pub enum MartenError {
@@ -97,20 +97,26 @@ impl Marten {
     }
 
     pub async fn save_boundary(&mut self, boundary: Boundary<'_>) -> Result<Vec<i64>, MartenError> {
-        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
+        let mut pending_events = boundary.pending_events;
+        let query = boundary.query;
 
+        let result_seq_ids = self.append_events(&mut pending_events, &query).await?;
+        Ok(result_seq_ids)
+    }
+
+    pub async fn append_events(&mut self, pending_events: &mut Vec<(Value, String, Vec<String>)>, query: &EventTagQuery<'_>) -> Result<Vec<i64>, MartenError> {
         // Ensure the default stream exists or get its current version
+        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
         let current_version = append::get_stream_version(&self.client, &default_stream_id).await?;
 
         let mut new_events = Vec::new();
-        let mut pending_events = boundary.pending_events;
         let num_events = pending_events.len();
 
         // Get new sequence numbers from the database
         let seq_ids = get_next_sequence_numbers(&self.client, num_events).await?;
 
         for (i, (data, event_type, tags)) in pending_events.drain(..).enumerate() {
-            new_events.push(append::NewEvent {
+            new_events.push(read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id: default_stream_id,
                 version: current_version + (i as i32) + 1,
@@ -118,21 +124,21 @@ impl Marten {
                 event_type,
                 dotnet_type: None,
                 tags,
-                sequence: seq_ids[i],
+                seq_id: seq_ids[i],
             });
         }
 
         // Call conditional_rich_append
-        let result_seq_ids = append::conditional_rich_append_events(&mut self.client, new_events, &boundary.query).await?;
+        let result_seq_ids = append::conditional_rich_append_events(&mut self.client, new_events, &query).await?;
         Ok(result_seq_ids)
     }
 
-    pub async fn read_all_events(&self) -> Result<Vec<RecordedEvent>, Error> {
+    pub async fn read_all_events(&self) -> Result<Vec<MartenEvent>, Error> {
         let query = EventTagQuery::new(-1);
         self.read_events(&query).await
     }
 
-    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
+    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, Error> {
         read::select_events_for_query(&self.client, query).await
     }
 
@@ -140,12 +146,12 @@ impl Marten {
 
 pub struct Boundary<'a> {
     pub query: EventTagQuery<'a>,
-    pub selected_events: Vec<RecordedEvent>,
+    pub selected_events: Vec<MartenEvent>,
     pub pending_events: Vec<(Value, String, Vec<String>)>,
 }
 
 impl<'a> Boundary<'a> {
-    pub fn new(query: EventTagQuery<'a>, selected_events: Vec<RecordedEvent>) -> Self {
+    pub fn new(query: EventTagQuery<'a>, selected_events: Vec<MartenEvent>) -> Self {
         Self {
             query,
             selected_events,
@@ -156,7 +162,6 @@ impl<'a> Boundary<'a> {
     pub fn add_event(&mut self, data: Value, event_type: String, tags: Vec<String>) {
         self.pending_events.push((data, event_type, tags));
     }
-
 }
 
 pub async fn get_next_sequence_numbers(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
@@ -538,7 +543,7 @@ mod tests {
     //         .with_tag("dcb-tag");
     //
     //     let cond_events = vec![
-    //         append::NewEvent {
+    //         read::MartenEvent {
     //             id: Uuid::new_v4(),
     //             stream_id,
     //             version: 1,
@@ -563,7 +568,7 @@ mod tests {
     //
     //     // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
     //     let cond_events2 = vec![
-    //         append::NewEvent {
+    //         read::MartenEvent {
     //             id: Uuid::new_v4(),
     //             stream_id,
     //             version: 2,
@@ -584,7 +589,7 @@ mod tests {
     //
     //     // Test rich_append_events with None query
     //     let cond_events_none = vec![
-    //         append::NewEvent {
+    //         read::MartenEvent {
     //             id: Uuid::new_v4(),
     //             stream_id: Uuid::new_v4(),
     //             version: 1,
@@ -645,7 +650,7 @@ mod tests {
     //     let start = std::time::Instant::now();
     //
     //     for _ in 0..iterations {
-    //         let events = vec![append::NewEvent {
+    //         let events = vec![read::MartenEvent {
     //             id: Uuid::new_v4(),
     //             stream_id: Uuid::new_v4(),
     //             version: 1,
@@ -680,7 +685,7 @@ mod tests {
         let stream_id2 = Uuid::new_v4();
         
         let events = vec![
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id: stream_id1,
                 version: 1,
@@ -688,9 +693,9 @@ mod tests {
                 event_type: "test_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["tag1".to_string(), "tag2".to_string()],
-                sequence: 1,
+                seq_id: 1,
             },
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id: stream_id1,
                 version: 2,
@@ -698,9 +703,9 @@ mod tests {
                 event_type: "test_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["tag1".to_string()],
-                sequence: 2,
+                seq_id: 2,
             },
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id: stream_id2,
                 version: 1,
@@ -708,7 +713,7 @@ mod tests {
                 event_type: "test_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["tag2".to_string()],
-                sequence: 3,
+                seq_id: 3,
             },
         ];
 
@@ -774,7 +779,7 @@ mod tests {
         // 1. Prepare some initial data
         let stream_id = Uuid::new_v4();
         let initial_events = vec![
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id,
                 version: 1,
@@ -782,7 +787,7 @@ mod tests {
                 event_type: "initial_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["target-tag".to_string()],
-                sequence: 1,
+                seq_id: 1,
             },
         ];
         let seq_ids = append::rich_append_events(&mut client, initial_events).await?;
@@ -795,7 +800,7 @@ mod tests {
             .with_tag("target-tag");
         
         let new_events1 = vec![
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id,
                 version: 2,
@@ -803,7 +808,7 @@ mod tests {
                 event_type: "test_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["other-tag".to_string()],
-                sequence: 2,
+                seq_id: 2,
             },
         ];
         
@@ -818,7 +823,7 @@ mod tests {
             .with_tag("target-tag");
         
         let new_events2 = vec![
-            append::NewEvent {
+            read::MartenEvent {
                 id: Uuid::new_v4(),
                 stream_id,
                 version: 3,
@@ -826,7 +831,7 @@ mod tests {
                 event_type: "test_event".to_string(),
                 dotnet_type: None,
                 tags: vec!["should-not-exist".to_string()],
-                sequence: 3,
+                seq_id: 3,
             },
         ];
         

@@ -1,5 +1,5 @@
 use crate::MartenError;
-use crate::read::{evaluate_append_condition, EventTagQuery};
+use crate::read::{evaluate_append_condition, EventTagQuery, MartenEvent};
 use std::collections::HashMap;
 use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
@@ -165,20 +165,10 @@ pub async fn update_stream_version(
     ).await
 }
 
-pub struct NewEvent {
-    pub id: uuid::Uuid,
-    pub stream_id: uuid::Uuid,
-    pub version: i32,
-    pub data: Value,
-    pub event_type: String,
-    pub dotnet_type: Option<String>,
-    pub tags: Vec<String>,
-    pub sequence: i64,
-}
 
 pub async fn conditional_rich_append_events(
     client: &mut Client,
-    events: Vec<NewEvent>,
+    events: Vec<MartenEvent>,
     query: &EventTagQuery<'_>,
 ) -> Result<Vec<i64>, MartenError> {
     let result = evaluate_append_condition(client, query).await?;
@@ -191,7 +181,7 @@ pub async fn conditional_rich_append_events(
 
 pub async fn rich_append_events(
     client: &mut Client,
-    events: Vec<NewEvent>
+    events: Vec<MartenEvent>
 ) -> Result<Vec<i64>, Error> {
     let tx = client.transaction().await?;
     
@@ -229,7 +219,7 @@ pub async fn rich_append_events(
             event.version,
             &timestamp,
             "DEFAULT",
-            event.sequence,
+            event.seq_id,
         ).await?;
         
         seq_ids.push(seq_id);
