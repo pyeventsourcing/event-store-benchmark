@@ -18,6 +18,7 @@ pub struct DcbQueryItemTt {
     pub tags: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct DcbEvent {
     pub type_name: String,
     pub data: Option<Vec<u8>>,
@@ -561,4 +562,70 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[serial]
+    async fn test_throughput_unconditional_append() -> Result<()> {
+        let recorder = setup().await?;
+        let num_iterations = 1000;
+        let events_per_append = 1;
+
+        let start = std::time::Instant::now();
+        for i in 0..num_iterations {
+            let events = vec![DcbEvent {
+                type_name: format!("Type{}", i),
+                data: Some(vec![0; 100]),
+                tags: vec![format!("tag{}", i)],
+            }; events_per_append];
+            recorder.append(events, None).await?;
+        }
+        let duration = start.elapsed();
+        let total_events = num_iterations * events_per_append;
+        println!("\nUnconditional append throughput: {} events in {:?}, {:.2} events/sec", 
+            total_events, duration, total_events as f64 / duration.as_secs_f64());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_throughput_conditional_append() -> Result<()> {
+        let recorder = setup().await?;
+        let num_iterations = 1000;
+        let events_per_append = 1;
+
+        // Pre-append some events to check against
+        recorder.append(vec![DcbEvent {
+            type_name: "Initial".to_string(),
+            data: None,
+            tags: vec!["initial".to_string()],
+        }], None).await?;
+
+        let start = std::time::Instant::now();
+        for i in 0..num_iterations {
+            let events = vec![DcbEvent {
+                type_name: format!("Type{}", i),
+                data: Some(vec![0; 100]),
+                tags: vec![format!("tag_new_{}", i)],
+            }; events_per_append];
+
+            // Condition that never matches (checking for a tag that doesn't exist in the new events)
+            let condition = DcbAppendCondition {
+                fail_if_events_match: DcbQuery {
+                    items: vec![DcbQueryItem {
+                        types: vec![],
+                        tags: vec![format!("nonexistent_{}", i)],
+                    }]
+                },
+                after: Some(0),
+            };
+
+            recorder.append(events, Some(condition)).await?;
+        }
+        let duration = start.elapsed();
+        let total_events = num_iterations * events_per_append;
+        println!("\nConditional append throughput: {} events in {:?}, {:.2} events/sec", 
+            total_events, duration, total_events as f64 / duration.as_secs_f64());
+
+        Ok(())
+    }
 }
