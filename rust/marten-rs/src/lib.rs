@@ -668,4 +668,87 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_save_session() -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        // 1. Initialize an event tag query
+        let last_seen_seq = 0;
+        let query = read::EventTagQuery::new(last_seen_seq)
+            .with_tag("target-tag");
+
+        // Pre-requisite: ensure the condition for the query is met.
+        // The query requires an event with "target-tag" and seq_id > 0.
+        let initial_event = vec![
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id: Uuid::new_v4(),
+                version: 1,
+                data: json!({"initial": "event"}),
+                event_type: "initial".to_string(),
+                dotnet_type: None,
+                tags: vec!["target-tag".to_string()],
+                sequence: get_next_sequence_numbers(&client, 1).await?[0],
+            }
+        ];
+        append::rich_append_events(&mut client, initial_event).await?;
+
+        // 2. Fetch method (simulated as evaluate_append_condition or just query setup)
+        // In the issue description it says "a boundary from the session by calling a fetch method on the session"
+        // We'll just use the query we created.
+
+        // 3. Add events to the session, specifying only data, event_type, and tags
+        let event_data_list = vec![
+            (json!({"event": 1}), "type1", vec!["tag1".to_string()]),
+            (json!({"event": 2}), "type2", vec!["tag2".to_string()]),
+        ];
+
+        // 4. Saving the session logic
+        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
+        
+        // Ensure the default stream exists or get its current version
+        let current_version = append::get_stream_version(&client, &default_stream_id).await?;
+        
+        let mut new_events = Vec::new();
+        let num_events = event_data_list.len();
+        
+        // Get new sequence numbers from the database
+        let seq_ids = get_next_sequence_numbers(&client, num_events).await?;
+        
+        for (i, (data, event_type, tags)) in event_data_list.into_iter().enumerate() {
+            new_events.push(append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id: default_stream_id,
+                version: current_version + (i as i32) + 1,
+                data,
+                event_type: event_type.to_string(),
+                dotnet_type: None,
+                tags,
+                sequence: seq_ids[i],
+            });
+        }
+
+        // 5. Call conditional_rich_append
+        let result_seq_ids = append::conditional_rich_append_events(&mut client, new_events, &query).await?;
+        
+        assert_eq!(result_seq_ids.len(), 2);
+        assert_eq!(result_seq_ids, seq_ids);
+
+        // Verify events were saved
+        let all_events = read::read_all_events(&client).await?;
+        // 3 events total: 1 initial + 2 from session
+        assert_eq!(all_events.len(), 3);
+        
+        let session_events: Vec<_> = all_events.iter().filter(|e| e.stream_id == default_stream_id).collect();
+        assert_eq!(session_events.len(), 2);
+        assert_eq!(session_events[0].version, current_version + 1);
+        assert_eq!(session_events[1].version, current_version + 2);
+
+        Ok(())
+    }
 }
