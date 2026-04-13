@@ -25,7 +25,7 @@ use tokio_postgres::{Client, Error};
 use serde_json::Value;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
-    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type FROM mt_events e");
+    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, e.mt_dotnet_type FROM mt_events e");
     
     // Marten joins to the tag table(s) to apply filters
     sql.push_str(" LEFT JOIN mt_event_tag_string t0 ON e.seq_id = t0.seq_id");
@@ -76,6 +76,7 @@ pub struct RecordedEvent {
     pub version: i32,
     pub data: Value,
     pub event_type: String,
+    pub dotnet_type: Option<String>,
 }
 
 pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
@@ -102,6 +103,7 @@ pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>)
             version: row.get(3),
             data: row.get(4),
             event_type: row.get(5),
+            dotnet_type: row.get(6),
         });
     }
     Ok(events)
@@ -113,6 +115,7 @@ pub struct TaggedEvent {
     pub version: i32,
     pub data: Value,
     pub event_type: String,
+    pub dotnet_type: Option<String>,
     pub tags: Vec<String>,
 }
 
@@ -144,7 +147,7 @@ pub async fn append_events_marten_style(
 
     // Prepare statements for reuse
     let stream_stmt = tx.prepare("INSERT INTO mt_streams (id, type, version) VALUES ($1, 'default', $2) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version").await?;
-    let event_stmt = tx.prepare("INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id").await?;
+    let event_stmt = tx.prepare("INSERT INTO mt_events (id, stream_id, version, data, type, mt_dotnet_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING seq_id").await?;
     let tag_stmt = tx.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, currval('mt_events_sequence')) ON CONFLICT DO NOTHING").await?;
 
     for event in &events {
@@ -154,7 +157,7 @@ pub async fn append_events_marten_style(
         // event insert
         let row = tx.query_one(
             &event_stmt,
-            &[&event.id, &event.stream_id, &event.version, &event.data, &event.event_type]
+            &[&event.id, &event.stream_id, &event.version, &event.data, &event.event_type, &event.dotnet_type]
         ).await?;
         let seq_id: i64 = row.get(0);
         seq_ids.push(seq_id);

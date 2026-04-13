@@ -90,20 +90,24 @@ mod tests {
 
         // Verify data
         let rows = client.query(
-            "SELECT e.data, t.value FROM mt_events e JOIN mt_event_tag_string t ON e.seq_id = t.seq_id WHERE e.stream_id = $1 ORDER BY e.version",
+            "SELECT e.data, t.value, e.mt_dotnet_type FROM mt_events e JOIN mt_event_tag_string t ON e.seq_id = t.seq_id WHERE e.stream_id = $1 ORDER BY e.version",
             &[&stream_id]
         ).await?;
 
         assert_eq!(rows.len(), 2);
         let data1: serde_json::Value = rows[0].get(0);
         let tag1: &str = rows[0].get(1);
+        let dotnet_type1: Option<String> = rows[0].get(2);
         let data2: serde_json::Value = rows[1].get(0);
         let tag2: &str = rows[1].get(1);
+        let dotnet_type2: Option<String> = rows[1].get(2);
 
         assert_eq!(data1, event_data1);
         assert_eq!(tag1, "tag1");
+        assert_eq!(dotnet_type1, None);
         assert_eq!(data2, event_data2);
         assert_eq!(tag2, "tag2");
+        assert_eq!(dotnet_type2, None);
 
         Ok(())
     }
@@ -129,8 +133,8 @@ mod tests {
 
         // 2. Insert event
         let rows = client.query(
-            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
-            &[&event_id, &stream_id, &1i32, &event_data, &"multi_tag_event"]
+            "INSERT INTO mt_events (id, stream_id, version, data, type, mt_dotnet_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING seq_id",
+            &[&event_id, &stream_id, &1i32, &event_data, &"multi_tag_event", &None::<String>]
         ).await?;
         let seq_id: i64 = rows[0].get(0);
 
@@ -175,8 +179,8 @@ mod tests {
             &[&dcb_stream_id, &"dcb_stream"]
         ).await?;
         let row = client.query_one(
-            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
-            &[&event_id, &dcb_stream_id, &1i32, &json!({"dcb": "test"}), &"dcb_event"]
+            "INSERT INTO mt_events (id, stream_id, version, data, type, mt_dotnet_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING seq_id",
+            &[&event_id, &dcb_stream_id, &1i32, &json!({"dcb": "test"}), &"dcb_event", &Some("DotNetType".to_string())]
         ).await?;
         let new_seq: i64 = row.get(0);
         client.execute(&schema::get_insert_tag_sql("string"), &[&"dcb-tag", &new_seq]).await?;
@@ -195,6 +199,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].data, json!({"dcb": "test"}));
         assert_eq!(events[0].event_type, "dcb_event");
+        assert_eq!(events[0].dotnet_type, Some("DotNetType".to_string()));
         assert_eq!(events[0].id, event_id);
         assert_eq!(events[0].stream_id, dcb_stream_id);
         assert_eq!(events[0].version, 1);
@@ -208,8 +213,8 @@ mod tests {
             &[&stream_id_multi, &"multi_tag_stream"]
         ).await?;
         let row_multi = client.query_one(
-            "INSERT INTO mt_events (id, stream_id, version, data, type) VALUES ($1, $2, $3, $4, $5) RETURNING seq_id",
-            &[&event_id_multi, &stream_id_multi, &1i32, &json!({"multi": "tags"}), &"multi_tag_event"]
+            "INSERT INTO mt_events (id, stream_id, version, data, type, mt_dotnet_type) VALUES ($1, $2, $3, $4, $5, $6) RETURNING seq_id",
+            &[&event_id_multi, &stream_id_multi, &1i32, &json!({"multi": "tags"}), &"multi_tag_event", &None::<String>]
         ).await?;
         let multi_seq: i64 = row_multi.get(0);
         client.execute(&schema::get_insert_tag_sql("string"), &[&"tag-1", &multi_seq]).await?;
@@ -242,6 +247,7 @@ mod tests {
                 version: 1,
                 data: json!({"cond": "append"}),
                 event_type: "cond_event".to_string(),
+                dotnet_type: Some("CondDotNetType".to_string()),
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
@@ -256,6 +262,7 @@ mod tests {
         let results = dcb::select_events_for_query(&client, &cond_query).await?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].data, json!({"cond": "append"}));
+        assert_eq!(results[0].dotnet_type, Some("CondDotNetType".to_string()));
         
         // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
         let cond_events2 = vec![
@@ -265,6 +272,7 @@ mod tests {
                 version: 2,
                 data: json!({"cond": "fail"}),
                 event_type: "cond_event".to_string(),
+                dotnet_type: None,
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
@@ -285,6 +293,7 @@ mod tests {
                 version: 1,
                 data: json!({"cond": "none"}),
                 event_type: "cond_event".to_string(),
+                dotnet_type: None,
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
@@ -345,6 +354,7 @@ mod tests {
                 version: 1,
                 data: json!({"payload": payload_data}),
                 event_type: "benchmark_event".to_string(),
+                dotnet_type: None,
                 tags: vec!["benchmark".to_string()],
             }];
             

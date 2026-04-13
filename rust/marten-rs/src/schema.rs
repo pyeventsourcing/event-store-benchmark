@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS mt_events (
     type        varchar(500) NOT NULL,
     timestamp   timestamptz NOT NULL DEFAULT (now()),
     tenant_id   varchar(255) DEFAULT 'DEFAULT',
+    mt_dotnet_type varchar(500) NULL,
     is_archived boolean DEFAULT FALSE,
     UNIQUE (stream_id, version)
 );

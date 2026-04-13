@@ -48,9 +48,9 @@ BEGIN
         event_version := event_version + 1;
 
         INSERT INTO mt_events
-            (seq_id, id, stream_id, version, data, type, tenant_id, timestamp)
+            (seq_id, id, stream_id, version, data, type, tenant_id, mt_dotnet_type, timestamp)
         VALUES
-            (seq, event_ids[index], stream_id, event_version, bodies[index], event_types[index], tenantid, (now() at time zone 'utc'));
+            (seq, event_ids[index], stream_id, event_version, bodies[index], event_types[index], tenantid, dotnet_types[index], (now() at time zone 'utc'));
 
         -- Handle string tags
         IF tag_string_values[index] IS NOT NULL THEN
