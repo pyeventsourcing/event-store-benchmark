@@ -1,4 +1,4 @@
-use tokio_postgres::{Client, Error};
+use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
 use serde_json::Value;
 
@@ -94,4 +94,70 @@ pub async fn quick_append_events(
     ).await?.get(0);
 
     Ok(result)
+}
+
+pub async fn insert_tag(
+    client: &impl GenericClient,
+    tag_type: &str,
+    tag_value: &str,
+    seq_id: i64,
+) -> Result<u64, Error> {
+    let sql = crate::schema::get_insert_tag_sql(tag_type);
+    client.execute(&sql, &[&tag_value, &seq_id]).await
+}
+
+pub async fn insert_event(
+    client: &impl GenericClient,
+    event_data: &Value,
+    event_type: &str,
+    mt_dotnet_type: &Option<String>,
+    event_id: &Uuid,
+    stream_id: &Uuid,
+    version: i32,
+    timestamp: &chrono::DateTime<chrono::Utc>,
+    tenant_id: &str,
+    seq_id: i64,
+) -> Result<i64, Error> {
+    let rows = client.query(
+        "INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq_id",
+        &[event_data, &event_type, mt_dotnet_type, event_id, stream_id, &version, timestamp, &tenant_id, &seq_id]
+    ).await?;
+    
+    Ok(rows[0].get(0))
+}
+
+pub async fn insert_stream(
+    client: &impl GenericClient,
+    id: &Uuid,
+    stream_type: &str,
+    version: i32,
+    tenant_id: &str,
+) -> Result<u64, Error> {
+    client.execute(
+        "INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, $2, $3, $4)",
+        &[id, &stream_type, &version, &tenant_id]
+    ).await
+}
+
+pub async fn get_stream_version(
+    client: &impl GenericClient,
+    stream_id: &Uuid,
+) -> Result<i32, Error> {
+    let row = client.query_opt(
+        "SELECT version FROM mt_streams WHERE id = $1",
+        &[stream_id]
+    ).await?;
+    
+    Ok(row.map(|r| r.get(0)).unwrap_or(0))
+}
+
+pub async fn update_stream_version(
+    client: &impl GenericClient,
+    stream_id: &Uuid,
+    version: i32,
+) -> Result<u64, Error> {
+    client.execute(
+        "UPDATE mt_streams SET version = $1, timestamp = now() WHERE id = $2",
+        &[&version, stream_id]
+    ).await
 }

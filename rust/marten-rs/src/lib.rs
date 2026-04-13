@@ -2,7 +2,7 @@ pub mod schema;
 pub mod append;
 pub mod dcb;
 
-pub async fn get_next_sequence_batch(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
+pub async fn get_next_sequence_numbers(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
     if count == 0 {
         return Ok(Vec::new());
     }
@@ -169,27 +169,31 @@ mod tests {
         let event_data = json!({"multi": "tags"});
 
         // 1. Insert stream
-        client.execute(
-            "INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, $2, $3, $4)",
-            &[&stream_id, &"multi_tag_stream", &1i32, &"DEFAULT"]
-        ).await?;
+        let stream_version = append::get_stream_version(&client, &stream_id).await?;
+        assert_eq!(stream_version, 0);
+        append::insert_stream(&client, &stream_id, "multi_tag_stream", 1i32, "DEFAULT").await?;
 
         // 2. Insert event
-        // data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id
         let timestamp = chrono::Utc::now();
-        let seq_ids = get_next_sequence_batch(&client, 1).await?;
+        let seq_ids = get_next_sequence_numbers(&client, 1).await?;
         let seq_id_to_insert = seq_ids[0];
-        let rows = client.query(
-            "INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq_id",
-            &[&event_data, &"multi_tag_event", &None::<String>, &event_id, &stream_id, &1i32, &timestamp, &"DEFAULT", &seq_id_to_insert]
+        let seq_id = append::insert_event(
+            &client,
+            &event_data,
+            "multi_tag_event",
+            &None::<String>,
+            &event_id,
+            &stream_id,
+            1i32,
+            &timestamp,
+            "DEFAULT",
+            seq_id_to_insert,
         ).await?;
-        let seq_id: i64 = rows[0].get(0);
         assert_eq!(seq_id, seq_id_to_insert);
 
         // 3. Insert multiple tags (multi-statement approach)
-        let insert_tag_sql = schema::get_insert_tag_sql("string");
-        client.execute(&insert_tag_sql, &[&"tagA", &seq_id]).await?;
-        client.execute(&insert_tag_sql, &[&"tagB", &seq_id]).await?;
+        append::insert_tag(&client, "string", "tagA", seq_id).await?;
+        append::insert_tag(&client, "string", "tagB", seq_id).await?;
 
         // 4. Verify both tags are present
         let rows = client.query(
@@ -202,6 +206,38 @@ mod tests {
         let tag_b: &str = rows[1].get(0);
         assert_eq!(tag_a, "tagA");
         assert_eq!(tag_b, "tagB");
+
+        // 5. Verify current stream version is 1
+        let stream_version = append::get_stream_version(&client, &stream_id).await?;
+        assert_eq!(stream_version, 1);
+
+        // 6. Update to next version and insert another event
+        let next_version = stream_version + 1;
+        let event_id2 = Uuid::new_v4();
+        let timestamp = chrono::Utc::now();
+        let seq_ids = get_next_sequence_numbers(&client, 1).await?;
+        let seq_id_to_insert = seq_ids[0];
+        
+        let seq_id2 = append::insert_event(
+            &client,
+            &json!({"second": "event"}),
+            "multi_tag_event",
+            &None::<String>,
+            &event_id2,
+            &stream_id,
+            next_version,
+            &timestamp,
+            "DEFAULT",
+            seq_id_to_insert,
+        ).await?;
+        assert_eq!(seq_id2, seq_id_to_insert);
+
+        append::insert_tag(&client, "string", "tagC", seq_id2).await?;
+        append::update_stream_version(&client, &stream_id, next_version).await?;
+
+        // 7. Verify the final stream version
+        let final_version = append::get_stream_version(&client, &stream_id).await?;
+        assert_eq!(final_version, 2);
 
         Ok(())
     }
@@ -222,20 +258,24 @@ mod tests {
         // 2. Append a new tagged event
         let dcb_stream_id = Uuid::new_v4();
         let event_id = Uuid::new_v4();
-        client.execute(
-            "INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, $2, $3, $4)",
-            &[&dcb_stream_id, &"dcb_stream", &1i32, &"DEFAULT"]
-        ).await?;
+        append::insert_stream(&client, &dcb_stream_id, "dcb_stream", 1i32, "DEFAULT").await?;
         let timestamp = chrono::Utc::now();
-        let seq_ids = get_next_sequence_batch(&client, 1).await?;
+        let seq_ids = get_next_sequence_numbers(&client, 1).await?;
         let seq_id_to_insert = seq_ids[0];
-        let row = client.query_one(
-            "INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq_id",
-            &[&json!({"dcb": "test"}), &"dcb_event", &Some("DotNetType".to_string()), &event_id, &dcb_stream_id, &1i32, &timestamp, &"DEFAULT", &seq_id_to_insert]
+        let new_seq = append::insert_event(
+            &client,
+            &json!({"dcb": "test"}),
+            "dcb_event",
+            &Some("DotNetType".to_string()),
+            &event_id,
+            &dcb_stream_id,
+            1i32,
+            &timestamp,
+            "DEFAULT",
+            seq_id_to_insert,
         ).await?;
-        let new_seq: i64 = row.get(0);
         assert_eq!(new_seq, seq_id_to_insert);
-        client.execute(&schema::get_insert_tag_sql("string"), &[&"dcb-tag", &new_seq]).await?;
+        append::insert_tag(&client, "string", "dcb-tag", new_seq).await?;
 
         // 3. Check DCB with last_seen_sequence = current_seq (before append)
         // This should return TRUE (conflict detected)
@@ -265,16 +305,23 @@ mod tests {
             &[&stream_id_multi, &"multi_tag_stream", &1i32, &"DEFAULT"]
         ).await?;
         let timestamp = chrono::Utc::now();
-        let seq_ids = get_next_sequence_batch(&client, 1).await?;
+        let seq_ids = get_next_sequence_numbers(&client, 1).await?;
         let seq_id_to_insert = seq_ids[0];
-        let row_multi = client.query_one(
-            "INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq_id",
-            &[&json!({"multi": "tags"}), &"multi_tag_event", &None::<String>, &event_id_multi, &stream_id_multi, &1i32, &timestamp, &"DEFAULT", &seq_id_to_insert]
+        let multi_seq = append::insert_event(
+            &client,
+            &json!({"multi": "tags"}),
+            "multi_tag_event",
+            &None::<String>,
+            &event_id_multi,
+            &stream_id_multi,
+            1i32,
+            &timestamp,
+            "DEFAULT",
+            seq_id_to_insert,
         ).await?;
-        let multi_seq: i64 = row_multi.get(0);
         assert_eq!(multi_seq, seq_id_to_insert);
-        client.execute(&schema::get_insert_tag_sql("string"), &[&"tag-1", &multi_seq]).await?;
-        client.execute(&schema::get_insert_tag_sql("string"), &[&"tag-2", &multi_seq]).await?;
+        append::insert_tag(&client, "string", "tag-1", multi_seq).await?;
+        append::insert_tag(&client, "string", "tag-2", multi_seq).await?;
 
         let query_multi = dcb::EventTagQuery::new(current_seq).with_tag("tag-1");
         let events_multi = dcb::select_events_for_query(&client, &query_multi).await?;
