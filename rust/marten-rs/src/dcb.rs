@@ -23,7 +23,6 @@ impl<'a> EventTagQuery<'a> {
 
 use tokio_postgres::{Client, Error};
 use serde_json::Value;
-use chrono;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, e.mt_dotnet_type FROM mt_events e");
@@ -108,70 +107,4 @@ pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>)
         });
     }
     Ok(events)
-}
-
-pub struct TaggedEvent {
-    pub id: uuid::Uuid,
-    pub stream_id: uuid::Uuid,
-    pub version: i32,
-    pub data: Value,
-    pub event_type: String,
-    pub dotnet_type: Option<String>,
-    pub tags: Vec<String>,
-}
-
-pub async fn append_events_marten_style(
-    client: &mut Client,
-    query: Option<&EventTagQuery<'_>>,
-    events: Vec<TaggedEvent>
-) -> Result<(bool, Vec<i64>), Error> {
-    // 1. Start transaction
-    let tx = client.transaction().await?;
-
-    // 2. Consistency check
-    if let Some(q) = query {
-        let last_seen = q.last_seen_sequence;
-        let tag_values: Vec<String> = q.conditions.iter().map(|c| c.tag_value.to_string()).collect();
-        let conflict: bool = tx.query_one(
-            "SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2))",
-            &[&last_seen, &tag_values]
-        ).await?.get(0);
-
-        if conflict {
-            tx.rollback().await?;
-            return Ok((false, Vec::new()));
-        }
-    }
-
-    // 3. Append operations
-    let mut seq_ids = Vec::new();
-
-    // Prepare statements for reuse
-    let stream_stmt = tx.prepare("INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, 'default', $2, 'DEFAULT') ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version").await?;
-    let event_stmt = tx.prepare("INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, nextval('mt_events_sequence')) RETURNING seq_id").await?;
-    let tag_stmt = tx.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, $2) ON CONFLICT DO NOTHING").await?;
-
-    for event in &events {
-        // stream upsert
-        tx.execute(&stream_stmt, &[&event.stream_id, &event.version]).await?;
-
-        // event insert
-        let timestamp = chrono::Utc::now();
-        let row = tx.query_one(
-            &event_stmt,
-            &[&event.data, &event.event_type, &event.dotnet_type, &event.id, &event.stream_id, &event.version, &timestamp, &"DEFAULT"]
-        ).await?;
-        let seq_id: i64 = row.get(0);
-        seq_ids.push(seq_id);
-
-        // tag inserts
-        for tag in &event.tags {
-            tx.execute(&tag_stmt, &[tag, &seq_id]).await?;
-        }
-    }
-
-    // 4. Commit
-    tx.commit().await?;
-
-    Ok((true, seq_ids))
 }

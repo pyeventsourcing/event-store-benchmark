@@ -338,13 +338,13 @@ mod tests {
         let no_conflict: bool = client.query_one(&dcb_sql_no_conflict, &[]).await?.get(0);
         assert!(!no_conflict, "Unexpected DCB conflict detected");
 
-        // Test append_events_marten_style
+        // Test rich_append_events
         let stream_id = Uuid::new_v4();
         let cond_query = dcb::EventTagQuery::new(new_seq)
             .with_tag("dcb-tag");
             
         let cond_events = vec![
-            dcb::TaggedEvent {
+            append::TaggedEvent {
                 id: Uuid::new_v4(),
                 stream_id,
                 version: 1,
@@ -357,7 +357,7 @@ mod tests {
         
         // This should SUCCEED because no new events with "dcb-tag" since new_seq
         let mut client = client;
-        let (success, seq_ids) = dcb::append_events_marten_style(&mut client, Some(&cond_query), cond_events).await?;
+        let (success, seq_ids) = append::rich_append_events(&mut client, Some(&cond_query), cond_events).await?;
         assert!(success);
         assert_eq!(seq_ids.len(), 1);
         
@@ -369,7 +369,7 @@ mod tests {
         
         // Now try to append again with the same query - should FAIL because we just added an event with "dcb-tag"
         let cond_events2 = vec![
-            dcb::TaggedEvent {
+            append::TaggedEvent {
                 id: Uuid::new_v4(),
                 stream_id,
                 version: 2,
@@ -379,7 +379,7 @@ mod tests {
                 tags: vec!["dcb-tag".to_string()],
             }
         ];
-        let (success2, seq_ids2) = dcb::append_events_marten_style(&mut client, Some(&cond_query), cond_events2).await?;
+        let (success2, seq_ids2) = append::rich_append_events(&mut client, Some(&cond_query), cond_events2).await?;
         assert!(!success2);
         assert_eq!(seq_ids2.len(), 0);
 
@@ -388,9 +388,9 @@ mod tests {
         assert_eq!(results2.len(), 1);
         assert_eq!(results2[0].data, json!({"cond": "append"}));
 
-        // Test append_events_marten_style with None query
+        // Test rich_append_events with None query
         let cond_events_none = vec![
-            dcb::TaggedEvent {
+            append::TaggedEvent {
                 id: Uuid::new_v4(),
                 stream_id: Uuid::new_v4(),
                 version: 1,
@@ -403,7 +403,7 @@ mod tests {
         // cond_events_none stream_id should have version 1
         // (We know its index and it was the only one in the batch)
         let none_stream_id = cond_events_none[0].stream_id;
-        let (success_none, seq_ids_none) = dcb::append_events_marten_style(&mut client, None, cond_events_none).await?;
+        let (success_none, seq_ids_none) = append::rich_append_events(&mut client, None, cond_events_none).await?;
         assert!(success_none);
         assert_eq!(seq_ids_none.len(), 1);
 
@@ -451,7 +451,7 @@ mod tests {
         let start = std::time::Instant::now();
 
         for _ in 0..iterations {
-            let events = vec![dcb::TaggedEvent {
+            let events = vec![append::TaggedEvent {
                 id: Uuid::new_v4(),
                 stream_id: Uuid::new_v4(),
                 version: 1,
@@ -461,7 +461,7 @@ mod tests {
                 tags: vec!["benchmark".to_string()],
             }];
             
-            let (success, _) = dcb::append_events_marten_style(&mut client, None, events).await?;
+            let (success, _) = append::rich_append_events(&mut client, None, events).await?;
             assert!(success);
         }
 
