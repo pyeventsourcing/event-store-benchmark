@@ -104,6 +104,13 @@ pub struct ThroughputRecorder {
     pub start_time: Instant,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum RecordingStatus {
+    Before,
+    During,
+    After,
+}
+
 impl ThroughputRecorder {
     pub fn new(samples_per_second: u64, num_intervals: usize, start_time: Instant) -> Self {
         Self {
@@ -113,18 +120,17 @@ impl ThroughputRecorder {
         }
     }
 
-    pub fn record(&mut self, now: Instant, count: u64) -> bool {
+    pub fn record(&mut self, now: Instant, count: u64) -> RecordingStatus {
+        if now < self.start_time {
+            return RecordingStatus::Before;
+        }
         let elapsed = now.duration_since(self.start_time).as_secs_f64();
-        if elapsed > 0.0 {
-            let interval = (elapsed * self.samples_per_second as f64) as usize;
-            if interval < self.counts.len() {
-                self.counts[interval] += count;
-                false
-            } else {
-                true
-            }
+        let interval = (elapsed * self.samples_per_second as f64) as usize;
+        if interval < self.counts.len() {
+            self.counts[interval] += count;
+            RecordingStatus::During
         } else {
-            false
+            RecordingStatus::After
         }
     }
 

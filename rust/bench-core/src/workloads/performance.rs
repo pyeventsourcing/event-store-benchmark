@@ -1,6 +1,6 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults};
+use crate::metrics::{LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus};
 use anyhow::Result;
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -460,11 +460,13 @@ impl PerformanceWorkload {
                 if success {
                     if activate_metrics {
                         let operation_completed = Instant::now();
-                        let elapsed = operation_completed - operation_started;
-                        // Record latency sample
-                        latencies.record(elapsed);
                         // Record throughput sample
-                        out_of_time = throughput_recorder.record(operation_completed, 1);
+                        let status = throughput_recorder.record(operation_completed, 1);
+                        if status == RecordingStatus::During {
+                            // Record latency sample
+                            latencies.record(operation_completed - operation_started);
+                        }
+                        out_of_time = status == RecordingStatus::After;
                     }
                     // Increment stream position, maybe reset and change name.
                     stream_position += 1;
@@ -521,11 +523,13 @@ impl PerformanceWorkload {
 
                 if activate_metrics {
                     if let Ok(events) = result {
-                        // Record latency sample
-                        let elapsed = operation_completed - operation_started;
-                        latencies.record(elapsed);
                         // Record throughput sample
-                        out_of_time = throughput_recorder.record(operation_completed, events.len() as u64);
+                        let status = throughput_recorder.record(operation_completed, events.len() as u64);
+                        if status == RecordingStatus::During {
+                            // Record latency sample
+                            latencies.record(operation_completed - operation_started);
+                        }
+                        out_of_time = status == RecordingStatus::After;
                     }
 
                 }
