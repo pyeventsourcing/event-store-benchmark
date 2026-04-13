@@ -4,7 +4,7 @@ performance:
   local: true
   warmup_seconds: 0
   duration_seconds: 5
-  samples_per_second: 2
+  samples_per_second: 4
   concurrency:
     readers: 0
 #    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
@@ -13,6 +13,7 @@ performance:
     write:
       event_size_bytes: 256
   stores:
+    - py-eventsourcing
     - marten
     - umadb
 ---
@@ -22,7 +23,7 @@ performance:
   local: true
   warmup_seconds: 0
   duration_seconds: 5
-  samples_per_second: 2
+  samples_per_second: 4
   concurrency:
 #    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 #    readers: [1, 2, 4]
@@ -37,5 +38,6 @@ performance:
     prepopulate_events: 5000
     prepopulate_streams: 500
   stores:
+    - py-eventsourcing
     - marten
     - umadb

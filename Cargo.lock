@@ -920,6 +920,7 @@ dependencies = [
  "fact-adapter",
  "kurrentdb-adapter",
  "marten-adapter",
+ "py-eventsourcing-adapter",
  "rand 0.10.0",
  "serde",
  "serde_json",
@@ -2545,6 +2546,22 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "uuid",
+]
+
+[[package]]
+name = "py-eventsourcing-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bench-core",
+ "bench-testcontainers",
+ "py-eventsourcing",
+ "serde_json",
+ "testcontainers",
+ "tokio",
+ "tokio-postgres",
+ "url",
 ]
 
 [[package]]

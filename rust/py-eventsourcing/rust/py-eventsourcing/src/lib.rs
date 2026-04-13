@@ -18,13 +18,14 @@ pub struct DcbQueryItemTt {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DcbEvent {
     pub type_name: String,
     pub data: Vec<u8>,
     pub tags: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct DcbSequencedEvent {
     pub event: DcbEvent,
     pub position: i64,
@@ -80,19 +81,7 @@ impl PostgresDCBRecorderTT {
             }
         });
 
-        let events_table = "dcb_events_tt_main".to_string();
-        let tags_table = "dcb_events_tt_tag".to_string();
-
-        Ok(Self {
-            client,
-            schema: schema.to_string(),
-            events_table,
-            tags_table,
-            event_type_name: "dcb_event_tt".to_string(),
-            query_item_type_name: "dcb_query_item_tt".to_string(),
-            unconditional_append_fn: "dcb_unconditional_append_tt".to_string(),
-            conditional_append_fn: "dcb_conditional_append_tt".to_string(),
-        })
+        Ok(Self::from_client(client, schema))
     }
 
     pub async fn create_tables(&self) -> Result<()> {
@@ -295,14 +284,10 @@ impl PostgresDCBRecorderTT {
 
         if let Some(cond) = condition {
             if cond.fail_if_events_match.items.is_empty() {
-                // If query is empty, it never matches, so we can just do unconditional append.
-                // Or should we follow the Python logic for separate read and append?
-                // Python's all_query_items_have_tags returns false if items is empty.
                 return self.unconditional_append(pg_events).await;
             }
 
             if cond.fail_if_events_match.items.iter().all(|q| !q.tags.is_empty()) {
-                // Do single-statement "conditional append".
                 let pg_query_items: Vec<DcbQueryItemTt> = cond.fail_if_events_match.items.into_iter().map(|i| DcbQueryItemTt {
                     types: i.types,
                     tags: i.tags,
@@ -318,24 +303,14 @@ impl PostgresDCBRecorderTT {
                 let res: Option<i64> = row.get(0);
                 res.ok_or_else(|| anyhow!("IntegrityError: Append condition failed"))
             } else {
-                // Do separate "read" and "append" operations in a transaction.
                 let after = cond.after.unwrap_or(0);
-                
-                // Start a transaction
                 self.client.batch_execute("BEGIN;").await?;
-                
                 let res = (async {
-                    // Lock table
                     self.client.batch_execute(&format!("LOCK TABLE {}.{} IN EXCLUSIVE MODE", self.schema, self.events_table)).await?;
-                    
-                    // Check condition
                     let failed = self.read(Some(cond.fail_if_events_match), Some(after), Some(1)).await?;
-                    
                     if !failed.is_empty() {
                         return Err(anyhow!("IntegrityError: Append condition failed"));
                     }
-                    
-                    // If okay, then do an "unconditional append".
                     self.unconditional_append(pg_events).await
                 }).await;
 
@@ -366,7 +341,6 @@ impl PostgresDCBRecorderTT {
 
         let rows = if let Some(q) = query {
             if q.items.iter().all(|i| !i.tags.is_empty()) && !q.items.is_empty() {
-                // Select by tags
                 let pg_query_items: Vec<DcbQueryItemTt> = q.items.into_iter().map(|i| DcbQueryItemTt {
                     types: i.types,
                     tags: i.tags,
@@ -425,14 +399,12 @@ impl PostgresDCBRecorderTT {
                 
                 self.client.query(&sql, &[&pg_query_items, &after_val, &limit_val]).await?
             } else if q.items.len() == 1 && q.items[0].types.len() == 1 && q.items[0].tags.is_empty() {
-                // Select by type
                 let sql = format!("SELECT * FROM {}.{} WHERE type = $1 AND id > $2 ORDER BY id ASC LIMIT $3", self.schema, self.events_table);
                 self.client.query(&sql, &[&q.items[0].types[0], &after_val, &limit_val]).await?
             } else {
                 return Err(anyhow!("Unsupported query"));
             }
         } else {
-            // Select all
             let sql = format!("SELECT * FROM {}.{} WHERE id > $1 ORDER BY id ASC LIMIT $2", self.schema, self.events_table);
             self.client.query(&sql, &[&after_val, &limit_val]).await?
         };
@@ -500,7 +472,6 @@ mod tests {
     async fn test_conditional_append() -> Result<()> {
         let recorder = setup().await?;
 
-        // 1. Initial append
         recorder.append(vec![
             DcbEvent {
                 type_name: "Type1".to_string(),
@@ -509,7 +480,6 @@ mod tests {
             }
         ], None).await?;
 
-        // 2. Successful conditional append
         let cond1 = DcbAppendCondition {
             fail_if_events_match: DcbQuery {
                 items: vec![DcbQueryItem {
@@ -527,7 +497,6 @@ mod tests {
             }
         ], Some(cond1)).await?;
 
-        // 3. Failed conditional append
         let cond2 = DcbAppendCondition {
             fail_if_events_match: DcbQuery {
                 items: vec![DcbQueryItem {
@@ -548,7 +517,7 @@ mod tests {
         assert!(res.is_err());
 
         let all = recorder.read(None, None, None).await?;
-        assert_eq!(all.len(), 2); // Type1 and Type2
+        assert_eq!(all.len(), 2);
 
         Ok(())
     }
@@ -609,7 +578,6 @@ mod tests {
         let num_iterations = 1000;
         let events_per_append = 1;
 
-        // Pre-append some events to check against
         recorder.append(vec![DcbEvent {
             type_name: "Initial".to_string(),
             data: vec![],
@@ -624,7 +592,6 @@ mod tests {
                 tags: vec![format!("tag_new_{}", i)],
             }; events_per_append];
 
-            // Condition that never matches (checking for a tag that doesn't exist in the new events)
             let condition = DcbAppendCondition {
                 fail_if_events_match: DcbQuery {
                     items: vec![DcbQueryItem {

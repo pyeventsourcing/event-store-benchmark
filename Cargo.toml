@@ -12,5 +12,6 @@ members = [
     "rust/kurrentdb-benchmark",
     "rust/marten-rs",
     "rust/py-eventsourcing",
+    "rust/adapters/py-eventsourcing",
 ]
 resolver = "2"

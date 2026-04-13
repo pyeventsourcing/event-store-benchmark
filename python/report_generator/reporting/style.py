@@ -8,6 +8,7 @@ ADAPTER_COLORS = {
     'dummy': '#888888',        # Grey
     'fact': '#a6674c',        # Amber Brown
     'marten': '#7B3F00',        # Chestnut Brown (like a Pine Marten)
+    'py-eventsourcing': '#4FC3F7', # Python Blue is actually #3776ab
 }
 
 

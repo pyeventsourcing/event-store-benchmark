@@ -47,6 +47,7 @@ fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
         Box::new(eventsourcingdb_adapter::EventsourcingDbFactory),
         Box::new(fact_adapter::FactFactory),
         Box::new(marten_adapter::MartenFactory),
+        Box::new(py_eventsourcing_adapter::PyEventsourcingFactory),
     ]
 }
 
