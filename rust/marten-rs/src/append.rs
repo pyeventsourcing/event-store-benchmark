@@ -5,7 +5,7 @@ use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
 use serde_json::Value;
 
-pub const CREATE_APPEND_EVENTS_FUNCTION: &str = r#"
+pub const CREATE_QUICK_APPEND_EVENTS_FUNCTION: &str = r#"
 CREATE OR REPLACE FUNCTION mt_quick_append_events(
     stream_id uuid,
     stream_type varchar,

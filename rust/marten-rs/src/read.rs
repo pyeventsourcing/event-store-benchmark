@@ -1,16 +1,18 @@
+#[derive(Debug, Clone)]
 pub struct TagCondition<'a> {
     pub tag_value: &'a str,
 }
 
+#[derive(Debug, Clone)]
 pub struct EventTagQuery<'a> {
-    pub last_seen_sequence: i64,
+    pub last_seen_seq_id: i64,
     pub conditions: Vec<TagCondition<'a>>,
 }
 
 impl<'a> EventTagQuery<'a> {
     pub fn new(last_seen_sequence: i64) -> Self {
         Self {
-            last_seen_sequence,
+            last_seen_seq_id: last_seen_sequence,
             conditions: Vec::new(),
         }
     }
@@ -30,7 +32,7 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
     // Marten joins to the tag table(s) to apply filters
     sql.push_str(" LEFT JOIN mt_event_tag_string t0 ON e.seq_id = t0.seq_id");
     
-    sql.push_str(&format!(" WHERE (e.seq_id > {})", query.last_seen_sequence));
+    sql.push_str(&format!(" WHERE (e.seq_id > {})", query.last_seen_seq_id));
 
     if !query.conditions.is_empty() {
         sql.push_str(" AND (");
@@ -50,7 +52,7 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
 pub fn generate_dcb_exists_sql(query: &EventTagQuery) -> String {
     let mut sql = String::from("SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0");
 
-    sql.push_str(&format!(" WHERE (t0.seq_id > {})", query.last_seen_sequence));
+    sql.push_str(&format!(" WHERE (t0.seq_id > {})", query.last_seen_seq_id));
 
     if !query.conditions.is_empty() {
         // Build OR conditions

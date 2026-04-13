@@ -1,8 +1,8 @@
 use std::fmt;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, Error, NoTls};
 use uuid::Uuid;
 use serde_json::Value;
-use crate::read::EventTagQuery;
+use crate::read::{EventTagQuery, RecordedEvent};
 
 #[derive(Debug)]
 pub enum MartenError {
@@ -47,36 +47,69 @@ pub mod schema;
 pub mod append;
 pub mod read;
 
-pub struct Session {
+pub struct Marten {
     pub client: Client,
-    pub pending_events: Vec<(Value, String, Vec<String>)>,
+    pub connection: tokio::task::JoinHandle<()>,
 }
 
-impl Session {
-    pub fn new(client: Client) -> Self {
-        Self {
-            client,
-            pending_events: Vec::new(),
+impl Marten {
+    pub async fn connect(connection_string: &str) -> Result<Self, tokio_postgres::Error> {
+        let (client, connection) = tokio_postgres::connect(connection_string, NoTls).await?;
+        let connection_handle = tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        Ok(Self { client, connection: connection_handle })
+    }
+
+    pub async fn drop_tables(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await?;
+        self.client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await?;
+        self.client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
+        self.client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
+        self.client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
+        self.client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
+        Ok(())
+    }
+
+    pub async fn create_tables(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
+        self.client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
+        self.client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
+        self.client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
+        self.client.batch_execute(append::CREATE_QUICK_APPEND_EVENTS_FUNCTION).await?;
+        Ok(())
+    }
+
+    pub async fn new_boundary<'a>(&self, mut query: EventTagQuery<'a>) -> Result<Boundary<'a>, tokio_postgres::Error> {
+        let events = self.read_events(&query).await?;
+        let mut last_seen_seq_id = query.last_seen_seq_id;
+        for i in 0..events.len() {
+            let seq_id = events[i].seq_id;
+            if seq_id > last_seen_seq_id {
+                last_seen_seq_id = seq_id;
+            }
         }
+        query.last_seen_seq_id = last_seen_seq_id;
+        let boundary = Boundary::new(query, events);
+        Ok(boundary)
     }
 
-    pub fn add_event(&mut self, data: Value, event_type: String, tags: Vec<String>) {
-        self.pending_events.push((data, event_type, tags));
-    }
-
-    pub async fn save_changes(&mut self, query: &EventTagQuery<'_>) -> Result<Vec<i64>, MartenError> {
+    pub async fn save_boundary(&mut self, boundary: Boundary<'_>) -> Result<Vec<i64>, MartenError> {
         let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
-        
+
         // Ensure the default stream exists or get its current version
         let current_version = append::get_stream_version(&self.client, &default_stream_id).await?;
-        
+
         let mut new_events = Vec::new();
-        let num_events = self.pending_events.len();
-        
+        let mut pending_events = boundary.pending_events;
+        let num_events = pending_events.len();
+
         // Get new sequence numbers from the database
         let seq_ids = get_next_sequence_numbers(&self.client, num_events).await?;
-        
-        for (i, (data, event_type, tags)) in self.pending_events.drain(..).enumerate() {
+
+        for (i, (data, event_type, tags)) in pending_events.drain(..).enumerate() {
             new_events.push(append::NewEvent {
                 id: Uuid::new_v4(),
                 stream_id: default_stream_id,
@@ -90,9 +123,40 @@ impl Session {
         }
 
         // Call conditional_rich_append
-        let result_seq_ids = append::conditional_rich_append_events(&mut self.client, new_events, query).await?;
+        let result_seq_ids = append::conditional_rich_append_events(&mut self.client, new_events, &boundary.query).await?;
         Ok(result_seq_ids)
     }
+
+    pub async fn read_all_events(&self) -> Result<Vec<RecordedEvent>, Error> {
+        let query = EventTagQuery::new(-1);
+        self.read_events(&query).await
+    }
+
+    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
+        read::select_events_for_query(&self.client, query).await
+    }
+
+}
+
+pub struct Boundary<'a> {
+    pub query: EventTagQuery<'a>,
+    pub selected_events: Vec<RecordedEvent>,
+    pub pending_events: Vec<(Value, String, Vec<String>)>,
+}
+
+impl<'a> Boundary<'a> {
+    pub fn new(query: EventTagQuery<'a>, selected_events: Vec<RecordedEvent>) -> Self {
+        Self {
+            query,
+            selected_events,
+            pending_events: Vec::new(),
+        }
+    }
+
+    pub fn add_event(&mut self, data: Value, event_type: String, tags: Vec<String>) {
+        self.pending_events.push((data, event_type, tags));
+    }
+
 }
 
 pub async fn get_next_sequence_numbers(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
@@ -120,48 +184,24 @@ pub fn add(left: u64, right: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_postgres::NoTls;
     use uuid::Uuid;
     use serde_json::json;
     use chrono;
-    use tokio_postgres::Client;
     use serial_test::serial;
 
     async fn setup_postgres_client() -> Result<Option<Client>, Box<dyn std::error::Error>> {
-        let connection_string = "host=localhost user=marten password=marten dbname=marten";
-        let (client, connection) = match tokio_postgres::connect(connection_string, NoTls).await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Failed to connect to Postgres: {}. Skipping test as database might not be available in this environment.", e);
-                return Ok(None);
-            }
-        };
-
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-
-        // Cleanup
-        let _ = client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await;
-        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await;
-        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await;
-        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_events").await;
-        let _ = client.batch_execute("DROP TABLE IF EXISTS mt_streams").await;
-        let _ = client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await;
-
-        // Create schema
-        client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
-        client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
-        client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
-        client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
-
-        // Create append function
-        client.batch_execute(append::CREATE_APPEND_EVENTS_FUNCTION).await?;
-
-        Ok(Some(client))
+        let marten = setup_marten().await?;
+        Ok(Some(marten.client))
     }
+
+    async fn setup_marten() -> Result<Marten, Box<dyn std::error::Error>> {
+        let connection_string = "host=localhost user=marten password=marten dbname=marten";
+        let marten = Marten::connect(connection_string).await?;
+        marten.drop_tables().await?;
+        marten.create_tables().await?;
+        Ok(marten)
+    }
+
 
     #[tokio::test]
     #[serial]
@@ -734,31 +774,36 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_save_session() -> Result<(), Box<dyn std::error::Error>> {
-        let client = match setup_postgres_client().await? {
-            Some(c) => c,
-            None => return Ok(()),
-        };
+        let mut marten = setup_marten().await?;
 
         // 1. Initialize an event tag query
         let last_seen_seq = 0;
-        let query = read::EventTagQuery::new(last_seen_seq)
+        let query1 = read::EventTagQuery::new(last_seen_seq)
             .with_tag("target-tag");
 
         // 2. Initialize a session and add events
-        let mut session = Session::new(client);
-        session.add_event(json!({"event": 1}), "type1".to_string(), vec!["tag1".to_string()]);
-        session.add_event(json!({"event": 2}), "type2".to_string(), vec!["tag2".to_string()]);
+        let mut boundary1 = marten.new_boundary(query1.clone()).await?;
+        let mut boundary2 = marten.new_boundary(query1.clone()).await?;
+        boundary1.add_event(json!({"event": 1}), "type1".to_string(), vec!["tag1".to_string()]);
+        boundary1.add_event(json!({"event": 2}), "type2".to_string(), vec!["tag2".to_string()]);
+        boundary2.add_event(json!({"event": 1}), "type1".to_string(), vec!["tag1".to_string()]);
+        boundary2.add_event(json!({"event": 2}), "type2".to_string(), vec!["tag2".to_string()]);
 
         // 3. Save the session
-        let seq_ids = session.save_changes(&query).await?;
-        
+        let seq_ids = marten.save_boundary(boundary1).await?;
         assert_eq!(seq_ids.len(), 2);
 
+        let seq_ids = marten.save_boundary(boundary2).await?;
+        assert_eq!(seq_ids.len(), 2);
+
+
         // 4. Verify events were saved
-        let all_events = read::read_all_events(&session.client).await?;
-        assert_eq!(all_events.len(), 2);
+        let all_events = marten.read_all_events().await?;
+        assert_eq!(all_events.len(), 4);
         assert_eq!(all_events[0].version, 1);
         assert_eq!(all_events[1].version, 2);
+        assert_eq!(all_events[2].version, 3);
+        assert_eq!(all_events[3].version, 4);
 
         Ok(())
     }
