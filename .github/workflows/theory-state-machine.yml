@@ -1,0 +1,210 @@
+name: Theory State Machine
+
+on:
+  issues:
+    types: [opened, closed, labeled, unlabeled]
+
+permissions:
+  issues: write
+
+jobs:
+
+  # ── 1. On creation: verify template usage, enforce `untested` label ──────────
+  on-opened:
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check theory template usage
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const requiredSections = [
+              '### Theory',
+              '### Context',
+              '### Test Procedure',
+              '### Measurable Outcome',
+              '### Result',
+            ];
+            const isTheoryIssue = requiredSections.every(s => body.includes(s));
+
+            if (!isTheoryIssue) {
+              // Not a theory issue — do nothing.
+              console.log('Issue does not use theory template. Skipping.');
+              return;
+            }
+
+            const labels = context.payload.issue.labels.map(l => l.name);
+
+            // Remove any pre-existing status labels that are not `untested`
+            const statusLabels = ['in-progress', 'verified', 'refuted', 'inconclusive'];
+            for (const label of statusLabels) {
+              if (labels.includes(label)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: label,
+                });
+              }
+            }
+
+            // Ensure `untested` is present
+            if (!labels.includes('untested')) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['untested'],
+              });
+            }
+
+            // Apply event-store:* label based on the `### Event Store` field
+            const storeMatch = body.match(/### Event Store\s*([\s\S]*?)(\n###|$)/);
+            const store = storeMatch ? storeMatch[1].trim().toLowerCase() : '';
+            const storeLabelMap = {
+              'axonserver':      'event-store:axonserver',
+              'eventsourcingdb': 'event-store:eventsourcingdb',
+              'fact':            'event-store:fact',
+              'kurrentdb':       'event-store:kurrentdb',
+              'umadb':           'event-store:umadb',
+            };
+            const storeLabel = storeLabelMap[store];
+            if (storeLabel && !labels.includes(storeLabel)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [storeLabel],
+              });
+            }
+
+  # ── 2. On closure: gate on non-empty Actual Outcome field ───────────────────
+  on-closed:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce Actual Outcome before closure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            // Only enforce on theory issues
+            if (!body.includes('### Theory')) {
+              console.log('Not a theory issue. Skipping.');
+              return;
+            }
+
+            // Extract content after the `### Actual Outcome` heading
+            const match = body.match(/### Actual Outcome\s*([\s\S]*?)(\n###|$)/);
+            const actualOutcome = match ? match[1].trim() : '';
+
+            // Check result is not still Pending
+            const resultMatch = body.match(/### Result\s*([\s\S]*?)(\n###|$)/);
+            const result = resultMatch ? resultMatch[1].trim() : '';
+            const isPending = result.toLowerCase().includes('pending') || result === '';
+
+            if (!actualOutcome || isPending) {
+              // Reopen the issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'open',
+              });
+
+              // Post a comment explaining why
+              const missing = [];
+              if (!actualOutcome) missing.push('**Actual Outcome** is empty');
+              if (isPending) missing.push('**Result** is still set to `Pending`');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: [
+                  '**Theory closure blocked.**',
+                  '',
+                  'The following fields must be completed before this issue can be closed:',
+                  ...missing.map(m => `- ${m}`),
+                  '',
+                  'Edit the issue body to populate these fields, then close again.',
+                ].join('\n'),
+              });
+
+              return;
+            }
+
+            // Closure is valid — apply the correct status label
+            const statusMap = {
+              verified: 'verified',
+              refuted: 'refuted',
+              inconclusive: 'inconclusive',
+            };
+
+            const statusLabels = ['untested', 'in-progress', 'verified', 'refuted', 'inconclusive'];
+            const currentLabels = context.payload.issue.labels.map(l => l.name);
+
+            // Remove all existing status labels
+            for (const label of statusLabels) {
+              if (currentLabels.includes(label)) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: label,
+                });
+              }
+            }
+
+            // Determine and apply the terminal label
+            let terminalLabel = null;
+            for (const [key, label] of Object.entries(statusMap)) {
+              if (result.toLowerCase().includes(key)) {
+                terminalLabel = label;
+                break;
+              }
+            }
+
+            if (terminalLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: [terminalLabel],
+              });
+            }
+
+  # ── 3. On label change: enforce exactly one status label ────────────────────
+  on-labeled:
+    if: >
+      (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+      contains(github.event.issue.labels.*.name, 'theory')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce single status label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            if (!body.includes('### Theory')) return;
+
+            const statusLabels = ['untested', 'in-progress', 'verified', 'refuted', 'inconclusive'];
+            const currentLabels = context.payload.issue.labels.map(l => l.name);
+            const presentStatusLabels = currentLabels.filter(l => statusLabels.includes(l));
+
+            if (presentStatusLabels.length <= 1) return;
+
+            // More than one status label present — remove all except the most recently added
+            const addedLabel = context.payload.label?.name;
+            for (const label of presentStatusLabels) {
+              if (label !== addedLabel) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  name: label,
+                });
+              }
+            }
