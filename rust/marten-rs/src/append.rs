@@ -15,13 +15,13 @@ CREATE OR REPLACE FUNCTION mt_quick_append_events(
     dotnet_types varchar[],
     bodies jsonb[],
     tag_string_values varchar[]
-) RETURNS int[] AS $$
+) RETURNS bigint[] AS $$
 DECLARE
-    event_version int;
+    event_version bigint;
     index int;
-    seq int;
+    seq bigint;
     actual_tenant varchar;
-    return_value int[];
+    return_value bigint[];
 BEGIN
     -- 1. Determine current stream version and create stream if needed
     SELECT version INTO event_version FROM mt_streams WHERE id = stream_id;
@@ -72,7 +72,7 @@ $$ LANGUAGE plpgsql;
 "#;
 
 pub async fn quick_append_events(
-    client: &impl GenericClient,
+    client: &mut Client,
     stream_id: Uuid,
     stream_type: &str,
     tenant_id: &str,
@@ -81,8 +81,8 @@ pub async fn quick_append_events(
     dotnet_types: &[Option<String>],
     bodies: &[Value],
     tags: &[Option<String>],
-) -> Result<Vec<i32>, Error> {
-    let result: Vec<i32> = client.query_one(
+) -> Result<Vec<i64>, Error> {
+    let result: Vec<i64> = client.query_one(
         "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
         &[
             &stream_id,

@@ -133,41 +133,80 @@ impl Marten {
         let client_ref = &**client;
         // Ensure the default stream exists or get its current version
         let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
-        let current_version = append::get_stream_version(client_ref, &default_stream_id).await?;
 
-        let mut marten_events = Vec::new();
         let num_events = events.len();
-
-        // Get new sequence numbers from the database
-        let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
-
-        // let mut can_quick_append = true;
-        for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
-            // if tags.len() > 1 {
-            //     can_quick_append = false;
-            // }
-            marten_events.push(read::MartenEvent {
-                id: Uuid::new_v4(),
-                stream_id: default_stream_id,
-                version: current_version + (i as i32) + 1,
-                data,
-                event_type,
-                dotnet_type: None,
-                tags,
-                seq_id: seq_ids[i],
-            });
+        
+        let mut any_event_with_more_than_two_tags = false;
+        for i in 0..num_events {
+            if events[i].tags.len() > 1 {
+                any_event_with_more_than_two_tags = true;
+                break;
+            }
         }
-
-    // Call conditional_rich_append
-        let result_seq_ids = if let Some(query) = query {
+        
+        if !any_event_with_more_than_two_tags && query.is_none() {
             let mut client = client;
-            append::conditional_rich_append_events(&mut *client, marten_events, &query).await?
+            let mut event_ids = vec![];
+            let mut event_types = vec![];
+            let mut dotnet_types = vec![];
+            let mut bodies = vec![];
+            let mut tags = vec![];
+            for i in 0..num_events {
+                event_ids.push(Uuid::new_v4());
+                event_types.push(events[i].event_type.as_str());
+                dotnet_types.push(None);
+                bodies.push(events[i].data.clone());
+                tags.push(events[i].tags.first().map(|s| s.to_string()));
+            }
+            let res_seq_ids = append::quick_append_events(
+                &mut *client,
+                default_stream_id,
+                "default_stream",
+                "DEFAULT",
+                &event_ids,
+                &event_types,
+                &dotnet_types,
+                &bodies,
+                &tags,
+            ).await?;
+            Ok(res_seq_ids)
         } else {
-            let mut client = client;
-            append::rich_append_events(&mut *client, marten_events).await?
-        };
+            let current_version = append::get_stream_version(client_ref, &default_stream_id).await?;
 
-        Ok(result_seq_ids)
+            let mut marten_events = Vec::new();
+
+            // Get new sequence numbers from the database
+            let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
+
+            // let mut can_quick_append = true;
+            for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
+                // if tags.len() > 1 {
+                //     can_quick_append = false;
+                // }
+                marten_events.push(read::MartenEvent {
+                    id: Uuid::new_v4(),
+                    stream_id: default_stream_id,
+                    version: current_version + (i as i32) + 1,
+                    data,
+                    event_type,
+                    dotnet_type: None,
+                    tags,
+                    seq_id: seq_ids[i],
+                });
+            }
+
+            // Call conditional_rich_append
+            let result_seq_ids = if let Some(query) = query {
+                let mut client = client;
+                append::conditional_rich_append_events(&mut *client, marten_events, &query).await?
+            } else {
+                let mut client = client;
+                append::rich_append_events(&mut *client, marten_events).await?
+            };
+
+            Ok(result_seq_ids)
+            
+        }
     }
 
     pub async fn read_all_events(&self) -> Result<Vec<MartenEvent>, MartenError> {
@@ -421,7 +460,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_quick_append_events() -> Result<(), Box<dyn std::error::Error>> {
-        let client = match setup_postgres_client().await? {
+        let mut client = match setup_postgres_client().await? {
             Some(c) => c,
             None => return Ok(()),
         };
@@ -440,7 +479,7 @@ mod tests {
         let tags = vec![Some("tag1".to_string()), Some("tag2".to_string())];
 
         let result = append::quick_append_events(
-            &client,
+            &mut client,
             stream_id,
             "test_stream",
             "DEFAULT",
