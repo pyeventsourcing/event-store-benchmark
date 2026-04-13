@@ -2541,6 +2541,7 @@ dependencies = [
  "postgres-types",
  "serde",
  "serde_json",
+ "serial_test",
  "tokio",
  "tokio-postgres",
  "uuid",
