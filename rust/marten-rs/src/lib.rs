@@ -32,7 +32,7 @@ mod tests {
         });
 
         // Cleanup
-        let _ = client.batch_execute("DROP FUNCTION IF EXISTS mt_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await;
+        let _ = client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await;
         let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await;
         let _ = client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await;
         let _ = client.batch_execute("DROP TABLE IF EXISTS mt_events").await;
@@ -59,7 +59,7 @@ mod tests {
             None => return Ok(()),
         };
 
-        // Test insertion via mt_append_events
+        // Test insertion via mt_quick_append_events
         let stream_id = Uuid::new_v4();
         let event_id1 = Uuid::new_v4();
         let event_id2 = Uuid::new_v4();
@@ -73,7 +73,7 @@ mod tests {
         let tags = vec![Some("tag1".to_string()), Some("tag2".to_string())];
 
         let result: Vec<i32> = client.query_one(
-            "SELECT mt_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
+            "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
             &[
                 &stream_id,
                 &"test_stream",

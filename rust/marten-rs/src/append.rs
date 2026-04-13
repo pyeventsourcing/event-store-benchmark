@@ -1,5 +1,5 @@
 pub const CREATE_APPEND_EVENTS_FUNCTION: &str = r#"
-CREATE OR REPLACE FUNCTION mt_append_events(
+CREATE OR REPLACE FUNCTION mt_quick_append_events(
     stream_id uuid,
     stream_type varchar,
     tenantid varchar,
