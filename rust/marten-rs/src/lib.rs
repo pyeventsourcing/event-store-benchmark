@@ -861,26 +861,26 @@ mod tests {
         // 2. Initialize a session and add events
         let mut boundary1 = marten.new_boundary(query1.clone()).await?;
         let mut boundary2 = marten.new_boundary(query1.clone()).await?;
-        boundary1.add_event(json!({"event": 1}), "type1".to_string(), vec!["tag1".to_string()]);
-        boundary1.add_event(json!({"event": 2}), "type2".to_string(), vec!["tag2".to_string()]);
-        boundary2.add_event(json!({"event": 1}), "type1".to_string(), vec!["tag1".to_string()]);
-        boundary2.add_event(json!({"event": 2}), "type2".to_string(), vec!["tag2".to_string()]);
+        boundary1.add_event(json!({"event": 1}), "type1".to_string(), vec!["target-tag".to_string()]);
+        boundary1.add_event(json!({"event": 2}), "type2".to_string(), vec!["target-tag".to_string()]);
+        boundary2.add_event(json!({"event": 3}), "type1".to_string(), vec!["target-tag".to_string()]);
+        boundary2.add_event(json!({"event": 4}), "type2".to_string(), vec!["target-tag".to_string()]);
 
         // 3. Save the session
         let seq_ids = marten.save_boundary(boundary1).await?;
         assert_eq!(seq_ids.len(), 2);
 
-        let seq_ids = marten.save_boundary(boundary2).await?;
-        assert_eq!(seq_ids.len(), 2);
+        let result = marten.save_boundary(boundary2).await;
+        match result {
+            Err(MartenError::AppendConditionFailed) => {},
+            _ => panic!("Expected AppendConditionFailed error, got {:?}", result),
+        }
 
-
-        // 4. Verify events were saved
+        // 4. Verify events were saved (only boundary1)
         let all_events = marten.read_all_events().await?;
-        assert_eq!(all_events.len(), 4);
+        assert_eq!(all_events.len(), 2);
         assert_eq!(all_events[0].version, 1);
         assert_eq!(all_events[1].version, 2);
-        assert_eq!(all_events[2].version, 3);
-        assert_eq!(all_events[3].version, 4);
 
         Ok(())
     }
