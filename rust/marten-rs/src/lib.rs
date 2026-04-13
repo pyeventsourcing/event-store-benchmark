@@ -1,3 +1,35 @@
+use std::fmt;
+
+#[derive(Debug)]
+pub enum MartenError {
+    Postgres(tokio_postgres::Error),
+    AppendConditionFailed,
+}
+
+impl fmt::Display for MartenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MartenError::Postgres(e) => write!(f, "Postgres error: {}", e),
+            MartenError::AppendConditionFailed => write!(f, "Append condition failed"),
+        }
+    }
+}
+
+impl std::error::Error for MartenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            MartenError::Postgres(e) => Some(e),
+            MartenError::AppendConditionFailed => None,
+        }
+    }
+}
+
+impl From<tokio_postgres::Error> for MartenError {
+    fn from(e: tokio_postgres::Error) -> Self {
+        MartenError::Postgres(e)
+    }
+}
+
 pub mod schema;
 pub mod append;
 pub mod read;
@@ -549,6 +581,90 @@ mod tests {
         
         assert_eq!(stream_versions.get(&stream_id1), Some(&2));
         assert_eq!(stream_versions.get(&stream_id2), Some(&1));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_conditional_rich_append_events() -> Result<(), Box<dyn std::error::Error>> {
+        let mut client = match setup_postgres_client().await? {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        // 1. Prepare some initial data
+        let stream_id = Uuid::new_v4();
+        let initial_events = vec![
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id,
+                version: 1,
+                data: json!({"initial": true}),
+                event_type: "initial_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["target-tag".to_string()],
+                sequence: 1,
+            },
+        ];
+        let seq_ids = append::rich_append_events(&mut client, initial_events).await?;
+        let last_seq = seq_ids[0];
+
+        // 2. Test successful conditional append
+        // Condition: exist events with "target-tag" and seq_id > 0
+        let query_success = read::EventTagQuery::new(0)
+            .with_tag("target-tag");
+        
+        let new_events1 = vec![
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id,
+                version: 2,
+                data: json!({"conditional": "success"}),
+                event_type: "test_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["other-tag".to_string()],
+                sequence: 2,
+            },
+        ];
+        
+        let seq_ids1 = append::conditional_rich_append_events(&mut client, new_events1, &query_success).await?;
+        assert_eq!(seq_ids1.len(), 1);
+        assert_eq!(seq_ids1[0], 2);
+
+        // 3. Test failed conditional append
+        // Condition: exist events with "target-tag" and seq_id > last_seq
+        // There are no such events yet.
+        let query_fail = read::EventTagQuery::new(last_seq)
+            .with_tag("target-tag");
+        
+        let new_events2 = vec![
+            append::NewEvent {
+                id: Uuid::new_v4(),
+                stream_id,
+                version: 3,
+                data: json!({"conditional": "fail"}),
+                event_type: "test_event".to_string(),
+                dotnet_type: None,
+                tags: vec!["should-not-exist".to_string()],
+                sequence: 3,
+            },
+        ];
+        
+        let result = append::conditional_rich_append_events(&mut client, new_events2, &query_fail).await;
+        
+        match result {
+            Err(MartenError::AppendConditionFailed) => {},
+            _ => panic!("Expected AppendConditionFailed error, got {:?}", result),
+        }
+
+        // Verify that the failed event was NOT appended
+        let all_events = read::read_all_events(&client).await?;
+        assert_eq!(all_events.len(), 2); // Initial event + first successful conditional append
+        
+        for event in all_events {
+            assert_ne!(event.data, json!({"conditional": "fail"}));
+        }
 
         Ok(())
     }

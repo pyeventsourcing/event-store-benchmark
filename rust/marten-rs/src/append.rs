@@ -1,3 +1,5 @@
+use crate::MartenError;
+use crate::read::{evaluate_append_condition, EventTagQuery};
 use std::collections::HashMap;
 use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
@@ -174,54 +176,18 @@ pub struct NewEvent {
     pub sequence: i64,
 }
 
-// pub async fn conditional_rich_append_events(
-//     client: &mut Client,
-//     query: Option<&EventTagQuery<'_>>,
-//     events: Vec<NewEvent>
-// ) -> Result<(bool, Vec<i64>), Error> {
-//     // 1. Start transaction
-//     let tx = client.transaction().await?;
-//
-//     // 2. Consistency check
-//     if let Some(q) = query {
-//         if crate::read::evaluate_append_condition(&tx, q).await? {
-//             tx.rollback().await?;
-//             return Ok((false, Vec::new()));
-//         }
-//     }
-//
-//     // 3. Append operations
-//     let mut seq_ids = Vec::new();
-//
-//     // Prepare statements for reuse
-//     let stream_stmt = tx.prepare("INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, 'default', $2, 'DEFAULT') ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version").await?;
-//     let event_stmt = tx.prepare("INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, nextval('mt_events_sequence')) RETURNING seq_id").await?;
-//     let tag_stmt = tx.prepare("INSERT INTO mt_event_tag_string (value, seq_id) VALUES ($1, $2) ON CONFLICT DO NOTHING").await?;
-//
-//     for event in &events {
-//         // stream upsert
-//         tx.execute(&stream_stmt, &[&event.stream_id, &event.version]).await?;
-//
-//         // event insert
-//         let timestamp = chrono::Utc::now();
-//         let row = tx.query_one(
-//             &event_stmt,
-//             &[&event.data, &event.event_type, &event.dotnet_type, &event.id, &event.stream_id, &event.version, &timestamp, &"DEFAULT"]
-//         ).await?;
-//         let seq_id: i64 = row.get(0);
-//         seq_ids.push(seq_id);
-//
-//         // tag inserts
-//         for tag in &event.tags {
-//             tx.execute(&tag_stmt, &[tag, &seq_id]).await?;
-//         }
-//     }
-//
-//     // 4. Commit
-//     tx.commit().await?;
-//
-//     Ok((true, seq_ids))
-// }
+pub async fn conditional_rich_append_events(
+    client: &mut Client,
+    events: Vec<NewEvent>,
+    query: &EventTagQuery<'_>,
+) -> Result<Vec<i64>, MartenError> {
+    let result = evaluate_append_condition(client, query).await?;
+    if result {
+        rich_append_events(client, events).await.map_err(MartenError::from)
+    } else {
+        Err(MartenError::AppendConditionFailed)
+    }
+}
 
 pub async fn rich_append_events(
     client: &mut Client,
