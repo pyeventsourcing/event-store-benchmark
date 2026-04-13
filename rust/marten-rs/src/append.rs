@@ -69,7 +69,7 @@ END
 $$ LANGUAGE plpgsql;
 "#;
 
-pub async fn quick_append_events(
+pub async fn mt_quick_append_events(
     client: &Client,
     stream_id: Uuid,
     stream_type: &str,
@@ -163,7 +163,7 @@ pub async fn update_stream_version(
     ).await
 }
 
-pub struct TaggedEvent {
+pub struct NewEvent {
     pub id: uuid::Uuid,
     pub stream_id: uuid::Uuid,
     pub version: i32,
@@ -173,24 +173,17 @@ pub struct TaggedEvent {
     pub tags: Vec<String>,
 }
 
-pub async fn rich_append_events(
+pub async fn conditional_rich_append_events(
     client: &mut Client,
     query: Option<&EventTagQuery<'_>>,
-    events: Vec<TaggedEvent>
+    events: Vec<NewEvent>
 ) -> Result<(bool, Vec<i64>), Error> {
     // 1. Start transaction
     let tx = client.transaction().await?;
 
     // 2. Consistency check
     if let Some(q) = query {
-        let last_seen = q.last_seen_sequence;
-        let tag_values: Vec<String> = q.conditions.iter().map(|c| c.tag_value.to_string()).collect();
-        let conflict: bool = tx.query_one(
-            "SELECT EXISTS (SELECT 1 FROM mt_event_tag_string t0 INNER JOIN mt_events e ON t0.seq_id = e.seq_id WHERE t0.seq_id > $1 AND t0.value = ANY($2))",
-            &[&last_seen, &tag_values]
-        ).await?.get(0);
-
-        if conflict {
+        if crate::dcb::evaluate_append_condition(&tx, q).await? {
             tx.rollback().await?;
             return Ok((false, Vec::new()));
         }

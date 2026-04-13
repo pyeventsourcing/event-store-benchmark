@@ -21,7 +21,7 @@ impl<'a> EventTagQuery<'a> {
     }
 }
 
-use tokio_postgres::{Client, Error};
+use tokio_postgres::{Error, GenericClient};
 use serde_json::Value;
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
@@ -79,7 +79,13 @@ pub struct RecordedEvent {
     pub dotnet_type: Option<String>,
 }
 
-pub async fn select_events_for_query(client: &Client, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
+pub async fn evaluate_append_condition(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<bool, Error> {
+    let sql = generate_dcb_exists_sql(query);
+    let row = client.query_one(&sql, &[]).await?;
+    Ok(row.get(0))
+}
+
+pub async fn select_events_for_query(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<Vec<RecordedEvent>, Error> {
     let sql = generate_select_events_sql(query);
     let rows = client.query(&sql, &[]).await?;
     let mut events = Vec::new();
