@@ -7,6 +7,7 @@ ADAPTER_COLORS = {
     'eventsourcingdb': '#ff7f0e',  # Orange
     'dummy': '#888888',        # Grey
     'fact': '#a6674c',        # Amber Brown
+    'marten': '#7B3F00',        # Chestnut Brown (like a Pine Marten)
 }
 
 

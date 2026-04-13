@@ -3,28 +3,30 @@ performance:
   mode: write
   local: true
   warmup_seconds: 0
-  duration_seconds: 3
+  duration_seconds: 5
   samples_per_second: 2
   concurrency:
     readers: 0
 #    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    writers: [1, 2, 4]
+    writers: [1, 2, 4, 8, 16]
   operations:
     write:
       event_size_bytes: 256
   stores:
     - marten
+    - umadb
 ---
 performance:
   name: scaling-readers
   mode: read
   local: true
   warmup_seconds: 0
-  duration_seconds: 3
+  duration_seconds: 5
   samples_per_second: 2
   concurrency:
 #    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    readers: [1, 2, 4]
+#    readers: [1, 2, 4]
+    readers: [1, 2, 4, 8, 16]
     writers: 0
   operations:
     write:
@@ -36,3 +38,4 @@ performance:
     prepopulate_streams: 500
   stores:
     - marten
+    - umadb

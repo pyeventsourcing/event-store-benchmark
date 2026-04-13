@@ -249,7 +249,7 @@ impl PerformanceWorkload {
 
         // Prepopulate events across streams concurrently
         let mut setup_set = JoinSet::new();
-        let concurrency = 10;
+        let concurrency = 1;
         let streams_per_task = (num_streams as f64 / concurrency as f64).ceil() as usize;
 
         let write_config = self.config.operations.write.clone();
@@ -449,7 +449,15 @@ impl PerformanceWorkload {
                 };
 
                 let operation_started = Instant::now();
-                if adapter.append(vec![evt]).await.is_ok() {
+                let mut success = false;
+                for _ in 0..100 {
+                    if adapter.append(vec![evt.clone()]).await.is_ok() {
+                        success = true;
+                        break;
+                    }
+                }
+
+                if success {
                     if activate_metrics {
                         let operation_completed = Instant::now();
                         let elapsed = operation_completed - operation_started;
@@ -464,6 +472,8 @@ impl PerformanceWorkload {
                         stream_name = format!("stream-{}-", Uuid::new_v4());
                         stream_position = 0;
                     }
+                } else {
+                    eprintln!("Operation failed after 100 retries");
                 }
             }
 

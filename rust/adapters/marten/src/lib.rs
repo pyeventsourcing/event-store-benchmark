@@ -193,7 +193,9 @@ impl EventStoreAdapter for MartenAdapter {
         client
             .append_events(&mut marten_events, None)
             .await
-            .map_err(|e| anyhow::anyhow!(e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("Marten append failed: {}", e)
+            })?;
         Ok(())
     }
 

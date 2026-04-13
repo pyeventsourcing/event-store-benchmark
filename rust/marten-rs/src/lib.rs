@@ -1,5 +1,6 @@
+use std::error::Error;
 use std::fmt;
-use tokio_postgres::{Client, Error, NoTls};
+use tokio_postgres::{Client, NoTls};
 use uuid::Uuid;
 use serde_json::Value;
 use crate::read::{EventTagQuery, MartenEvent};
@@ -14,7 +15,14 @@ pub enum MartenError {
 impl fmt::Display for MartenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MartenError::Postgres(e) => write!(f, "Postgres error: {}", e),
+            MartenError::Postgres(e) => {
+                if let Some(db_err) = e.as_db_error() {
+                    write!(f, "Postgres error: {} (Code: {}, Message: {}, Detail: {:?}, Hint: {:?})", 
+                        e, db_err.code().code(), db_err.message(), db_err.detail(), db_err.hint())
+                } else {
+                    write!(f, "Postgres error: {:?}", e.source())
+                }
+            },
             MartenError::AppendConditionFailed => write!(f, "Append condition failed"),
             MartenError::Uuid(e) => write!(f, "Uuid error: {}", e),
         }
@@ -142,12 +150,12 @@ impl Marten {
         Ok(result_seq_ids)
     }
 
-    pub async fn read_all_events(&self) -> Result<Vec<MartenEvent>, Error> {
+    pub async fn read_all_events(&self) -> Result<Vec<MartenEvent>, tokio_postgres::Error> {
         let query = EventTagQuery::new(-1);
         self.read_events(&query).await
     }
 
-    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, Error> {
+    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, tokio_postgres::Error> {
         read::select_events_for_query(&self.client, query).await
     }
 
