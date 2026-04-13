@@ -19,6 +19,7 @@ pub struct PyEventsourcingStoreManager {
     container: Option<ContainerAsync<PyEventsourcingPostgres>>,
     local: bool,
     data_dir: StoreDataDir,
+    recorder: Option<PostgresDCBRecorderTT>,
 }
 
 impl PyEventsourcingStoreManager {
@@ -28,6 +29,7 @@ impl PyEventsourcingStoreManager {
             container: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "py-eventsourcing"),
+            recorder: None,
         }
     }
 
@@ -51,25 +53,16 @@ impl StoreManager for PyEventsourcingStoreManager {
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
 
+        let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
+
         wait_for_ready("PyEventsourcingPostgres", || async {
-            let (client, connection) = tokio_postgres::connect(&self.uri, tokio_postgres::NoTls).await?;
-            tokio::spawn(async move {
-                if let Err(e) = connection.await {
-                    eprintln!("connection error: {}", e);
-                }
-            });
+            let client = recorder.pool.get().await?;
             client.execute("SELECT 1", &[]).await.map(|_| ()).map_err(|e| anyhow::anyhow!(e))
         }, Duration::from_secs(60)).await?;
 
         // Initialize tables
-        let (client, connection) = tokio_postgres::connect(&self.uri, tokio_postgres::NoTls).await?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-        let recorder = PostgresDCBRecorderTT::from_client(client, "public");
         recorder.create_tables().await?;
+        self.recorder = Some(recorder);
 
         Ok(())
     }
@@ -96,7 +89,13 @@ impl StoreManager for PyEventsourcingStoreManager {
     }
 
     async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(PyEventsourcingAdapter::new(&self.uri).await?))
+        if let Some(recorder) = &self.recorder {
+            return Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder.clone())));
+        }
+
+        // Lazy initialization for local stores where start() is not called
+        let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
+        Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder)))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -122,14 +121,12 @@ pub struct PyEventsourcingAdapter {
 
 impl PyEventsourcingAdapter {
     pub async fn new(uri: &str) -> Result<Self> {
-        let (client, connection) = tokio_postgres::connect(uri, tokio_postgres::NoTls).await?;
-        tokio::spawn(async move {
-            if let Err(e) = connection.await {
-                eprintln!("connection error: {}", e);
-            }
-        });
-        let recorder = PostgresDCBRecorderTT::from_client(client, "public");
+        let recorder = PostgresDCBRecorderTT::connect(uri, "public").await?;
         Ok(Self { recorder })
+    }
+
+    pub fn with_recorder(recorder: PostgresDCBRecorderTT) -> Self {
+        Self { recorder }
     }
 
     pub fn recorder(&self) -> &PostgresDCBRecorderTT {

@@ -86,6 +86,7 @@ pub struct MartenStoreManager {
     container: Option<ContainerAsync<Marten>>,
     local: bool,
     data_dir: StoreDataDir,
+    client: Option<MartenClient>,
 }
 
 impl MartenStoreManager {
@@ -95,6 +96,7 @@ impl MartenStoreManager {
             container: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "marten"),
+            client: None,
         }
     }
 
@@ -104,7 +106,6 @@ impl MartenStoreManager {
 
     fn format_uri(host_port: u16) -> String {
         format!("postgres://eventsourcing:eventsourcing@127.0.0.1:{}/eventsourcing", host_port)
-        // format!("host=127.0.0.1 user=eventsourcing password=eventsourcing dbname=eventsourcing port={}", host_port)
     }
 }
 
@@ -121,18 +122,21 @@ impl StoreManager for MartenStoreManager {
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
 
+        let client = MartenClient::connect(&self.uri).await?;
+        
         // Wait for container to be ready and initialize schema
+        let client_clone = client.clone();
         wait_for_ready(
             "Marten",
             || async {
-                let client = MartenClient::connect(&self.uri).await?;
-                client.create_tables().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+                client_clone.create_tables().await.map_err(|e| anyhow::anyhow!("{}", e))?;
                 Ok(())
             },
             Duration::from_secs(60),
         )
         .await?;
 
+        self.client = Some(client);
         Ok(())
     }
 
@@ -159,7 +163,13 @@ impl StoreManager for MartenStoreManager {
     }
 
     async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(MartenAdapter::new(self.uri.clone()).await?))
+        if let Some(client) = &self.client {
+            return Ok(Arc::new(MartenAdapter::with_client(client.clone())));
+        }
+
+        // Lazy initialization for local stores where start() is not called
+        let client = MartenClient::connect(&self.uri).await?;
+        Ok(Arc::new(MartenAdapter::with_client(client)))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -170,24 +180,17 @@ impl StoreManager for MartenStoreManager {
 
 pub struct MartenAdapter {
     client: MartenClient,
-    uri: String,
 }
 
 impl MartenAdapter {
-    pub async fn new(uri: String) -> Result<Self> {
-        let client = MartenClient::connect(&uri).await?;
-        Ok(Self {
+    pub fn with_client(client: MartenClient) -> Self {
+        Self {
             client,
-            uri,
-        })
+        }
     }
 
     pub fn client(&self) -> &MartenClient {
         &self.client
-    }
-
-    pub fn uri(&self) -> &str {
-        &self.uri
     }
 }
 

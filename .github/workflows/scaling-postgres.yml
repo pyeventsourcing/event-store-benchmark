@@ -81,26 +81,6 @@ jobs:
           PGPASSWORD=postgres psql -c 'CREATE DATABASE eventsourcing;' -U postgres -h localhost
           PGPASSWORD=postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" -U postgres -h localhost
           PGPASSWORD=postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;" -U postgres -h localhost
-          
-      - name: Download Makefile
-        uses: actions/download-artifact@v8
-        with:
-          name: Makefile
-          path: .
-
-      - name: Set up Rust
-        if: ${{ matrix.store == 'umadb' }}
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install protobuf compiler
-        if: ${{ matrix.store == 'umadb' }}
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install and start umadb
-        if: ${{ matrix.store == 'umadb' }}
-        run: |
-          cargo install umadb
-          umadb &
 
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
@@ -116,6 +96,34 @@ jobs:
 
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
+
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Create tables for Marten
+        if: ${{ matrix.store == 'marten' }}
+        run: ./target/release/es-bench create-marten-tables
+
+      - name: Create tables for PyEventsourcing
+        if: ${{ matrix.store == 'py-eventsourcing' }}
+        run: ./target/release/es-bench create-py-eventsourcing-tables
+
+      - name: Set up Rust
+        if: ${{ matrix.store == 'umadb' }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        if: ${{ matrix.store == 'umadb' }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install and start umadb
+        if: ${{ matrix.store == 'umadb' }}
+        run: |
+          cargo install umadb
+          umadb &
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
