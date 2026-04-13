@@ -231,16 +231,20 @@ pub async fn rich_append_events(
     
     let mut seq_ids = Vec::new();
     let mut max_versions: HashMap<Uuid, i32> = HashMap::new();
+    let mut new_streams = std::collections::HashSet::new();
 
     for event in &events {
         let entry = max_versions.entry(event.stream_id).or_insert(event.version);
         if event.version > *entry {
             *entry = event.version;
         }
+        if event.version == 1 {
+            new_streams.insert(event.stream_id);
+        }
     }
 
     for (stream_id, version) in &max_versions {
-        if *version == 1 {
+        if new_streams.contains(stream_id) {
             insert_stream(&tx, stream_id, "default", *version, "DEFAULT").await?;
         } else {
             update_stream_version(&tx, stream_id, *version).await?;
