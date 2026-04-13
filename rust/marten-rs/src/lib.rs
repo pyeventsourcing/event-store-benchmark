@@ -87,27 +87,51 @@ mod tests {
         // Marten's result is [new_version, seq_id1, seq_id2, ...]
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], 2); // new version
+        assert_eq!(result[1], 1); // new seq number
+        assert_eq!(result[2], 2); // new seq number
 
         // Verify data
-        let rows = client.query(
-            "SELECT e.data, t.value, e.mt_dotnet_type FROM mt_events e JOIN mt_event_tag_string t ON e.seq_id = t.seq_id WHERE e.stream_id = $1 ORDER BY e.version",
-            &[&stream_id]
+        let event_rows = client.query(
+            "SELECT seq_id, id, stream_id, version, data, type, tenant_id, mt_dotnet_type, is_archived FROM mt_events ORDER BY seq_id",
+            &[]
         ).await?;
 
-        assert_eq!(rows.len(), 2);
-        let data1: serde_json::Value = rows[0].get(0);
-        let tag1: &str = rows[0].get(1);
-        let dotnet_type1: Option<String> = rows[0].get(2);
-        let data2: serde_json::Value = rows[1].get(0);
-        let tag2: &str = rows[1].get(1);
-        let dotnet_type2: Option<String> = rows[1].get(2);
+        assert_eq!(event_rows.len(), 2);
 
-        assert_eq!(data1, event_data1);
-        assert_eq!(tag1, "tag1");
-        assert_eq!(dotnet_type1, None);
-        assert_eq!(data2, event_data2);
-        assert_eq!(tag2, "tag2");
-        assert_eq!(dotnet_type2, None);
+        // First event
+        let row1 = &event_rows[0];
+        assert_eq!(row1.get::<_, i64>(0), 1); // seq_id
+        assert_eq!(row1.get::<_, Uuid>(1), event_id1); // id
+        assert_eq!(row1.get::<_, Uuid>(2), stream_id); // stream_id
+        assert_eq!(row1.get::<_, i32>(3), 1); // version
+        assert_eq!(row1.get::<_, serde_json::Value>(4), event_data1); // data
+        assert_eq!(row1.get::<_, &str>(5), "test_event_1"); // type
+        assert_eq!(row1.get::<_, &str>(6), "DEFAULT"); // tenant_id
+        assert_eq!(row1.get::<_, Option<String>>(7), None); // mt_dotnet_type
+        assert_eq!(row1.get::<_, bool>(8), false); // is_archived
+
+        // Second event
+        let row2 = &event_rows[1];
+        assert_eq!(row2.get::<_, i64>(0), 2); // seq_id
+        assert_eq!(row2.get::<_, Uuid>(1), event_id2); // id
+        assert_eq!(row2.get::<_, Uuid>(2), stream_id); // stream_id
+        assert_eq!(row2.get::<_, i32>(3), 2); // version
+        assert_eq!(row2.get::<_, serde_json::Value>(4), event_data2); // data
+        assert_eq!(row2.get::<_, &str>(5), "test_event_2"); // type
+        assert_eq!(row2.get::<_, &str>(6), "DEFAULT"); // tenant_id
+        assert_eq!(row2.get::<_, Option<String>>(7), None); // mt_dotnet_type
+        assert_eq!(row2.get::<_, bool>(8), false); // is_archived
+
+        let tag_rows = client.query(
+            "SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id",
+            &[]
+        ).await?;
+
+        assert_eq!(tag_rows.len(), 2);
+        assert_eq!(tag_rows[0].get::<_, &str>(0), "tag1");
+        assert_eq!(tag_rows[0].get::<_, i64>(1), 1);
+        assert_eq!(tag_rows[1].get::<_, &str>(0), "tag2");
+        assert_eq!(tag_rows[1].get::<_, i64>(1), 2);
 
         Ok(())
     }
