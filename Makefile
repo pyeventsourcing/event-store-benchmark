@@ -8,6 +8,7 @@ ESB_SEED ?= 42
 .PHONY: run-smoke-test
 .PHONY: run-scaling-in-docker
 .PHONY: run-scaling-binaries
+.PHONY: run-scaling-postgres
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
 .PHONY: help
@@ -58,6 +59,10 @@ run-scaling-in-docker:
 # Run the scaling-binaries workload
 run-scaling-binaries:
 	@make ./configs/scaling-binaries.yaml
+
+# Run the scaling-postgres workload
+run-scaling-postgres:
+	@make ./configs/scaling-postgres.yaml
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE

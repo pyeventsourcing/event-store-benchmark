@@ -1,0 +1,163 @@
+name: Scaling Postgres
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      session_id: ${{ steps.session.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate Session ID
+        id: session
+        run: echo "session_id=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Upload benchmark tool
+        uses: actions/upload-artifact@v6
+        with:
+          name: es-bench
+          path: target/release/es-bench
+          retention-days: 1
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v6
+        with:
+          name: configs
+          path: configs/
+          retention-days: 1
+
+      - name: Upload Makefile
+        uses: actions/upload-artifact@v6
+        with:
+          name: Makefile
+          path: Makefile
+          retention-days: 1
+
+  run-scaling-binaries:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        store: [marten, py-eventsourcing, umadb]
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres:17
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
+    steps:
+      - name: Setup database
+        run: |
+          PGPASSWORD=postgres psql -c 'CREATE DATABASE eventsourcing;' -U postgres -h localhost
+          PGPASSWORD=postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" -U postgres -h localhost
+          PGPASSWORD=postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;" -U postgres -h localhost
+          
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Set up Rust
+        if: ${{ matrix.store == 'umadb' }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        if: ${{ matrix.store == 'umadb' }}
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install and start umadb
+        if: ${{ matrix.store == 'umadb' }}
+        run: |
+          cargo install umadb
+          umadb &
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          make run-scaling-postgres
+
+      - name: Upload scaling results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-scaling-${{ matrix.store }}
+          path: results/raw/
+          retention-days: 1
+
+  report:
+    needs: [setup, run-scaling-binaries]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python/requirements.txt'
+
+      - name: Create Python virtual environment for reporting
+        run: make venv
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: results/raw/
+          merge-multiple: true
+
+      - name: Generate report
+        run: make report
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: results/published

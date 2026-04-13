@@ -24,7 +24,7 @@ pub struct PyEventsourcingStoreManager {
 impl PyEventsourcingStoreManager {
     pub fn new(data_dir: Option<String>, local: bool) -> Self {
         Self {
-            uri: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
+            uri: Self::format_uri(POSTGRES_PORT.as_u16()),
             container: None,
             local,
             data_dir: StoreDataDir::new(data_dir, "py-eventsourcing"),
@@ -32,7 +32,7 @@ impl PyEventsourcingStoreManager {
     }
 
     fn format_uri(host_port: u16) -> String {
-        format!("postgres://postgres:postgres@localhost:{}/postgres", host_port)
+        format!("postgres://eventsourcing:eventsourcing@localhost:{}/eventsourcing", host_port)
     }
 }
 

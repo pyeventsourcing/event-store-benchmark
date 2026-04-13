@@ -100,7 +100,8 @@ impl MartenStoreManager {
     }
 
     fn format_uri(host_port: u16) -> String {
-        format!("host=127.0.0.1 user=postgres password=postgres dbname=marten port={}", host_port)
+        format!("postgres://eventsourcing:eventsourcing@127.0.0.1:{}/eventsourcing", host_port)
+        // format!("host=127.0.0.1 user=eventsourcing password=eventsourcing dbname=eventsourcing port={}", host_port)
     }
 }
 
