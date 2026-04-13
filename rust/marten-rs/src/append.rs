@@ -69,7 +69,7 @@ END
 $$ LANGUAGE plpgsql;
 "#;
 
-pub async fn mt_quick_append_events(
+pub async fn quick_append_events(
     client: &Client,
     stream_id: Uuid,
     stream_type: &str,

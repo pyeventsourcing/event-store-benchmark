@@ -174,7 +174,7 @@ mod tests {
         let bodies = vec![event_data1.clone(), event_data2.clone()];
         let tags = vec![Some("tag1".to_string()), Some("tag2".to_string())];
 
-        let result = append::mt_quick_append_events(
+        let result = append::quick_append_events(
             &client,
             stream_id,
             "test_stream",
