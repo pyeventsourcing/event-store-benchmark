@@ -3,9 +3,17 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter
+from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter, FuncFormatter
 
 from .style import get_adapter_color
+
+
+def _format_tick(x, pos):
+    """Format tick label to show decimal fractions only when necessary, avoiding scientific notation."""
+    if x == 0:
+        return "0"
+    # Using trim='-' to remove unnecessary zeros and dot
+    return np.format_float_positional(x, trim='-', precision=6, fractional=True)
 
 
 def plot_latency_cdf(run, out_path: str):
@@ -17,10 +25,15 @@ def plot_latency_cdf(run, out_path: str):
     plt.figure(figsize=(6, 4))
     plt.plot(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
     plt.xscale("log")
+    
+    # Ensure x-axis min value is half of the lowest plotted value (excluding zero)
+    valid_latencies = [l for l in latencies_ms if l > 0]
+    if valid_latencies:
+        plt.xlim(left=min(valid_latencies) / 2)
+
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    formatter = FormatStrFormatter('%.1f')
-    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
@@ -53,6 +66,7 @@ def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
+    all_latencies = []
     for run in sorted_runs:
         latencies_ms, percentiles = run.get_latency_cdf_data()
         if latencies_ms is None:
@@ -60,12 +74,17 @@ def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=
 
         color = get_adapter_color(run.adapter)
         plt.plot(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
+        all_latencies.extend([l for l in latencies_ms if l > 0])
 
     plt.xscale("log")
+    
+    # Ensure x-axis min value is half of the lowest plotted value (excluding zero)
+    if all_latencies:
+        plt.xlim(left=min(all_latencies) / 2)
+
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    formatter = FormatStrFormatter('%.1f')
-    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
     plt.title(title)
@@ -128,20 +147,25 @@ def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_vals = []
     for i, adapter in enumerate(adapters):
         vals = [data[wc].get(adapter, 0) for wc in worker_counts]
         offset = (i - (len(adapters) - 1) / 2) * width
         plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+        all_vals.extend([v for v in vals if v > 0])
 
     plt.yscale("log")
+    
+    # Ensure y-axis min value is half of the lowest plotted value (excluding zero)
+    if all_vals:
+        plt.ylim(bottom=min(all_vals) / 2)
+
     plt.ylabel("Throughput (events/sec) [log]")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
 
-    formatter = ScalarFormatter()
-    formatter.set_scientific(False)
-    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
 
@@ -182,6 +206,7 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_p50_vals = []
     for i, adapter in enumerate(adapters):
         p50_vals = np.array([data[wc].get(adapter, {}).get("p50", 0) for wc in worker_counts])
         p99_vals = np.array([data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts])
@@ -193,15 +218,20 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
         plt.bar(x + offset, p50_vals, width, color=color, alpha=1.0)
         plt.bar(x + offset, np.maximum(0, p99_vals - p50_vals), width, bottom=p50_vals, color=color, alpha=0.6)
         plt.bar(x + offset, np.maximum(0, p999_vals - p99_vals), width, bottom=p99_vals, color=color, alpha=0.3)
+        all_p50_vals.extend([v for v in p50_vals if v > 0])
 
     plt.yscale("log")
+    
+    # Ensure y-axis min value is half of the lowest plotted value (excluding zero)
+    if all_p50_vals:
+        plt.ylim(bottom=min(all_p50_vals) / 2)
+
     plt.ylabel("Latency (ms) [log]")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
 
-    formatter = FormatStrFormatter('%.1f')
-    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
 
