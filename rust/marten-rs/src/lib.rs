@@ -132,9 +132,18 @@ impl Marten {
         let client = self.pool.get().await?;
         let client_ref = &**client;
         // Ensure the default stream exists or get its current version
-        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
 
         let num_events = events.len();
+
+        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
+
+        // If all tags are the same, then make UUID version 5 for the stream ID,
+        // otherwise use the default_stream_id.
+        let stream_id = events.first()
+            .and_then(|e| e.tags.first())
+            .filter(|first_tag| events.iter().all(|e| e.tags.first().map_or(false, |t| t == *first_tag)))
+            .map(|first_tag| Uuid::new_v5(&Uuid::NAMESPACE_OID, first_tag.as_bytes()))
+            .unwrap_or(default_stream_id);
         
         let mut any_event_with_more_than_two_tags = false;
         for i in 0..num_events {
@@ -158,9 +167,10 @@ impl Marten {
                 bodies.push(events[i].data.clone());
                 tags.push(events[i].tags.first().map(|s| s.to_string()));
             }
+
             let res_seq_ids = append::quick_append_events(
                 &mut *client,
-                default_stream_id,
+                stream_id,
                 "default_stream",
                 "DEFAULT",
                 &event_ids,
@@ -171,21 +181,17 @@ impl Marten {
             ).await?;
             Ok(res_seq_ids)
         } else {
-            let current_version = append::get_stream_version(client_ref, &default_stream_id).await?;
+            let current_version = append::get_stream_version(client_ref, &stream_id).await?;
 
             let mut marten_events = Vec::new();
 
             // Get new sequence numbers from the database
             let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
 
-            // let mut can_quick_append = true;
             for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
-                // if tags.len() > 1 {
-                //     can_quick_append = false;
-                // }
                 marten_events.push(read::MartenEvent {
                     id: Uuid::new_v4(),
-                    stream_id: default_stream_id,
+                    stream_id: stream_id,
                     version: current_version + (i as i32) + 1,
                     data,
                     event_type,
