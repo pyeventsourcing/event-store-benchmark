@@ -1,14 +1,24 @@
 # Consistent color scheme for all adapters across all plots
 # Using standard data visualization colors for better clarity
+from matplotlib.pyplot import get_cmap
+
+adapters = [
+    'umadb',
+    'kurrentdb',
+    'axonserver',
+    'marten',
+    'py-eventsourcing',
+    '',
+    'eventsourcingdb',
+    'fact',
+    'dummy',
+]
+
+cmap = get_cmap("Set1")
+
 ADAPTER_COLORS = {
-    'umadb': '#d62728',        # Red
-    'kurrentdb': '#1f77b4',    # Blue
-    'axonserver': '#2ca02c',   # Green
-    'eventsourcingdb': '#ff7f0e',  # Orange
-    'dummy': '#888888',        # Grey
-    'fact': '#a6674c',        # Amber Brown
-    'marten': '#7B3F00',        # Chestnut Brown (like a Pine Marten)
-    'py-eventsourcing': '#4FC3F7', # Python Blue is actually #3776ab
+    adapter: cmap(i)
+    for i, adapter in enumerate(adapters)
 }
 
 
