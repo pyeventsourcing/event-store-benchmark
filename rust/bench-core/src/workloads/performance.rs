@@ -451,7 +451,7 @@ impl PerformanceWorkload {
                 let operation_started = Instant::now();
                 let mut success = false;
                 for _ in 0..100 {
-                    if !cancel_token.is_cancelled() {
+                    if cancel_token.is_cancelled() {
                         break;
                     }
                     if adapter.append(vec![evt.clone()]).await.is_ok() {
