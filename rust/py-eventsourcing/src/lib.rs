@@ -279,64 +279,60 @@ impl PostgresDCBRecorderTT {
 
     pub async fn append(&self, events: Vec<DcbEvent>, condition: Option<DcbAppendCondition>) -> Result<i64> {
         let mut client = self.pool.get().await?;
-        if events.is_empty() {
-            return Err(anyhow!("Cannot append empty events list"));
-        }
-        let pg_events: Vec<DcbEventTt> = events.into_iter().map(|e| DcbEventTt {
-            type_name: e.type_name,
-            data: Some(e.data),
-            tags: e.tags,
-        }).collect();
-
-        if let Some(cond) = condition {
-            if cond.fail_if_events_match.items.is_empty() {
-                // If query is empty, it never matches, so we can just do unconditional append.
-                // Or should we follow the Python logic for separate read and append?
-                // Python's all_query_items_have_tags returns false if items is empty.
-                return self.unconditional_append_with_client(&client, pg_events).await;
+        let fut = async move {
+            if events.is_empty() {
+                return Err(anyhow!("Cannot append empty events list"));
             }
+            let pg_events: Vec<DcbEventTt> = events.into_iter().map(|e| DcbEventTt {
+                type_name: e.type_name,
+                data: Some(e.data),
+                tags: e.tags,
+            }).collect();
 
-            if cond.fail_if_events_match.items.iter().all(|q| !q.tags.is_empty()) {
-                // Do single-statement "conditional append".
-                let pg_query_items: Vec<DcbQueryItemTt> = cond.fail_if_events_match.items.into_iter().map(|i| DcbQueryItemTt {
-                    types: i.types,
-                    tags: i.tags,
-                }).collect();
+            if let Some(cond) = condition {
+                if cond.fail_if_events_match.items.is_empty() {
+                    // If query is empty, it never matches, so we can just do unconditional append.
+                    // Or should we follow the Python logic for separate read and append?
+                    // Python's all_query_items_have_tags returns false if items is empty.
 
-                let after = cond.after.unwrap_or(0);
-                
-                let row = client.query_one(
-                    &format!("SELECT {} FROM {}.{}($1, $2, $3)", self.conditional_append_fn, self.schema, self.conditional_append_fn),
-                    &[&pg_query_items, &after, &pg_events]
-                ).await?;
-
-                let res: Option<i64> = row.get(0);
-                res.ok_or_else(|| anyhow!("IntegrityError: Append condition failed"))
-            } else {
-                // Do separate "read" and "append" operations in a transaction.
-                let after = cond.after.unwrap_or(0);
-                
-                // Start a transaction
-                let transaction = client.transaction().await?;
-                
-                // Lock table
-                transaction.batch_execute(&format!("LOCK TABLE {}.{} IN EXCLUSIVE MODE", self.schema, self.events_table)).await?;
-                
-                // Check condition
-                let failed = self.read_with_client(&transaction, Some(cond.fail_if_events_match), Some(after), Some(1)).await?;
-                
-                if !failed.is_empty() {
-                    return Err(anyhow!("IntegrityError: Append condition failed"));
+                    return self.unconditional_append_with_client(&client, pg_events).await;
                 }
-                
-                // If okay, then do an "unconditional append".
-                let res = self.unconditional_append_with_client(&transaction, pg_events).await?;
-                transaction.commit().await?;
-                Ok(res)
+
+                if cond.fail_if_events_match.items.iter().all(|q| !q.tags.is_empty()) {
+                    // Do single-statement "conditional append".
+                    let pg_query_items: Vec<DcbQueryItemTt> = cond.fail_if_events_match.items.into_iter().map(|i| DcbQueryItemTt {
+                        types: i.types,
+                        tags: i.tags,
+                    }).collect();
+
+                    let after = cond.after.unwrap_or(0);
+                    
+                    let row = client.query_one(
+                        &format!("SELECT {} FROM {}.{}($1, $2, $3)", self.conditional_append_fn, self.schema, self.conditional_append_fn),
+                        &[&pg_query_items, &after, &pg_events]
+                    ).await?;
+
+                    let res: Option<i64> = row.get(0);
+                    res.ok_or_else(|| anyhow!("IntegrityError: Append condition failed"))
+                } else {
+                    // Do separate "read" and "append" operations in a transaction.
+                    let after = cond.after.unwrap_or(0);
+                    let transaction = client.transaction().await?;
+                    transaction.batch_execute(&format!("LOCK TABLE {}.{} IN EXCLUSIVE MODE", self.schema, self.events_table)).await?;
+                    let failed = self.read_with_client(&transaction, Some(cond.fail_if_events_match), Some(after), Some(1)).await?;
+                    if !failed.is_empty() {
+                        return Err(anyhow!("IntegrityError: Append condition failed"));
+                    }
+                    let res = self.unconditional_append_with_client(&transaction, pg_events).await?;
+                    transaction.commit().await?;
+                    Ok(res)
+                }
+            } else {
+                self.unconditional_append_with_client(&client, pg_events).await
             }
-        } else {
-            self.unconditional_append_with_client(&client, pg_events).await
-        }
+        };
+        tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| anyhow!("Timeout in append operation"))?
     }
 
     async fn unconditional_append_with_client(&self, client: &impl GenericClient, pg_events: Vec<DcbEventTt>) -> Result<i64> {
@@ -350,7 +346,9 @@ impl PostgresDCBRecorderTT {
 
     pub async fn read(&self, query: Option<DcbQuery>, after: Option<i64>, limit: Option<i64>) -> Result<Vec<DcbSequencedEvent>> {
         let client = self.pool.get().await?;
-        self.read_with_client(&client, query, after, limit).await
+        let fut = self.read_with_client(&client, query, after, limit);
+        tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| anyhow!("Timeout in read operation"))?
     }
 
     async fn read_with_client(&self, client: &impl GenericClient, query: Option<DcbQuery>, after: Option<i64>, limit: Option<i64>) -> Result<Vec<DcbSequencedEvent>> {

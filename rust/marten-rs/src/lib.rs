@@ -100,23 +100,31 @@ impl Marten {
 
     pub async fn drop_tables(&self) -> Result<(), MartenError> {
         let client = self.pool.get().await?;
-        client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
-        client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
-        client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
-        Ok(())
+        let fut = async {
+            client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await?;
+            client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await?;
+            client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
+            client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
+            client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
+            client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
+            Ok::<(), MartenError>(())
+        };
+        tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| MartenError::Connection("Timeout dropping tables".to_string()))?
     }
 
     pub async fn create_tables(&self) -> Result<(), MartenError> {
         let client = self.pool.get().await?;
-        client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
-        client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
-        client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
-        client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
-        client.batch_execute(append::CREATE_QUICK_APPEND_EVENTS_FUNCTION).await?;
-        Ok(())
+        let fut = async {
+            client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
+            client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
+            client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
+            client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
+            client.batch_execute(append::CREATE_QUICK_APPEND_EVENTS_FUNCTION).await?;
+            Ok::<(), MartenError>(())
+        };
+        tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| MartenError::Connection("Timeout creating tables".to_string()))?
     }
 
     pub async fn new_boundary<'a>(&self, mut query: EventTagQuery<'a>) -> Result<Boundary<'a>, MartenError> {
@@ -143,8 +151,6 @@ impl Marten {
 
     pub async fn append_events(&self, events: &mut Vec<MartenDcbEvent>, query: Option<&EventTagQuery<'_>>) -> Result<Vec<i64>, MartenError> {
         let client = self.pool.get().await?;
-        let client_ref = &**client;
-        // Ensure the default stream exists or get its current version
 
         let num_events = events.len();
 
@@ -167,7 +173,6 @@ impl Marten {
         }
         
         if !any_event_with_more_than_two_tags && query.is_none() {
-            let mut client = client;
             let mut event_ids = vec![];
             let mut event_types = vec![];
             let mut dotnet_types = vec![];
@@ -181,50 +186,59 @@ impl Marten {
                 tags.push(events[i].tags.first().map(|s| s.to_string()));
             }
 
-            let res_seq_ids = append::quick_append_events(
-                &mut *client,
-                stream_id,
-                "default_stream",
-                "DEFAULT",
-                &event_ids,
-                &event_types,
-                &dotnet_types,
-                &bodies,
-                &tags,
-            ).await?;
-            Ok(res_seq_ids)
+            let fut = async move {
+                let mut client = client;
+                append::quick_append_events(
+                    &mut *client,
+                    stream_id,
+                    "default_stream",
+                    "DEFAULT",
+                    &event_ids,
+                    &event_types,
+                    &dotnet_types,
+                    &bodies,
+                    &tags,
+                ).await
+            };
+            tokio::time::timeout(Duration::from_secs(60), fut).await
+                .map_err(|_| MartenError::Connection("Timeout in quick_append_events".to_string()))?
+                .map_err(MartenError::from)
         } else {
-            let current_version = append::get_stream_version(client_ref, &stream_id).await?;
+            let fut = async move {
+                let client_ref = &**client;
+                let current_version = append::get_stream_version(client_ref, &stream_id).await?;
 
-            let mut marten_events = Vec::new();
+                let mut marten_events = Vec::new();
 
-            // Get new sequence numbers from the database
-            let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
+                // Get new sequence numbers from the database
+                let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
 
-            for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
-                marten_events.push(read::MartenEvent {
-                    id: Uuid::new_v4(),
-                    stream_id: stream_id,
-                    version: current_version + (i as i32) + 1,
-                    data,
-                    event_type,
-                    dotnet_type: None,
-                    tags,
-                    seq_id: seq_ids[i],
-                });
-            }
+                for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
+                    marten_events.push(read::MartenEvent {
+                        id: Uuid::new_v4(),
+                        stream_id: stream_id,
+                        version: current_version + (i as i32) + 1,
+                        data,
+                        event_type,
+                        dotnet_type: None,
+                        tags,
+                        seq_id: seq_ids[i],
+                    });
+                }
 
-            // Call conditional_rich_append
-            let result_seq_ids = if let Some(query) = query {
+                // Call conditional_rich_append
                 let mut client = client;
-                append::conditional_rich_append_events(&mut *client, marten_events, &query).await?
-            } else {
-                let mut client = client;
-                append::rich_append_events(&mut *client, marten_events).await?
+                let result_seq_ids = if let Some(query) = query {
+                    append::conditional_rich_append_events(&mut *client, marten_events, &query).await?
+                } else {
+                    append::rich_append_events(&mut *client, marten_events).await?
+                };
+
+                Ok::<Vec<i64>, MartenError>(result_seq_ids)
             };
 
-            Ok(result_seq_ids)
-            
+            tokio::time::timeout(Duration::from_secs(60), fut).await
+                .map_err(|_| MartenError::Connection("Timeout in rich_append_events".to_string()))?
         }
     }
 
@@ -235,7 +249,10 @@ impl Marten {
 
     pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, MartenError> {
         let client = self.pool.get().await?;
-        Ok(read::select_events_for_query(&**client, query).await?)
+        let fut = read::select_events_for_query(&**client, query);
+        tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| MartenError::Connection("Timeout reading events".to_string()))?
+            .map_err(MartenError::from)
     }
 
 }
