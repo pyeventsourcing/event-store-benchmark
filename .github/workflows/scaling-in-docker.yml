@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, kurrentdb, axonserver, eventsourcingdb, fact, dummy]
+        store: [umadb, kurrentdb, axonserver, eventsourcingdb, fact]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}

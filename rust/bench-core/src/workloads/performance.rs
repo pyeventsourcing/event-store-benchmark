@@ -477,7 +477,7 @@ impl PerformanceWorkload {
                         stream_position = 0;
                     }
                 }
-                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds)) < operation_completed;
+                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds + 1)) < operation_completed;
             }
 
             if activate_metrics {
@@ -539,7 +539,7 @@ impl PerformanceWorkload {
                         sleep(Duration::from_secs(1)).await;
                     }
                 }
-                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds)) < operation_completed;
+                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
             }
             if activate_metrics {

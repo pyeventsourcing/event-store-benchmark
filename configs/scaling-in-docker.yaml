@@ -7,7 +7,7 @@ performance:
   samples_per_second: 5
   concurrency:
     readers: 0
-    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
   operations:
     write:
       event_size_bytes: 256
@@ -27,7 +27,7 @@ performance:
   duration_seconds: 60
   samples_per_second: 5
   concurrency:
-    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
     writers: 0
   operations:
     write:
