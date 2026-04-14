@@ -46,8 +46,8 @@ pub trait EventStoreAdapter: Send + Sync {
 
 #[async_trait]
 pub trait StoreManager: Send + Sync {
-    /// Use local service (no need to start and stop)
-    fn local(&self) -> bool;
+    /// Use docker service (need to start and stop)
+    fn use_docker(&self) -> bool;
 
     /// Start the container and return success status
     async fn start(&mut self) -> anyhow::Result<()>;
@@ -124,5 +124,5 @@ pub trait StoreManagerFactory: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Create a store manager instance with given (internal) connection params or defaults
-    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> anyhow::Result<Box<dyn StoreManager>>;
+    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> anyhow::Result<Box<dyn StoreManager>>;
 }

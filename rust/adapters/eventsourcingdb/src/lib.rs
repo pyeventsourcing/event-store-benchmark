@@ -23,17 +23,17 @@ pub struct EventsourcingDbStoreManager {
     uri: String,
     options: HashMap<String, String>,
     container: Option<ContainerAsync<EventsourcingDb>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
 }
 
 impl EventsourcingDbStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(EVENTSOURCINGDB_PORT.as_u16()),
             container: None,
             options: HashMap::new(),
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "eventsourcingdb"),
         }
     }
@@ -45,7 +45,7 @@ impl EventsourcingDbStoreManager {
 
 #[async_trait]
 impl StoreManager for EventsourcingDbStoreManager {
-    fn local(&self) -> bool { self.local }
+    fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
@@ -209,7 +209,7 @@ impl StoreManagerFactory for EventsourcingDbFactory {
         "eventsourcingdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(EventsourcingDbStoreManager::new(data_dir, local)))
+    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(EventsourcingDbStoreManager::new(data_dir, use_docker)))
     }
 }

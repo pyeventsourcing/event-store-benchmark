@@ -29,7 +29,7 @@ pub struct PerformanceConfig {
     pub concurrency: ConcurrencyConfig,
     pub operations: OperationConfig,
     #[serde(default)]
-    pub local: bool,
+    pub use_docker: bool,
     #[serde(default)]
     pub setup: SetupConfig,
     pub stores: StoreValue,
@@ -53,7 +53,7 @@ impl PerformanceConfig {
                     new_config.concurrency.writers = ConcurrencyValue::Single(writers);
                     new_config.concurrency.readers = ConcurrencyValue::Single(readers);
                     new_config.stores = StoreValue::Single(store.to_string());
-                    new_config.local = self.local;
+                    new_config.use_docker = self.use_docker;
                     // Add sweep suffix to name
                     new_config.name = format!("{}-{}-w{}-r{}", self.name, store, writers, readers);
                     configs.push(new_config);

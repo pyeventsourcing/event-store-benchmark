@@ -108,7 +108,7 @@ impl DummyStoreManager {
 
 #[async_trait]
 impl StoreManager for DummyStoreManager {
-    fn local(&self) -> bool { true }
+    fn use_docker(&self) -> bool { true }
     async fn start(&mut self) -> Result<()> {
         Ok(())
     }
@@ -167,7 +167,7 @@ impl StoreManagerFactory for DummyFactory {
     fn create_store_manager(
         &self,
         _data_dir: Option<String>,
-        _local: bool,
+        _use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(DummyStoreManager::new()))
     }

@@ -84,17 +84,17 @@ impl Image for Marten {
 pub struct MartenStoreManager {
     uri: String,
     container: Option<ContainerAsync<Marten>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
     client: Option<MartenClient>,
 }
 
 impl MartenStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(POSTGRES_PORT.as_u16()),
             container: None,
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "marten"),
             client: None,
         }
@@ -111,8 +111,8 @@ impl MartenStoreManager {
 
 #[async_trait]
 impl StoreManager for MartenStoreManager {
-    fn local(&self) -> bool {
-        self.local
+    fn use_docker(&self) -> bool {
+        self.use_docker
     }
 
     async fn start(&mut self) -> Result<()> {
@@ -252,8 +252,8 @@ impl StoreManagerFactory for MartenFactory {
     fn create_store_manager(
         &self,
         data_dir: Option<String>,
-        local: bool,
+        use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(MartenStoreManager::new(data_dir, local)))
+        Ok(Box::new(MartenStoreManager::new(data_dir, use_docker)))
     }
 }

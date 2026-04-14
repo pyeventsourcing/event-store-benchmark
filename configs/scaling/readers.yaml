@@ -1,6 +1,7 @@
 performance:
   name: scaling-readers
   mode: read
+  use_docker: true
   warmup_seconds: 0
   duration_seconds: 20
   samples_per_second: 10

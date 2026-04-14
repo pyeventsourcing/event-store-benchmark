@@ -1,7 +1,7 @@
 performance:
   name: smoke-test-performance-write
   mode: write
-  #  local: true
+  use_docker: true
   warmup_seconds: 1
   duration_seconds: 3
   samples_per_second: 10
@@ -26,7 +26,7 @@ performance:
 performance:
   name: smoke-test-performance-read
   mode: read
-  #  local: true
+  use_docker: true
   warmup_seconds: 1
   duration_seconds: 3
   samples_per_second: 10

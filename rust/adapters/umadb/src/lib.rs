@@ -17,16 +17,16 @@ use umadb_dcb::{DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 pub struct UmaDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<UmaDb>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
 }
 
 impl UmaDbStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(UMADB_PORT.as_u16()),
             container: None,
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
         }
     }
@@ -38,7 +38,7 @@ impl UmaDbStoreManager {
 
 #[async_trait]
 impl StoreManager for UmaDbStoreManager {
-    fn local(&self) -> bool { self.local }
+    fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
@@ -191,7 +191,7 @@ impl StoreManagerFactory for UmaDbFactory {
         "umadb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(UmaDbStoreManager::new(data_dir, local)))
+    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(UmaDbStoreManager::new(data_dir, use_docker)))
     }
 }

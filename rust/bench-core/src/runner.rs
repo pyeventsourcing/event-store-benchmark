@@ -14,7 +14,7 @@ pub async fn execute_run(
 ) -> Result<(ContainerMetrics, WorkloadResults, String)> {
     // Start store container
     let store_name = store.name();
-    let monitor = if !store.local() {
+    let monitor = if store.use_docker() {
         if !crate::is_image_pulled(store_name) {
             println!("Pulling {} image...", store_name);
             let mut last_err = None;
@@ -92,7 +92,7 @@ pub async fn execute_run(
         res = workload.execute(store.as_ref(), cancel_token.clone()) => res,
         _ = cancel_token.cancelled() => {
             println!("Interrupted during workload execution.");
-            if !store.local() {
+            if store.use_docker() {
                 store.stop().await.ok();
             }
             anyhow::bail!("Interrupted");
@@ -102,7 +102,7 @@ pub async fn execute_run(
     let workload_results = match workload_res {
         Ok(res) => res,
         Err(e) => {
-            if !store.local() {
+            if store.use_docker() {
                 // Ensure container is stopped on error/interruption
                 store.stop().await.ok();
             }
@@ -113,7 +113,7 @@ pub async fn execute_run(
     workload_results.print_summary();
 
     // Get container logs before stopping
-    let (container_metrics, logs) = if !store.local() {
+    let (container_metrics, logs) = if store.use_docker() {
         let container_metrics = if let Some(m) = monitor {
             m.stop().await
         } else {

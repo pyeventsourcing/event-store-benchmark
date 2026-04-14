@@ -16,16 +16,16 @@ use uuid::Uuid;
 pub struct KurrentDbStoreManager {
     uri: String,
     container: Option<ContainerAsync<KurrentDb>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
 }
 
 impl KurrentDbStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(KURRENTDB_PORT.as_u16()),
             container: None,
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "kurrentdb"),
         }
     }
@@ -37,10 +37,10 @@ impl KurrentDbStoreManager {
 
 #[async_trait]
 impl StoreManager for KurrentDbStoreManager {
-    fn local(&self) -> bool { self.local }
+    fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
-        if !self.local {
+        if !self.use_docker {
             let mount_path = self.data_dir.setup()?;
             let container = KurrentDb::new(mount_path).start().await?;
             let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
@@ -199,7 +199,7 @@ impl StoreManagerFactory for KurrentDbFactory {
         "kurrentdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(KurrentDbStoreManager::new(data_dir, local)))
+    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(KurrentDbStoreManager::new(data_dir, use_docker)))
     }
 }

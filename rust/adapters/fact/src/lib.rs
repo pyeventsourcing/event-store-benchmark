@@ -22,16 +22,16 @@ use proto::fact_bench_client::FactBenchClient;
 pub struct FactStoreManager {
     uri: String,
     container: Option<ContainerAsync<FactDb>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
 }
 
 impl FactStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(FACT_PORT.as_u16()),
             container: None,
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "fact"),
         }
     }
@@ -43,8 +43,8 @@ impl FactStoreManager {
 
 #[async_trait]
 impl StoreManager for FactStoreManager {
-    fn local(&self) -> bool {
-        self.local
+    fn use_docker(&self) -> bool {
+        self.use_docker
     }
 
     async fn start(&mut self) -> Result<()> {
@@ -185,8 +185,8 @@ impl StoreManagerFactory for FactFactory {
     fn create_store_manager(
         &self,
         data_dir: Option<String>,
-        local: bool,
+        use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(FactStoreManager::new(data_dir, local)))
+        Ok(Box::new(FactStoreManager::new(data_dir, use_docker)))
     }
 }

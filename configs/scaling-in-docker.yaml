@@ -1,6 +1,7 @@
 performance:
   name: scaling-writers
   mode: write
+  use_docker: true
   warmup_seconds: 0
   duration_seconds: 60
   samples_per_second: 5
@@ -21,6 +22,7 @@ performance:
 performance:
   name: scaling-readers
   mode: read
+  use_docker: true
   warmup_seconds: 0
   duration_seconds: 60
   samples_per_second: 5

@@ -17,16 +17,16 @@ use tokio::time::Duration;
 pub struct AxonServerStoreManager {
     uri: String,
     container: Option<ContainerAsync<AxonServer>>,
-    local: bool,
+    use_docker: bool,
     data_dir: StoreDataDir,
 }
 
 impl AxonServerStoreManager {
-    pub fn new(data_dir: Option<String>, local: bool) -> Self {
+    pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: format!("http://127.0.0.1:{}", AXONSERVER_GRPC_PORT.as_u16()),
             container: None,
-            local,
+            use_docker,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
         }
     }
@@ -56,7 +56,7 @@ impl AxonServerStoreManager {
 
 #[async_trait]
 impl StoreManager for AxonServerStoreManager {
-    fn local(&self) -> bool { self.local }
+    fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
@@ -216,8 +216,8 @@ impl StoreManagerFactory for AxonServerFactory {
         "axonserver"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, local: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(AxonServerStoreManager::new(data_dir, local)))
+    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(AxonServerStoreManager::new(data_dir, use_docker)))
     }
 }
 
