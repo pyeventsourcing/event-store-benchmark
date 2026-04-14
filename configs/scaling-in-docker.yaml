@@ -3,10 +3,10 @@ performance:
   mode: write
   warmup_seconds: 0
   duration_seconds: 60
-  samples_per_second: 10
+  samples_per_second: 5
   concurrency:
     readers: 0
-    writers: [1, 2, 4, 8, 16, 32]
+    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
   operations:
     write:
       event_size_bytes: 256
@@ -16,16 +16,16 @@ performance:
     - axonserver
     - eventsourcingdb
     - fact
-    - dummy
+#    - dummy
 ---
 performance:
   name: scaling-readers
   mode: read
   warmup_seconds: 0
   duration_seconds: 60
-  samples_per_second: 10
+  samples_per_second: 5
   concurrency:
-    readers: [1, 2, 4, 8, 16, 32]
+    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     writers: 0
   operations:
     write:
@@ -41,4 +41,4 @@ performance:
     - axonserver
     - eventsourcingdb
     - fact
-    - dummy
+#    - dummy
