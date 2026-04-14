@@ -49,7 +49,7 @@ jobs:
           path: Makefile
           retention-days: 1
 
-  run-scaling-binaries:
+  run-scaling-postgres:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
@@ -60,6 +60,7 @@ jobs:
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
     steps:
       - name: Setup database
+        if: ${{ matrix.store == 'marten' || matrix.store == 'py-eventsourcing' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql postgresql-contrib
@@ -125,7 +126,7 @@ jobs:
           retention-days: 1
 
   report:
-    needs: [setup, run-scaling-binaries]
+    needs: [setup, run-scaling-postgres]
     runs-on: ubuntu-latest
     if: always()
     steps:
