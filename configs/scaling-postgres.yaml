@@ -3,8 +3,8 @@ performance:
   mode: write
   local: true
   warmup_seconds: 0
-  duration_seconds: 5
-  samples_per_second: 4
+  duration_seconds: 15
+  samples_per_second: 2
   concurrency:
     readers: 0
     writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
@@ -21,8 +21,8 @@ performance:
   mode: read
   local: true
   warmup_seconds: 0
-  duration_seconds: 5
-  samples_per_second: 4
+  duration_seconds: 15
+  samples_per_second: 2
   concurrency:
     readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
     writers: 0
