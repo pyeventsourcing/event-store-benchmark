@@ -67,11 +67,10 @@ impl PostgresDCBRecorderTT {
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
         let pool = Pool::builder(mgr)
             .runtime(Runtime::Tokio1)
-            .max_size(50)
             .timeouts(Timeouts {
                 wait: Some(Duration::from_secs(30)),
-                create: Some(Duration::from_secs(10)),
-                recycle: Some(Duration::from_secs(10)),
+                create: Some(Duration::from_secs(30)),
+                recycle: Some(Duration::from_secs(30)),
             })
             .build()
             .map_err(|e| anyhow!("Pool creation failed: {}", e))?;

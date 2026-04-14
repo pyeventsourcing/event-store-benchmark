@@ -211,7 +211,7 @@ impl EventStoreAdapter for MartenAdapter {
             .append_events(&mut marten_events, None)
             .await
             .map_err(|e| {
-                anyhow::anyhow!("Marten append failed: {}", e)
+                anyhow::anyhow!("Marten append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
             })?;
         Ok(())
     }
@@ -222,7 +222,9 @@ impl EventStoreAdapter for MartenAdapter {
             query = query.with_tag(&req.stream);
         }
 
-        let events = self.client.read_events(&query).await?;
+        let events = self.client.read_events(&query).await.map_err(|e| {
+            anyhow::anyhow!("Marten read failed for stream '{}': {}. Check pool availability and database connection.", req.stream, e)
+        })?;
 
         let mut out = Vec::new();
         for (i, se) in events.into_iter().enumerate() {

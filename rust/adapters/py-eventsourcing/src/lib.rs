@@ -146,11 +146,14 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             }
         }).collect();
 
-        self.recorder.append(pg_events, None).await?;
+        self.recorder.append(pg_events, None).await.map_err(|e| {
+            anyhow::anyhow!("PyEventsourcing append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
+        })?;
         Ok(())
     }
 
     async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+        let stream = req.stream.clone();
         let query = Some(py_eventsourcing::DcbQuery {
             items: vec![py_eventsourcing::DcbQueryItem {
                 types: vec![],
@@ -162,7 +165,9 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             query,
             req.from_offset.map(|o| o as i64),
             req.limit.map(|l| l as i64)
-        ).await?;
+        ).await.map_err(|e| {
+            anyhow::anyhow!("PyEventsourcing read failed for stream '{}': {}. Check pool availability and database connection.", stream, e)
+        })?;
 
         Ok(events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
