@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use tokio::task::{JoinSet};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::EventStoreAdapter;
 
@@ -232,6 +233,127 @@ impl PerformanceWorkload {
         self.config.stores.first()
     }
 
+    /// Execute the workload
+    pub async fn execute(
+        &self,
+        store: &dyn StoreManager,
+        cancel_token: CancellationToken,
+    ) -> Result<WorkloadResults> {
+        // Run preparation (prepopulation) if configured
+        self.prepare(store).await?;
+
+        let mut reader_adapters = Vec::new();
+        let readers = self.config.concurrency.readers.first();
+        if readers > 0 {
+            println!("Creating {} reader clients...", readers);
+            for i in 0..readers {
+                match store.create_adapter().await {
+                    Ok(adapter) => reader_adapters.push(adapter),
+                    Err(e) => {
+                        eprintln!("Failed to create reader {}: {}", i, e);
+                        anyhow::bail!("Failed to create reader {}: {}", i, e);
+                    }
+                }
+            }
+            println!("All {} reader clients ready", readers);
+        }
+
+        let mut writer_adapters = Vec::new();
+        let writers = self.config.concurrency.writers.first();
+        if writers > 0 {
+            println!("Creating {} writer clients...", writers);
+            for i in 0..writers {
+                match store.create_adapter().await {
+                    Ok(adapter) => writer_adapters.push(adapter),
+                    Err(e) => {
+                        eprintln!("Failed to create writer {}: {}", i, e);
+                        anyhow::bail!("Failed to create writer {}: {}", i, e);
+                    }
+                }
+            }
+            println!("All {} writer clients ready", writers);
+        }
+
+        println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
+        let mut worker_tasks = JoinSet::new();
+        let duration_seconds = self.config.duration_seconds;
+        let samples_per_second = self.config.samples_per_second.max(1);
+        let sampling_starts = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
+
+        // Spawn writer tasks
+        for adapter in writer_adapters.into_iter() {
+            let activate_metrics = matches!(self.config.mode, PerformanceMode::Write);
+            Self::spawn_writer_task(
+                &mut worker_tasks,
+                adapter,
+                self.config.operations.write.clone().clone(),
+                cancel_token.clone(),
+                activate_metrics,
+                samples_per_second,
+                duration_seconds,
+                sampling_starts,
+            );
+        }
+
+        // Spawn reader tasks
+        let mut prepopulated_streams = self.config.setup.prepopulate_streams;
+        let prepopulated_events = self.config.setup.prepopulate_events;
+        if prepopulated_streams == 0 {
+            prepopulated_streams = prepopulated_events
+        }
+
+        for (i, adapter) in reader_adapters.into_iter().enumerate() {
+            let activate_metrics = matches!(self.config.mode, PerformanceMode::Read);
+            Self::spawn_reader_task(
+                &mut worker_tasks,
+                adapter,
+                self.config.operations.read.clone().clone(),
+                self.seed + (i as u64),
+                cancel_token.clone(),
+                self.stream_prefix.clone(),
+                prepopulated_streams,
+                activate_metrics,
+                samples_per_second,
+                duration_seconds,
+                sampling_starts,
+            );
+        }
+
+        // Collect results
+        let mut latency_histogram = LatencyRecorder::new();
+        let num_intervals = (duration_seconds * samples_per_second) as usize;
+        let mut combined_counts = vec![0u64; num_intervals + 1];
+
+        while let Some(worker_result) = worker_tasks.join_next().await {
+            if let Ok(Some((worker_latencies, worker_throughput))) = worker_result {
+                latency_histogram.hist.add(&worker_latencies.hist).unwrap();
+                for (i, count) in worker_throughput.counts.iter().enumerate() {
+                    if i < combined_counts.len() {
+                        combined_counts[i] += count;
+                    }
+                }
+            }
+        }
+
+        // Convert combined counts to ThroughputSamples
+        let mut throughput_samples = Vec::with_capacity(combined_counts.len());
+        let mut cumulative_count = 0;
+        for (i, &count) in combined_counts.iter().enumerate() {
+            cumulative_count += count;
+            throughput_samples.push(ThroughputSample {
+                elapsed_s: i as f64 / samples_per_second as f64,
+                count: cumulative_count,
+            });
+        }
+
+        Ok(WorkloadResults::new(
+            serde_json::to_value(&self.config)?,
+            store.name().to_string(),
+            throughput_samples,
+            latency_histogram,
+        ))
+    }
+
     /// Prepare the workload (e.g., prepopulate data for read workloads)
     pub async fn prepare(&self, store: &dyn StoreManager) -> Result<()> {
         let setup_start = Instant::now();
@@ -295,126 +417,6 @@ impl PerformanceWorkload {
         Ok(())
     }
 
-    /// Execute the workload
-    pub async fn execute(
-        &self,
-        store: &dyn StoreManager,
-        cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
-        // Run preparation (prepopulation) if configured
-        self.prepare(store).await?;
-
-        let mut reader_adapters = Vec::new();
-        let readers = self.config.concurrency.readers.first();
-        if readers > 0 {
-            println!("Creating {} reader clients...", readers);
-            for i in 0..readers {
-                match store.create_adapter().await {
-                    Ok(adapter) => reader_adapters.push(adapter),
-                    Err(e) => {
-                        eprintln!("Failed to create reader {}: {}", i, e);
-                        anyhow::bail!("Failed to create reader {}: {}", i, e);
-                    }
-                }
-            }
-            println!("All {} reader clients ready", readers);
-        }
-
-        let mut writer_adapters = Vec::new();
-        let writers = self.config.concurrency.writers.first();
-        if writers > 0 {
-            println!("Creating {} writer clients...", writers);
-            for i in 0..writers {
-                match store.create_adapter().await {
-                    Ok(adapter) => writer_adapters.push(adapter),
-                    Err(e) => {
-                        eprintln!("Failed to create writer {}: {}", i, e);
-                        anyhow::bail!("Failed to create writer {}: {}", i, e);
-                    }
-                }
-            }
-            println!("All {} writer clients ready", writers);
-        }
-
-        println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
-        let mut worker_tasks = JoinSet::new();
-        let samples_per_second = self.config.samples_per_second.max(1);
-        let num_intervals = (self.config.duration_seconds * samples_per_second) as usize;
-        let sampling_starts = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
-
-        // Spawn writer tasks
-        for adapter in writer_adapters.into_iter() {
-            let activate_metrics = matches!(self.config.mode, PerformanceMode::Write);
-            Self::spawn_writer_task(
-                &mut worker_tasks,
-                adapter,
-                self.config.operations.write.clone().clone(),
-                cancel_token.clone(),
-                activate_metrics,
-                samples_per_second,
-                num_intervals,
-                sampling_starts,
-            );
-        }
-
-        // Spawn reader tasks
-        let mut prepopulated_streams = self.config.setup.prepopulate_streams;
-        let prepopulated_events = self.config.setup.prepopulate_events;
-        if prepopulated_streams == 0 {
-            prepopulated_streams = prepopulated_events
-        }
-
-        for (i, adapter) in reader_adapters.into_iter().enumerate() {
-            let activate_metrics = matches!(self.config.mode, PerformanceMode::Read);
-            Self::spawn_reader_task(
-                &mut worker_tasks,
-                adapter,
-                self.config.operations.read.clone().clone(),
-                self.seed + (i as u64),
-                cancel_token.clone(),
-                self.stream_prefix.clone(),
-                prepopulated_streams,
-                activate_metrics,
-                samples_per_second,
-                num_intervals,
-                sampling_starts,
-            );
-        }
-
-        // Collect results
-        let mut latency_histogram = LatencyRecorder::new();
-        let mut combined_counts = vec![0u64; num_intervals + 1];
-
-        while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput))) = worker_result {
-                latency_histogram.hist.add(&worker_latencies.hist).unwrap();
-                for (i, count) in worker_throughput.counts.iter().enumerate() {
-                    if i < combined_counts.len() {
-                        combined_counts[i] += count;
-                    }
-                }
-            }
-        }
-
-        // Convert combined counts to ThroughputSamples
-        let mut throughput_samples = Vec::with_capacity(combined_counts.len());
-        let mut cumulative_count = 0;
-        for (i, &count) in combined_counts.iter().enumerate() {
-            cumulative_count += count;
-            throughput_samples.push(ThroughputSample {
-                elapsed_s: i as f64 / samples_per_second as f64,
-                count: cumulative_count,
-            });
-        }
-
-        Ok(WorkloadResults::new(
-            serde_json::to_value(&self.config)?,
-            store.name().to_string(),
-            throughput_samples,
-            latency_histogram,
-        ))
-    }
-
     fn spawn_writer_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
@@ -422,7 +424,7 @@ impl PerformanceWorkload {
         cancel_token: CancellationToken,
         activate_metrics: bool,
         samples_per_second: u64,
-        num_intervals: usize,
+        duration_seconds: u64,
         sampling_starts: Instant,
     ) {
         worker_tasks.spawn(async move {
@@ -434,6 +436,7 @@ impl PerformanceWorkload {
             let payload = vec![0u8; size];
 
             // Sampling for metrics measurement
+            let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, sampling_starts);
             let mut latencies = LatencyRecorder::new();
 
@@ -454,18 +457,18 @@ impl PerformanceWorkload {
                     Ok(_) => success = true,
                     Err(e) => {
                         eprintln!("Operation failed: {}", e);
+                        sleep(Duration::from_secs(1)).await;
                     }
                 }
+                let operation_completed = Instant::now();
                 if success {
                     if activate_metrics {
-                        let operation_completed = Instant::now();
                         // Record throughput sample
                         let status = throughput_recorder.record(operation_completed, 1);
                         if status == RecordingStatus::During {
                             // Record latency sample
                             latencies.record(operation_completed - operation_started);
                         }
-                        out_of_time = status == RecordingStatus::After;
                     }
                     // Increment stream position, maybe reset and change name.
                     stream_position += 1;
@@ -474,6 +477,7 @@ impl PerformanceWorkload {
                         stream_position = 0;
                     }
                 }
+                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds)) < operation_completed;
             }
 
             if activate_metrics {
@@ -494,13 +498,14 @@ impl PerformanceWorkload {
         prepopulated_streams: u64,
         activate_metrics: bool,
         samples_per_second: u64,
-        num_intervals: usize,
+        duration_seconds: u64,
         sampling_starts: Instant,
     ) {
         worker_tasks.spawn(async move {
             let mut out_of_time = false;
             let mut rng = StdRng::seed_from_u64(seed);
 
+            let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, sampling_starts);
             let mut latencies = LatencyRecorder::new();
 
@@ -518,18 +523,24 @@ impl PerformanceWorkload {
                 let result = adapter.read(req).await;
                 let operation_completed = Instant::now();
 
-                if activate_metrics {
-                    if let Ok(events) = result {
-                        // Record throughput sample
-                        let status = throughput_recorder.record(operation_completed, events.len() as u64);
-                        if status == RecordingStatus::During {
-                            // Record latency sample
-                            latencies.record(operation_completed - operation_started);
+                match result {
+                    Ok(events) => {
+                        if activate_metrics {
+                            // Record throughput sample
+                            let status = throughput_recorder.record(operation_completed, events.len() as u64);
+                            if status == RecordingStatus::During {
+                                // Record latency sample
+                                latencies.record(operation_completed - operation_started);
+                            }
                         }
-                        out_of_time = status == RecordingStatus::After;
                     }
-
+                    Err(e) => {
+                        eprintln!("Operation failed: {}", e);
+                        sleep(Duration::from_secs(1)).await;
+                    }
                 }
+                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds)) < operation_completed;
+
             }
             if activate_metrics {
                 Some((latencies, throughput_recorder))
