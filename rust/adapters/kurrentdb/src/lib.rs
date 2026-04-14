@@ -40,7 +40,7 @@ impl StoreManager for KurrentDbStoreManager {
     fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
-        if !self.use_docker {
+        if self.use_docker {
             let mount_path = self.data_dir.setup()?;
             let container = KurrentDb::new(mount_path).start().await?;
             let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;
