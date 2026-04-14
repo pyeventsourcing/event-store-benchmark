@@ -450,17 +450,12 @@ impl PerformanceWorkload {
 
                 let operation_started = Instant::now();
                 let mut success = false;
-                for _ in 0..100 {
-                    if cancel_token.is_cancelled() {
-                        break;
+                match adapter.append(vec![evt.clone()]).await {
+                    Ok(_) => success = true,
+                    Err(e) => {
+                        eprintln!("Operation failed: {}", e);
                     }
-                    if adapter.append(vec![evt.clone()]).await.is_ok() {
-                        success = true;
-                        break;
-                    }
-                    eprintln!("Operation failed after 100 retries");
                 }
-
                 if success {
                     if activate_metrics {
                         let operation_completed = Instant::now();

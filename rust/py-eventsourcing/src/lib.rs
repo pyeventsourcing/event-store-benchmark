@@ -1,5 +1,6 @@
 use tokio_postgres::NoTls;
-use deadpool_postgres::{Config, Pool, Runtime, GenericClient};
+use deadpool_postgres::{Pool, Runtime, GenericClient, Manager, ManagerConfig, RecyclingMethod, Timeouts};
+use tokio::time::Duration;
 use postgres_types::{ToSql, FromSql};
 use anyhow::{Result, anyhow};
 
@@ -59,9 +60,21 @@ pub struct PostgresDCBRecorderTT {
 
 impl PostgresDCBRecorderTT {
     pub async fn connect(config: &str, schema: &str) -> Result<Self> {
-        let mut cfg = Config::new();
-        cfg.url = Some(config.to_string());
-        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls)?;
+        let pg_config: tokio_postgres::Config = config.parse().map_err(|e| anyhow!("Invalid connection string: {}", e))?;
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        };
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+        let pool = Pool::builder(mgr)
+            .runtime(Runtime::Tokio1)
+            .max_size(50)
+            .timeouts(Timeouts {
+                wait: Some(Duration::from_secs(30)),
+                create: Some(Duration::from_secs(10)),
+                recycle: Some(Duration::from_secs(10)),
+            })
+            .build()
+            .map_err(|e| anyhow!("Pool creation failed: {}", e))?;
 
         Ok(Self {
             pool,

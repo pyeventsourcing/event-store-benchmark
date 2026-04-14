@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt;
 use tokio_postgres::NoTls;
-use deadpool_postgres::{Config, Pool, Runtime};
+use deadpool_postgres::{Pool, Runtime, Manager, ManagerConfig, RecyclingMethod, Timeouts};
+use tokio::time::Duration;
 use uuid::Uuid;
 use serde_json::Value;
 use crate::read::{EventTagQuery, MartenEvent};
@@ -75,13 +76,26 @@ pub struct Marten {
 
 impl Marten {
     pub async fn connect(connection_string: &str) -> Result<Self, MartenError> {
-        let mut cfg = Config::new();
-        cfg.url = Some(connection_string.to_string());
-        // Since we don't have anyhow in marten-rs, we use a simple error mapping.
-        // Usually creating a pool won't fail with these params.
-        let pool = cfg.create_pool(Some(Runtime::Tokio1), NoTls).map_err(|e| {
-             MartenError::Connection(format!("Pool creation failed: {}", e))
+        let pg_config: tokio_postgres::Config = connection_string.parse().map_err(|e| {
+            MartenError::Connection(format!("Invalid connection string: {}", e))
         })?;
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        };
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+
+        let pool = Pool::builder(mgr)
+            .runtime(Runtime::Tokio1)
+            .max_size(50)
+            .timeouts(Timeouts {
+                wait: Some(Duration::from_secs(30)),
+                create: Some(Duration::from_secs(10)),
+                recycle: Some(Duration::from_secs(10)),
+            })
+            .build()
+            .map_err(|e| {
+                MartenError::Connection(format!("Pool creation failed: {}", e))
+            })?;
         Ok(Self { pool })
     }
 
