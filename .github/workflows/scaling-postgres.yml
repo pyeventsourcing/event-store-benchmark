@@ -12,6 +12,17 @@ jobs:
     outputs:
       session_id: ${{ steps.session.outputs.session_id }}
     steps:
+      - name: Setup database
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+          sudo systemctl start postgresql
+          sudo systemctl status postgresql      
+          
+          sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
+          sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
+          sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -58,29 +69,39 @@ jobs:
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
-    services:
-      # Label used to access the service container
-      postgres:
-        # Docker Hub image
-        image: postgres:17
-        # Provide the password for postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-        # Set health checks to wait until postgres has started
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          # Maps tcp port 5432 on service container to the host
-          - 5432:5432
+#    services:
+#      # Label used to access the service container
+#      postgres:
+#        # Docker Hub image
+#        image: postgres:17
+#        # Provide the password for postgres
+#        env:
+#          POSTGRES_PASSWORD: postgres
+#        # Set health checks to wait until postgres has started
+#        options: >-
+#          --health-cmd pg_isready
+#          --health-interval 10s
+#          --health-timeout 5s
+#          --health-retries 5
+#        ports:
+#          # Maps tcp port 5432 on service container to the host
+#          - 5432:5432
     steps:
       - name: Setup database
         run: |
-          PGPASSWORD=postgres psql -c 'CREATE DATABASE eventsourcing;' -U postgres -h localhost
-          PGPASSWORD=postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" -U postgres -h localhost
-          PGPASSWORD=postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;" -U postgres -h localhost
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+          sudo systemctl start postgresql
+          sudo systemctl status postgresql      
+          
+          sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
+          sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
+          sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
+
+#      - name: Setup database
+#          PGPASSWORD=postgres psql -c 'CREATE DATABASE eventsourcing;' -U postgres -h localhost
+#          PGPASSWORD=postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" -U postgres -h localhost
+#          PGPASSWORD=postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;" -U postgres -h localhost
 
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
