@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  write-flood:
+  kurrentdb-benchmarks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -95,12 +95,6 @@ jobs:
             client_*.log
             plots/*.png
 
-  simple-client-benchmarks:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
@@ -110,28 +104,13 @@ jobs:
       - name: Install Python client
         run: make venv
 
-      - name: Install and start kurrentdb
-        run: |
-          curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
-          sudo apt-get install kurrentdb=26.0.2
-          sudo cat /etc/kurrentdb/kurrentdb.conf
-          sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
-          echo $! > kurrentdb.pid
-          for i in {1..60}; do
-            if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
-              echo "KurrentDB is ready after $((i-1)) seconds"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "KurrentDB failed to start after 60 seconds"
-          cat kurrentdb.log
-          exit 1
+      - name: Build kurrentdb-benchmark crate
+        run: make kurrentdb-benchmark-rust-build
 
-      - name: Benchmark official client
+      - name: Benchmark official Rust client
         run: make kurrentdb-benchmark-rust-official
 
-      - name: Benchmark minimal client
+      - name: Benchmark minimal Rust client
         run: make kurrentdb-benchmark-rust-minimal
 
       - name: Benchmark Python client
