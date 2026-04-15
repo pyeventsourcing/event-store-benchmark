@@ -10,7 +10,7 @@ use crate::commands::new_request;
 /// This client does not use a background state machine or MPSC channels for request coordination.
 pub struct KurrentDbClient {
     settings: ClientSettings,
-    channel: Channel,
+    streams: StreamsClient<Channel>,
 }
 
 impl KurrentDbClient {
@@ -53,7 +53,7 @@ impl KurrentDbClient {
 
         Ok(Self {
             settings,
-            channel,
+            streams: StreamsClient::new(channel.clone())
         })
     }
 
@@ -64,8 +64,6 @@ impl KurrentDbClient {
         options: &AppendToStreamOptions,
         events: impl IntoIterator<Item = EventData>,
     ) -> crate::Result<WriteResult> {
-        let mut client = StreamsClient::new(self.channel.clone());
-
         let stream_identifier = Some(StreamIdentifier {
             stream_name: stream.into_stream_name(),
         });
@@ -87,7 +85,7 @@ impl KurrentDbClient {
         };
 
         let req = new_request(&self.settings, options, payload);
-        let resp = client.append(req).await
+        let resp = self.streams.clone().append(req).await
             .map_err(crate::Error::from_grpc)?
             .into_inner();
 
@@ -103,8 +101,6 @@ impl KurrentDbClient {
         stream: impl StreamName,
         options: &ReadStreamOptions,
     ) -> crate::Result<ReadStream> {
-        let mut client = StreamsClient::new(self.channel.clone());
-
         let stream_identifier = Some(StreamIdentifier {
             stream_name: stream.into_stream_name(),
         });
@@ -142,7 +138,7 @@ impl KurrentDbClient {
         };
 
         let req = new_request(&self.settings, options, message);
-        let resp = client.read(req).await
+        let resp = self.streams.clone().read(req).await
             .map_err(crate::Error::from_grpc)?
             .into_inner();
 

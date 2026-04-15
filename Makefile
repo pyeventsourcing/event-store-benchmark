@@ -101,6 +101,10 @@ stop-kurrentdb-insecure:
 kurrentdb-benchmark-python:
 	./.venv/bin/python ./python/kurrentdb_benchmark.py
 
-.PHONY: kurrentdb-benchmark-rust
-kurrentdb-benchmark-rust:
-	@cargo run --release --package kurrentdb-benchmark
+.PHONY: kurrentdb-benchmark-rust-official
+kurrentdb-benchmark-rust-official:
+	@cargo run --release --package kurrentdb-benchmark --bin kurrentdb-benchmark-official
+
+.PHONY: kurrentdb-benchmark-rust-minimal
+kurrentdb-benchmark-rust-minimal:
+	@cargo run --release --package kurrentdb-benchmark --bin kurrentdb-benchmark-minimal
