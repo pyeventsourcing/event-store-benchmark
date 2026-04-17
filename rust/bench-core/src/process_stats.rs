@@ -48,12 +48,21 @@ impl ProcessMonitor {
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;
-            let interval = Duration::from_secs_f64(1.0 / samples_per_second as f64);
+            let interval = Duration::from_secs_f64(1.0 / samples_per_second as f64)
+                .max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL * 2);
             let end_time = start_time + Duration::from_secs(duration_seconds);
             
             let mut sys = System::new_with_specifics(
                 RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory())
             );
+            
+            // Initial refresh to establish baseline for CPU usage
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid]),
+                true,
+                ProcessRefreshKind::nothing().with_cpu().with_memory()
+            );
+
             let mut stop_rx = stop_rx;
             let mut sample_count = 1;
 
@@ -70,9 +79,10 @@ impl ProcessMonitor {
                     break;
                 }
 
+                // Use refresh_processes_specifics to update CPU and memory for the target PID
                 sys.refresh_processes_specifics(
                     ProcessesToUpdate::Some(&[pid]),
-                    true,
+                    false, // Use false for subsequent refreshes to allow delta calculation
                     ProcessRefreshKind::nothing().with_cpu().with_memory()
                 );
                 
