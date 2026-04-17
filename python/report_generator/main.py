@@ -118,14 +118,10 @@ def main():
                                              get_store_rank)
             plotting.plot_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_latency.png"),
                                           get_store_rank)
-            plotting.plot_avg_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_avg_cpu.png"),
-                                           get_store_rank)
-            plotting.plot_peak_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_cpu.png"),
-                                           get_store_rank)
-            plotting.plot_avg_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_avg_mem.png"),
-                                           get_store_rank)
-            plotting.plot_peak_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_mem.png"),
-                                           get_store_rank)
+            plotting.plot_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_cpu.png"),
+                                      get_store_rank)
+            plotting.plot_memory_scaling(runs, str(workload_dir / f"{workload_name}_scaling_memory.png"),
+                                         get_store_rank)
 
             # Generate container stats plots, and main workload HTML
             plotting.plot_container_stats(runs, str(workload_dir / f"{workload_name}_container_stats.png"),

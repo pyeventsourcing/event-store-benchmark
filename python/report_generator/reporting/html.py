@@ -298,28 +298,24 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     has_any_mem = any(not r.memory_df.empty for r in runs)
 
     cpu_scaling_html = f"""
-    <div class='row'>
       <div class='card'>
-        <h3>Peak CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
-      </div>
-      <div class='card'>
-        <h3>Average CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
-      </div>
-    </div>""" if has_any_cpu else ""
+        <h3>CPU Usage vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_cpu.png' width='560'>
+      </div>""" if has_any_cpu else ""
+
 
     mem_scaling_html = f"""
+      <div class='card'>
+        <h3>Memory Usage vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_memory.png' width='560'>
+      </div>""" if has_any_mem else ""
+
+    resource_usage_html = f"""
     <div class='row'>
-      <div class='card'>
-        <h3>Peak Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
-      </div>
-      <div class='card'>
-        <h3>Average Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
-      </div>
-    </div>""" if has_any_mem else ""
+      {cpu_scaling_html}
+      {mem_scaling_html}
+    </div>""" if has_any_cpu or has_any_mem else ""
+
 
     performance_section = f"""
     <h2>Performance</h2>
@@ -333,8 +329,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
     </div>
-    {cpu_scaling_html}
-    {mem_scaling_html}"""
+    {resource_usage_html}"""
 
     container_stats_section = ""
     if has_container_stats:
@@ -481,11 +476,11 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
-          <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='460'>
+          <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='560'>
         </div>
         <div class='card'>
           <h3>Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_latency.png' width='460'>
+          <img src='{workload_name}/{workload_name}_scaling_latency.png' width='560'>
         </div>
       </div>"""
 

@@ -343,60 +343,17 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_peak_cpu_scaling(runs, out_path: str, get_store_rank=None):
-    """Plot peak CPU usage vs worker count using grouped bar charts."""
-    data = defaultdict(dict)
-    all_adapters = set()
-    all_worker_counts = set()
-
-    for run in runs:
-        peak_cpu = run.metrics.get("peak_cpu_percent")
-        if peak_cpu is not None:
-            data[run.worker_count][run.adapter] = peak_cpu
-            all_adapters.add(run.adapter)
-            all_worker_counts.add(run.worker_count)
-
-    if not data:
-        return
-
-    worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
-
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Peak CPU by {xlabel[:-1]} Count"
-
-    plt.figure(figsize=(10, 6))
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
-
-    for i, adapter in enumerate(adapters):
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
-        offset = (i - (len(adapters) - 1) / 2) * width
-        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
-
-    plt.ylabel("Peak CPU (%)")
-    plt.xlabel(xlabel)
-    plt.title(title)
-    plt.xticks(x, [str(wc) for wc in worker_counts])
-
-    plt.legend()
-    plt.grid(True, axis='y', ls=":", alpha=0.6)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
-
-
-def plot_avg_cpu_scaling(runs, out_path: str, get_store_rank=None):
-    """Plot average CPU usage vs worker count using grouped bar charts."""
-    data = defaultdict(dict)
+def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average and peak CPU usage vs worker count using overlaid bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
         avg_cpu = run.metrics.get("avg_cpu_percent")
-        if avg_cpu is not None:
-            data[run.worker_count][run.adapter] = avg_cpu
+        peak_cpu = run.metrics.get("peak_cpu_percent")
+        if avg_cpu is not None or peak_cpu is not None:
+            data[run.worker_count][run.adapter] = {"avg": avg_cpu or 0, "peak": peak_cpu or 0}
             all_adapters.add(run.adapter)
             all_worker_counts.add(run.worker_count)
 
@@ -408,83 +365,55 @@ def plot_avg_cpu_scaling(runs, out_path: str, get_store_rank=None):
 
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Average CPU by {xlabel[:-1]} Count"
+    title = f"CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
     for i, adapter in enumerate(adapters):
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
+        peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
+        
         offset = (i - (len(adapters) - 1) / 2) * width
-        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+        color = get_adapter_color(adapter)
+        
+        plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
 
-    plt.ylabel("Avg CPU (%)")
+    plt.ylabel("CPU Usage (%)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
+    plt.ylim(bottom=0)
 
-    plt.legend()
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
 
 
-def plot_avg_mem_scaling(runs, out_path: str, get_store_rank=None):
-    """Plot average memory usage vs worker count using grouped bar charts."""
-    data = defaultdict(dict)
+def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average and peak memory usage vs worker count using overlaid bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
         avg_mem = run.metrics.get("avg_memory_bytes")
-        if avg_mem is not None:
-            data[run.worker_count][run.adapter] = avg_mem / (1024 * 1024)
-            all_adapters.add(run.adapter)
-            all_worker_counts.add(run.worker_count)
-
-    if not data:
-        return
-
-    worker_counts = sorted(list(all_worker_counts))
-    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
-
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Average Memory by {xlabel[:-1]} Count"
-
-    plt.figure(figsize=(10, 6))
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
-
-    for i, adapter in enumerate(adapters):
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
-        offset = (i - (len(adapters) - 1) / 2) * width
-        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
-
-    plt.ylabel("Avg Memory (MB)")
-    plt.xlabel(xlabel)
-    plt.title(title)
-    plt.xticks(x, [str(wc) for wc in worker_counts])
-
-    plt.legend()
-    plt.grid(True, axis='y', ls=":", alpha=0.6)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
-
-
-def plot_peak_mem_scaling(runs, out_path: str, get_store_rank=None):
-    """Plot peak memory usage vs worker count using grouped bar charts."""
-    data = defaultdict(dict)
-    all_adapters = set()
-    all_worker_counts = set()
-
-    for run in runs:
         peak_mem = run.metrics.get("peak_memory_bytes")
-        if peak_mem is not None:
-            data[run.worker_count][run.adapter] = peak_mem / (1024 * 1024)
+        if avg_mem is not None or peak_mem is not None:
+            data[run.worker_count][run.adapter] = {
+                "avg": (avg_mem or 0) / (1024 * 1024),
+                "peak": (peak_mem or 0) / (1024 * 1024)
+            }
             all_adapters.add(run.adapter)
             all_worker_counts.add(run.worker_count)
 
@@ -496,23 +425,35 @@ def plot_peak_mem_scaling(runs, out_path: str, get_store_rank=None):
 
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Peak Memory by {xlabel[:-1]} Count"
+    title = f"Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
     for i, adapter in enumerate(adapters):
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
+        peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
+        
         offset = (i - (len(adapters) - 1) / 2) * width
-        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+        color = get_adapter_color(adapter)
+        
+        plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
 
-    plt.ylabel("Peak Memory (MB)")
+    plt.ylabel("Memory Usage (MB)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
+    plt.ylim(bottom=0)
 
-    plt.legend()
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
