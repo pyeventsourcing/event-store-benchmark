@@ -164,12 +164,12 @@ def generate_run_html(report_dir: Path, run):
   <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps</p>
   <div class='row'>
     <div class='card'>
-      <h2>Latency CDF</h2>
-      <img src='{latency_img}' width='560'>
-    </div>
-    <div class='card'>
       <h2>Throughput over time</h2>
       <img src='{throughput_img}' width='560'>
+    </div>
+    <div class='card'>
+      <h2>Latency CDF</h2>
+      <img src='{latency_img}' width='560'>
     </div>
   </div>
   <div class='row'>
@@ -249,12 +249,12 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <h2>{worker_label} = {wc}</h2>
     <div class='row'>
       <div class='card'>
-        <h3>Latency CDF</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png' width='560'>
-      </div>
-      <div class='card'>
         <h3>Throughput over time</h3>
         <img src='{workload_name}_comparison_{worker_suffix}{wc}_throughput.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Latency CDF</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png' width='560'>
       </div>
     </div>
     <div class='row'>
@@ -282,22 +282,22 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     </div>
     <div class='row'>
       <div class='card'>
-        <h3>Average CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
-      </div>
-      <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
-      </div>
-    </div>
-    <div class='row'>
-      <div class='card'>
-        <h3>Average Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
       </div>
       <div class='card'>
         <h3>Peak Memory vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_mem.png' width='560'>
+      </div>
+    </div>
+    <div class='row'>
+      <div class='card'>
+        <h3>Average CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Average Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
       </div>
     </div>"""
 
