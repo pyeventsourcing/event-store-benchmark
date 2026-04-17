@@ -4,7 +4,7 @@ use testcontainers::Image;
 // const NAME: &str = "umadb";
 // const TAG: &str = "local";
 const NAME: &str = "umadb/umadb";
-const TAG: &str = "0.5.0";
+const TAG: &str = "0.5.1";
 
 /// Container port exposed by UmaDB (gRPC).
 pub const UMADB_PORT: ContainerPort = ContainerPort::Tcp(50051);
