@@ -3,10 +3,9 @@ use bollard::Docker;
 use bollard::query_parameters::StatsOptions;
 use futures::StreamExt;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use std::time::Instant;
-use crate::metrics::{ProcessMetrics, CpuSample, MemorySample};
+use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, BenchmarkMessage};
 
 pub struct ContainerMonitor {
     docker: Docker,
@@ -14,7 +13,6 @@ pub struct ContainerMonitor {
     stats: Arc<Mutex<CollectedStats>>,
     stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
     monitor_task: Option<JoinHandle<()>>,
-    start_time: Instant,
 }
 
 #[derive(Default, Clone)]
@@ -32,19 +30,29 @@ impl ContainerMonitor {
             stats: Arc::new(Mutex::new(CollectedStats::default())),
             stop_tx: None,
             monitor_task: None,
-            start_time: Instant::now(),
         })
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>) {
         let docker = self.docker.clone();
         let container_id = self.container_id.clone();
         let stats_arc = self.stats.clone();
-        let start_time = self.start_time;
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
         self.stop_tx = Some(stop_tx);
 
         let monitor_task = tokio::spawn(async move {
+            loop {
+                if benchmark_rx.borrow().is_some() {
+                    break;
+                }
+                if benchmark_rx.changed().await.is_err() {
+                    return;
+                }
+            }
+            
+            let msg = benchmark_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            
             let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));
             let mut stop_rx = stop_rx;
 

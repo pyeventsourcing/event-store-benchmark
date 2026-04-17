@@ -1,8 +1,8 @@
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use std::time::{Instant, Duration};
-use crate::metrics::{ProcessMetrics, CpuSample, MemorySample};
+use std::time::Duration;
+use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, BenchmarkMessage};
 use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate};
 
 pub struct ProcessMonitor {
@@ -10,7 +10,6 @@ pub struct ProcessMonitor {
     stats: Arc<Mutex<CollectedStats>>,
     stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
     monitor_task: Option<JoinHandle<()>>,
-    start_time: Instant,
 }
 
 #[derive(Default, Clone)]
@@ -26,18 +25,28 @@ impl ProcessMonitor {
             stats: Arc::new(Mutex::new(CollectedStats::default())),
             stop_tx: None,
             monitor_task: None,
-            start_time: Instant::now(),
         }
     }
 
-    pub async fn start(&mut self) {
+    pub async fn start(&mut self, mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>) {
         let pid = self.pid;
         let stats_arc = self.stats.clone();
-        let start_time = self.start_time;
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
         self.stop_tx = Some(stop_tx);
 
         let monitor_task = tokio::spawn(async move {
+            loop {
+                if benchmark_rx.borrow().is_some() {
+                    break;
+                }
+                if benchmark_rx.changed().await.is_err() {
+                    return;
+                }
+            }
+            
+            let msg = benchmark_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            
             let mut sys = System::new_with_specifics(
                 RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory())
             );

@@ -7,6 +7,13 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Throughput time-series sample: elapsed time from workload start and cumulative operation count
+#[derive(Debug, Clone, Copy)]
+pub struct BenchmarkMessage {
+    pub start_time: Instant,
+    pub samples_per_second: u64,
+    pub duration_seconds: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThroughputSample {
     pub elapsed_s: f64,

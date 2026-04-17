@@ -1,11 +1,12 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, CpuSample, MemorySample};
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, CpuSample, MemorySample, BenchmarkMessage};
 use crate::workloads::Workload;
 use crate::metrics::{ProcessMetrics, RunMetrics, ContainerStats};
 use crate::container_stats::ContainerMonitor;
 use crate::process_stats::ProcessMonitor;
 use anyhow::Result;
 use std::time::{Instant};
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 enum Monitor {
@@ -76,8 +77,7 @@ pub async fn execute_run(
         // Initialize container monitoring if possible
         let monitor = if let Some(id) = store.container_id() {
             match ContainerMonitor::new(id) {
-                Ok(mut m) => {
-                    m.start().await;
+                Ok(m) => {
                     Some(Monitor::Container(m))
                 }
                 Err(e) => {
@@ -94,8 +94,7 @@ pub async fn execute_run(
         let monitor = if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
             if let Ok(pid) = pid_str.trim().parse::<u32>() {
                 println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
-                let mut pm = ProcessMonitor::new(pid);
-                pm.start().await;
+                let pm = ProcessMonitor::new(pid);
                 Some(Monitor::Process(pm))
             } else {
                 eprintln!("Failed to parse PID from {}: {}", pid_file, pid_str);
@@ -108,9 +107,21 @@ pub async fn execute_run(
         (monitor, None)
     };
 
+    // Prepare synchronization primitives
+    let (tx, rx) = watch::channel(None::<BenchmarkMessage>);
+
+    // Start monitor if it exists
+    let mut monitor = monitor;
+    if let Some(m) = &mut monitor {
+        match m {
+            Monitor::Container(cm) => cm.start(rx.clone()).await,
+            Monitor::Process(pm) => pm.start(rx.clone()).await,
+        }
+    }
+
     // Execute workload
     let workload_res = tokio::select! {
-        res = workload.execute(store.as_ref(), cancel_token.clone()) => res,
+        res = workload.execute(store.as_ref(), cancel_token.clone(), tx, rx) => res,
         _ = cancel_token.cancelled() => {
             println!("Interrupted during workload execution.");
             if store.use_docker() {

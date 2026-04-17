@@ -1,10 +1,11 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus};
+use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus, BenchmarkMessage};
 use anyhow::Result;
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::{Barrier, watch};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 use tokio::task::{JoinSet};
@@ -238,47 +239,39 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
+        benchmark_tx: watch::Sender<Option<BenchmarkMessage>>,
+        benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
     ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
         // Run preparation (prepopulation) if configured
         self.prepare(store).await?;
 
-        let mut reader_adapters = Vec::new();
         let readers = self.config.concurrency.readers.first();
+        let writers = self.config.concurrency.writers.first();
+        let total_workers = readers + writers;
+
+        // Barrier for workers to be ready
+        let ready_barrier = Arc::new(Barrier::new(total_workers + 1));
+
+        let mut reader_adapters = Vec::new();
         if readers > 0 {
             println!("Creating {} reader clients...", readers);
-            for i in 0..readers {
-                match store.create_adapter().await {
-                    Ok(adapter) => reader_adapters.push(adapter),
-                    Err(e) => {
-                        eprintln!("Failed to create reader {}: {}", i, e);
-                        anyhow::bail!("Failed to create reader {}: {}", i, e);
-                    }
-                }
+            for _ in 0..readers {
+                reader_adapters.push(store.create_adapter().await?);
             }
-            println!("All {} reader clients ready", readers);
         }
 
         let mut writer_adapters = Vec::new();
-        let writers = self.config.concurrency.writers.first();
         if writers > 0 {
             println!("Creating {} writer clients...", writers);
-            for i in 0..writers {
-                match store.create_adapter().await {
-                    Ok(adapter) => writer_adapters.push(adapter),
-                    Err(e) => {
-                        eprintln!("Failed to create writer {}: {}", i, e);
-                        anyhow::bail!("Failed to create writer {}: {}", i, e);
-                    }
-                }
+            for _ in 0..writers {
+                writer_adapters.push(store.create_adapter().await?);
             }
-            println!("All {} writer clients ready", writers);
         }
 
         println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
         let mut worker_tasks = JoinSet::new();
         let duration_seconds = self.config.duration_seconds;
         let samples_per_second = self.config.samples_per_second.max(1);
-        let sampling_starts = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
 
         // Spawn writer tasks
         for adapter in writer_adapters.into_iter() {
@@ -286,20 +279,18 @@ impl PerformanceWorkload {
             Self::spawn_writer_task(
                 &mut worker_tasks,
                 adapter,
-                self.config.operations.write.clone().clone(),
+                self.config.operations.write.clone(),
                 cancel_token.clone(),
                 activate_metrics,
-                samples_per_second,
-                duration_seconds,
-                sampling_starts,
+                ready_barrier.clone(),
+                benchmark_rx.clone(),
             );
         }
 
         // Spawn reader tasks
         let mut prepopulated_streams = self.config.setup.prepopulate_streams;
-        let prepopulated_events = self.config.setup.prepopulate_events;
         if prepopulated_streams == 0 {
-            prepopulated_streams = prepopulated_events
+            prepopulated_streams = self.config.setup.prepopulate_events;
         }
 
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
@@ -307,17 +298,29 @@ impl PerformanceWorkload {
             Self::spawn_reader_task(
                 &mut worker_tasks,
                 adapter,
-                self.config.operations.read.clone().clone(),
+                self.config.operations.read.clone(),
                 self.seed + (i as u64),
                 cancel_token.clone(),
                 self.stream_prefix.clone(),
                 prepopulated_streams,
                 activate_metrics,
-                samples_per_second,
-                duration_seconds,
-                sampling_starts,
+                ready_barrier.clone(),
+                benchmark_rx.clone(),
             );
         }
+
+        // Wait for all workers to be spawned and ready
+        ready_barrier.wait().await;
+        println!("All {} worker tasks ready, starting benchmark...", total_workers);
+
+        // Signal benchmark start
+        let start_time = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
+        let msg = BenchmarkMessage {
+            start_time,
+            samples_per_second,
+            duration_seconds,
+        };
+        let _ = benchmark_tx.send(Some(msg));
 
         // Collect results
         let mut latency_histogram = LatencyRecorder::new();
@@ -427,11 +430,26 @@ impl PerformanceWorkload {
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
         activate_metrics: bool,
-        samples_per_second: u64,
-        duration_seconds: u64,
-        sampling_starts: Instant,
+        ready_barrier: Arc<Barrier>,
+        mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
     ) {
         worker_tasks.spawn(async move {
+            ready_barrier.wait().await;
+            
+            loop {
+                if benchmark_rx.borrow().is_some() {
+                    break;
+                }
+                if benchmark_rx.changed().await.is_err() {
+                    return None;
+                }
+            }
+            
+            let msg = benchmark_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+
             let mut out_of_time = false;
             let size = write_cfg.event_size_bytes;
 
@@ -441,7 +459,7 @@ impl PerformanceWorkload {
 
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
-            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, sampling_starts);
+            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
             let mut latencies = LatencyRecorder::new();
 
             // Tight loop with minimal overhead
@@ -481,7 +499,7 @@ impl PerformanceWorkload {
                         stream_position = 0;
                     }
                 }
-                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
             }
 
             if activate_metrics {
@@ -501,16 +519,32 @@ impl PerformanceWorkload {
         stream_prefix: String,
         prepopulated_streams: u64,
         activate_metrics: bool,
-        samples_per_second: u64,
-        duration_seconds: u64,
-        sampling_starts: Instant,
+        ready_barrier: Arc<Barrier>,
+        mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
     ) {
         worker_tasks.spawn(async move {
+            ready_barrier.wait().await;
+
+            loop {
+                if benchmark_rx.borrow().is_some() {
+                    break;
+                }
+                if benchmark_rx.changed().await.is_err() {
+                    return None;
+                }
+            }
+
+            let msg = benchmark_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+
             let mut out_of_time = false;
             let mut rng = StdRng::seed_from_u64(seed);
 
+            // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
-            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, sampling_starts);
+            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
             let mut latencies = LatencyRecorder::new();
 
 
@@ -543,7 +577,7 @@ impl PerformanceWorkload {
                         sleep(Duration::from_secs(1)).await;
                     }
                 }
-                out_of_time = (sampling_starts + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
             }
             if activate_metrics {
