@@ -204,10 +204,10 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
       </div>
     </div>"""
 
-    container_section = f"""
-    <h2>Container Resource Metrics</h2>
+    process_section = f"""
+    <h2>Process Resource Metrics</h2>
     <div class='card' style='max-width: 100%;'>
-      <img src='{workload_name}_container_metrics.png' style='width: 100%; max-width: 1200px;'>
+        <img src='{workload_name}_process_metrics.png' style='width: 100%; max-width: 1200px;'>
     </div>"""
 
     scaling_section = ""
@@ -263,7 +263,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 <body>
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
-  {container_section}
+  {process_section}
   {scaling_section}
   {comparison_sections}
   <h2>Summary</h2>

@@ -21,11 +21,7 @@ pub struct LatencyPercentile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ContainerMetrics {
-    /// Container image size in bytes
-    pub image_size_bytes: Option<u64>,
-    /// Time to start the container in seconds
-    pub startup_time_s: f64,
+pub struct ProcessMetrics {
     /// Average CPU usage percentage during run
     pub avg_cpu_percent: Option<f64>,
     /// Peak CPU usage percentage during run
@@ -34,6 +30,20 @@ pub struct ContainerMetrics {
     pub avg_memory_bytes: Option<u64>,
     /// Peak memory usage in bytes during run
     pub peak_memory_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ContainerStats {
+    /// Time to start the container in seconds
+    pub startup_time_s: f64,
+    /// Image size in bytes
+    pub image_size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RunMetrics {
+    pub resources: ProcessMetrics,
+    pub container: Option<ContainerStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

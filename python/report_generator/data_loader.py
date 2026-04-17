@@ -49,7 +49,15 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
     """Loads all raw data files for a single run into a dictionary."""
     config_file = run_dir / "config.yaml"
     results_file = run_dir / "workload_results.json"
-    metrics_file = run_dir / "container_metrics.json"
+    metrics_file = run_dir / "process_metrics.json"
+    # Fallback for old results
+    if not metrics_file.exists():
+        metrics_file = run_dir / "resource_metrics.json"
+    if not metrics_file.exists():
+        metrics_file = run_dir / "container_metrics.json"
+
+    container_stats_file = run_dir / "container_stats.json"
+    image_size_file = run_dir / "image_size.json"
     logs_file = run_dir / "logs.txt"
 
     if not config_file.exists():
@@ -69,6 +77,17 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
         if metrics_file.exists():
             with open(metrics_file) as f:
                 metrics_data = json.load(f)
+
+        # Merge container stats if present
+        if container_stats_file.exists():
+            with open(container_stats_file) as f:
+                container_data = json.load(f)
+                metrics_data.update(container_data)
+        # Fallback for image size
+        elif image_size_file.exists():
+            with open(image_size_file) as f:
+                image_data = json.load(f)
+                metrics_data["image_size_bytes"] = image_data.get("image_size_bytes")
 
         container_logs = ""
         if logs_file.exists():

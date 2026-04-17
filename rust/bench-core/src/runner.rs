@@ -1,7 +1,7 @@
 use crate::adapter::StoreManager;
 use crate::metrics::{WorkloadResults};
 use crate::workloads::Workload;
-use crate::metrics::ContainerMetrics;
+use crate::metrics::{ProcessMetrics, RunMetrics, ContainerStats};
 use crate::container_stats::ContainerMonitor;
 use crate::process_stats::ProcessMonitor;
 use anyhow::Result;
@@ -17,10 +17,10 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(ContainerMetrics, WorkloadResults, String)> {
+) -> Result<(RunMetrics, WorkloadResults, String)> {
     // Start store container
     let store_name = store.name();
-    let monitor: Option<Monitor> = if store.use_docker() {
+    let (monitor, startup_time_s) = if store.use_docker() {
         if !crate::is_image_pulled(store_name) {
             println!("Pulling {} image...", store_name);
             let mut last_err = None;
@@ -75,7 +75,7 @@ pub async fn execute_run(
 
         // Initialize container monitoring if possible
         let monitor = if let Some(id) = store.container_id() {
-            match ContainerMonitor::new(id, startup_time_s) {
+            match ContainerMonitor::new(id) {
                 Ok(mut m) => {
                     m.start().await;
                     Some(Monitor::Container(m))
@@ -88,13 +88,13 @@ pub async fn execute_run(
         } else {
             None
         };
-        monitor
+        (monitor, Some(startup_time_s))
     } else {
         let pid_file = format!("{}.pid", store_name);
-        if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
+        let monitor = if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
             if let Ok(pid) = pid_str.trim().parse::<u32>() {
                 println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
-                let mut pm = ProcessMonitor::new(pid, 0.0);
+                let mut pm = ProcessMonitor::new(pid);
                 pm.start().await;
                 Some(Monitor::Process(pm))
             } else {
@@ -104,7 +104,8 @@ pub async fn execute_run(
         } else {
             println!("No PID file {} found for {}, skipping monitoring", pid_file, store_name);
             None
-        }
+        };
+        (monitor, None)
     };
 
     // Execute workload
@@ -133,10 +134,21 @@ pub async fn execute_run(
     workload_results.print_summary();
 
     // Get container logs before stopping
-    let (container_metrics, logs) = if store.use_docker() {
-        let container_metrics = match monitor {
-            Some(Monitor::Container(m)) => m.stop().await,
-            _ => ContainerMetrics::default(),
+    let (run_metrics, logs) = if store.use_docker() {
+        let (resources, container) = match monitor {
+            Some(Monitor::Container(m)) => {
+                let image_size_bytes = m.get_image_size().await.ok();
+                let resources = m.stop().await;
+                let container = Some(ContainerStats {
+                    startup_time_s: startup_time_s.unwrap_or(0.0),
+                    image_size_bytes,
+                });
+                (resources, container)
+            }
+            _ => (ProcessMetrics::default(), Some(ContainerStats {
+                startup_time_s: startup_time_s.unwrap_or(0.0),
+                image_size_bytes: None,
+            })),
         };
         // Ensure container is stopped on error/interruption
         store.stop().await?;
@@ -145,14 +157,14 @@ pub async fn execute_run(
             String::new()
         });
 
-        (container_metrics, logs)
+        (RunMetrics { resources, container }, logs)
     } else {
-        let metrics = match monitor {
+        let resources = match monitor {
             Some(Monitor::Process(m)) => m.stop().await,
-            _ => ContainerMetrics::default(),
+            _ => ProcessMetrics::default(),
         };
-        (metrics, String::new())
+        (RunMetrics { resources, container: None }, String::new())
     };
 
-    Ok((container_metrics, workload_results, logs))
+    Ok((run_metrics, workload_results, logs))
 }

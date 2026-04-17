@@ -112,8 +112,8 @@ def main():
                 plotting.plot_peak_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_mem.png"),
                                                get_store_rank)
 
-            # Generate container metrics plot and main workload HTML
-            plotting.plot_container_metrics(runs, str(workload_dir / f"{workload_name}_container_metrics.png"),
+            # Generate process metrics plot and main workload HTML
+            plotting.plot_process_metrics(runs, str(workload_dir / f"{workload_name}_process_metrics.png"),
                                             get_store_rank)
             html.generate_workload_html(published_session_dir, workload_name, runs, worker_groups, workload_config,
                                         get_store_rank)

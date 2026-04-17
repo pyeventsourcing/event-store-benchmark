@@ -269,7 +269,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
         // Execute the run
         let (
-            container_metrics,
+            run_metrics,
             workload_results,
             container_logs,
         ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
@@ -290,9 +290,15 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             serde_json::to_string_pretty(&workload_results)?,
         )?;
         fs::write(
-            workload_results_path.join("container_metrics.json"),
-            serde_json::to_string_pretty(&container_metrics)?,
+            workload_results_path.join("process_metrics.json"),
+            serde_json::to_string_pretty(&run_metrics.resources)?,
         )?;
+        if let Some(container) = run_metrics.container {
+            fs::write(
+                workload_results_path.join("container_stats.json"),
+                serde_json::to_string_pretty(&container)?,
+            )?;
+        }
         if !container_logs.is_empty() {
             fs::write(workload_results_path.join("logs.txt"), container_logs)?;
         }
