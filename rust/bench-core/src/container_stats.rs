@@ -52,6 +52,10 @@ impl ContainerMonitor {
             
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+            let interval = std::time::Duration::from_secs_f64(1.0 / samples_per_second as f64);
+            let end_time = start_time + std::time::Duration::from_secs(duration_seconds);
             
             let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));
             let mut stop_rx = stop_rx;
@@ -60,6 +64,11 @@ impl ContainerMonitor {
                 tokio::select! {
                     _ = &mut stop_rx => break,
                     Some(Ok(stats)) = stream.next() => {
+                        let now = std::time::Instant::now();
+                        if now >= end_time {
+                            break;
+                        }
+
                         let elapsed_s = start_time.elapsed().as_secs_f64();
                         let mut guard = stats_arc.lock().await;
 
@@ -80,6 +89,11 @@ impl ContainerMonitor {
                         if let Some(memory_stats) = &stats.memory_stats {
                             let mem_usage = memory_stats.usage.unwrap_or(0);
                             guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: mem_usage });
+                        }
+                    }
+                    _ = tokio::time::sleep(interval) => {
+                        if std::time::Instant::now() >= end_time {
+                            break;
                         }
                     }
                     else => break,

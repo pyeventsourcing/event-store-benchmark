@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, SamplingConfigDecision};
 use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate};
 
@@ -46,13 +46,30 @@ impl ProcessMonitor {
             
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+            let interval = Duration::from_secs_f64(1.0 / samples_per_second as f64);
+            let end_time = start_time + Duration::from_secs(duration_seconds);
             
             let mut sys = System::new_with_specifics(
                 RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory())
             );
             let mut stop_rx = stop_rx;
+            let mut sample_count = 1;
 
             loop {
+                let next_sample_time = start_time + interval.mul_f64(sample_count as f64);
+                let now = Instant::now();
+                
+                if next_sample_time > now {
+                    tokio::select! {
+                        _ = &mut stop_rx => break,
+                        _ = tokio::time::sleep(next_sample_time - now) => {}
+                    }
+                } else if now >= end_time {
+                    break;
+                }
+
                 sys.refresh_processes_specifics(
                     ProcessesToUpdate::Some(&[pid]),
                     true,
@@ -60,7 +77,7 @@ impl ProcessMonitor {
                 );
                 
                 if let Some(process) = sys.process(pid) {
-                    let elapsed_s = start_time.elapsed().as_secs_f64();
+                    let elapsed_s = (next_sample_time - start_time).as_secs_f64();
                     let mut guard = stats_arc.lock().await;
                     guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: process.cpu_usage() as f64 });
                     guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: process.memory() });
@@ -69,9 +86,10 @@ impl ProcessMonitor {
                     break;
                 }
 
-                tokio::select! {
-                    _ = &mut stop_rx => break,
-                    _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                sample_count += 1;
+
+                if Instant::now() >= end_time {
+                    break;
                 }
             }
         });
