@@ -101,16 +101,15 @@ def main():
                     str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png"),
                     get_store_rank)
 
-            # Generate scaling plots if there are multiple worker counts
-            if len(worker_groups) > 1:
-                plotting.plot_throughput_scaling(runs, str(workload_dir / f"{workload_name}_scaling_throughput.png"),
-                                                 get_store_rank)
-                plotting.plot_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_latency.png"),
-                                              get_store_rank)
-                plotting.plot_peak_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_cpu.png"),
-                                               get_store_rank)
-                plotting.plot_peak_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_mem.png"),
-                                               get_store_rank)
+            # Always generate scaling plots
+            plotting.plot_throughput_scaling(runs, str(workload_dir / f"{workload_name}_scaling_throughput.png"),
+                                             get_store_rank)
+            plotting.plot_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_latency.png"),
+                                          get_store_rank)
+            plotting.plot_peak_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_cpu.png"),
+                                           get_store_rank)
+            plotting.plot_peak_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_mem.png"),
+                                           get_store_rank)
 
             # Generate process metrics and container stats plots, and main workload HTML
             plotting.plot_process_metrics(runs, str(workload_dir / f"{workload_name}_process_metrics.png"),

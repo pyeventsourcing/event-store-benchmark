@@ -260,10 +260,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <img src='{workload_name}_container_stats.png' style='width: 100%; max-width: 1200px;'>
     </div>"""
 
-    scaling_section = ""
-    if len(worker_groups) > 1:
-        scaling_section = f"""
-    <h2>Scaling</h2>
+    performance_section = f"""
+    <h2>Performance</h2>
     <div class='row'>
       <div class='card'>
         <h3>Throughput vs {worker_label}</h3>
@@ -273,7 +271,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <h3>Latency vs {worker_label}</h3>
         <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
-    </div>
+    </div>"""
+
+    # Generate scaling plots for hardware resources
+    scaling_section = f"""
+    <h2>Scaling</h2>
     <div class='row'>
       <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
@@ -313,6 +315,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 <body>
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
+  {performance_section}
   {process_section}
   {container_stats_section}
   {scaling_section}
@@ -419,9 +422,7 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
 
     workload_sections = ""
     for workload_name, summary in sorted(workload_summaries.items()):
-        scaling_plots = ""
-        if len(summary['worker_counts']) > 1:
-            scaling_plots = f"""
+        scaling_plots = f"""
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
