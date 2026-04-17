@@ -1,5 +1,5 @@
 performance:
-  name: scaling-writers
+  name: writer-scaling
   mode: write
   use_docker: false
   warmup_seconds: 0
@@ -17,7 +17,7 @@ performance:
     - axonserver
 ---
 performance:
-  name: scaling-readers
+  name: reader-scaling
   mode: read
   use_docker: false
   warmup_seconds: 0

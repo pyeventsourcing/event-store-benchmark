@@ -273,6 +273,8 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             workload_results,
             throughput_samples,
             latency_percentiles,
+            cpu_samples,
+            memory_samples,
             container_logs,
         ) = match execute_run(store_manager, &workload, cancel_token.clone()).await {
             Ok(res) => res,
@@ -287,7 +289,13 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         };
 
         // Write individual run results
-        workload_results.write_to_dir(&workload_results_path, &throughput_samples, &latency_percentiles)?;
+        workload_results.write_to_dir(
+            &workload_results_path,
+            &throughput_samples,
+            &latency_percentiles,
+            &cpu_samples,
+            &memory_samples,
+        )?;
         fs::write(
             workload_results_path.join("process_metrics.json"),
             serde_json::to_string_pretty(&run_metrics.resources)?,

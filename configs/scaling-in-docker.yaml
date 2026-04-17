@@ -1,5 +1,5 @@
 performance:
-  name: scaling-writers
+  name: writer-scaling-in-docker
   mode: write
   use_docker: true
   warmup_seconds: 0
@@ -20,7 +20,7 @@ performance:
 #    - dummy
 ---
 performance:
-  name: scaling-readers
+  name: reader-scaling-in-docker
   mode: read
   use_docker: true
   warmup_seconds: 0

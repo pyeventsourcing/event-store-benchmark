@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults};
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, CpuSample, MemorySample};
 use crate::workloads::Workload;
 use crate::metrics::{ProcessMetrics, RunMetrics, ContainerStats};
 use crate::container_stats::ContainerMonitor;
@@ -17,7 +17,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, String)> {
+) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Vec<CpuSample>, Vec<MemorySample>, String)> {
     // Start store container
     let store_name = store.name();
     let (monitor, startup_time_s) = if store.use_docker() {
@@ -134,18 +134,18 @@ pub async fn execute_run(
     workload_results.print_summary(&throughput_samples);
 
     // Get container logs before stopping
-    let (run_metrics, logs) = if store.use_docker() {
-        let (resources, container) = match monitor {
+    let (run_metrics, cpu_samples, memory_samples, logs) = if store.use_docker() {
+        let (resources, cpu_samples, memory_samples, container) = match monitor {
             Some(Monitor::Container(m)) => {
                 let image_size_bytes = m.get_image_size().await.ok();
-                let resources = m.stop().await;
+                let (resources, cpu, mem) = m.stop().await;
                 let container = Some(ContainerStats {
                     startup_time_s: startup_time_s.unwrap_or(0.0),
                     image_size_bytes,
                 });
-                (resources, container)
+                (resources, cpu, mem, container)
             }
-            _ => (ProcessMetrics::default(), Some(ContainerStats {
+            _ => (ProcessMetrics::default(), Vec::new(), Vec::new(), Some(ContainerStats {
                 startup_time_s: startup_time_s.unwrap_or(0.0),
                 image_size_bytes: None,
             })),
@@ -157,14 +157,14 @@ pub async fn execute_run(
             String::new()
         });
 
-        (RunMetrics { resources, container }, logs)
+        (RunMetrics { resources, container }, cpu_samples, memory_samples, logs)
     } else {
-        let resources = match monitor {
+        let (resources, cpu_samples, memory_samples) = match monitor {
             Some(Monitor::Process(m)) => m.stop().await,
-            _ => ProcessMetrics::default(),
+            _ => (ProcessMetrics::default(), Vec::new(), Vec::new()),
         };
-        (RunMetrics { resources, container: None }, String::new())
+        (RunMetrics { resources, container: None }, cpu_samples, memory_samples, String::new())
     };
 
-    Ok((run_metrics, workload_results, throughput_samples, latency_percentiles, logs))
+    Ok((run_metrics, workload_results, throughput_samples, latency_percentiles, cpu_samples, memory_samples, logs))
 }

@@ -50,6 +50,8 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
     config_file = run_dir / "config.yaml"
     throughput_file = run_dir / "throughput.json"
     latency_file = run_dir / "latency.json"
+    cpu_file = run_dir / "cpu.json"
+    memory_file = run_dir / "memory.json"
     metrics_file = run_dir / "process_metrics.json"
 
     container_stats_file = run_dir / "container_stats.json"
@@ -71,6 +73,14 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
         if latency_file.exists():
             with open(latency_file) as f:
                 results_data["latency_percentiles"] = json.load(f)
+
+        if cpu_file.exists():
+            with open(cpu_file) as f:
+                results_data["cpu_samples"] = json.load(f)
+
+        if memory_file.exists():
+            with open(memory_file) as f:
+                results_data["memory_samples"] = json.load(f)
 
         metrics_data = {}
         if metrics_file.exists():

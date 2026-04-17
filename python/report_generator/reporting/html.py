@@ -91,6 +91,8 @@ def generate_run_html(report_dir: Path, run):
     workload_name = run.name
     latency_img = "latency_cdf.png"
     throughput_img = "throughput.png"
+    cpu_img = "cpu.png"
+    memory_img = "memory.png"
 
     metrics = run.metrics
     has_container_stats = bool(metrics.get('startup_time_s') or metrics.get("image_size_bytes"))
@@ -170,6 +172,16 @@ def generate_run_html(report_dir: Path, run):
       <img src='{throughput_img}' width='560'>
     </div>
   </div>
+  <div class='row'>
+    <div class='card'>
+      <h2>CPU Usage over time</h2>
+      <img src='{cpu_img}' width='560'>
+    </div>
+    <div class='card'>
+      <h2>Memory Usage over time</h2>
+      <img src='{memory_img}' width='560'>
+    </div>
+  </div>
   {resource_metrics_html}
   {container_stats_html}
   {logs_html}
@@ -244,6 +256,16 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <h3>Throughput over time</h3>
         <img src='{workload_name}_comparison_{worker_suffix}{wc}_throughput.png' width='560'>
       </div>
+    </div>
+    <div class='row'>
+      <div class='card'>
+        <h3>CPU Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_cpu.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Memory Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_memory.png' width='560'>
+      </div>
     </div>"""
 
     performance_section = f"""
@@ -260,8 +282,18 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     </div>
     <div class='row'>
       <div class='card'>
+        <h3>Average CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
+      </div>
+      <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
+      </div>
+    </div>
+    <div class='row'>
+      <div class='card'>
+        <h3>Average Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
       </div>
       <div class='card'>
         <h3>Peak Memory vs {worker_label}</h3>

@@ -51,6 +51,8 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         """Processes raw result data into structured formats and summary metrics."""
         self.throughput_df = pd.DataFrame(self.results.get("throughput_samples", []))
         self.latency_percentiles = self.results.get("latency_percentiles", [])
+        self.cpu_df = pd.DataFrame(self.results.get("cpu_samples", []))
+        self.memory_df = pd.DataFrame(self.results.get("memory_samples", []))
 
         # Calculate summary metrics
         self.duration_s = 0
@@ -122,4 +124,24 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "time_s": extended_time_s.values,
             "throughput_eps": extended_eps.values,
             "throughput_eps_smooth": extended_eps_smooth.values,
+        }
+
+    def get_cpu_timeseries(self) -> dict | None:
+        """Returns CPU usage time series."""
+        if self.cpu_df.empty:
+            return None
+        df = self.cpu_df.sort_values("elapsed_s")
+        return {
+            "time_s": df["elapsed_s"].values,
+            "cpu_percent": df["cpu_percent"].values,
+        }
+
+    def get_memory_timeseries(self) -> dict | None:
+        """Returns memory usage time series."""
+        if self.memory_df.empty:
+            return None
+        df = self.memory_df.sort_values("elapsed_s")
+        return {
+            "time_s": df["elapsed_s"].values,
+            "memory_mb": df["memory_bytes"].values / (1024 * 1024),
         }

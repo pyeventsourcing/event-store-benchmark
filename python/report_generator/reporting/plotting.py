@@ -60,6 +60,44 @@ def plot_throughput_timeseries(run, out_path: str):
     plt.close()
 
 
+def plot_cpu_timeseries(run, out_path: str):
+    """Plot CPU usage over time for a single run object."""
+    ts = run.get_cpu_timeseries()
+    if ts is None:
+        return
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(ts["time_s"], ts["cpu_percent"],
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None)
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("CPU Usage (%)")
+    plt.title("CPU Usage over Time")
+    plt.ylim(bottom=0)
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_memory_timeseries(run, out_path: str):
+    """Plot memory usage over time for a single run object."""
+    ts = run.get_memory_timeseries()
+    if ts is None:
+        return
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(ts["time_s"], ts["memory_mb"],
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None)
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Memory Usage (MB)")
+    plt.title("Memory Usage over Time")
+    plt.ylim(bottom=0)
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
     """Plot latency CDF comparing multiple runs."""
     plt.figure(figsize=(8, 5))
@@ -114,6 +152,58 @@ def plot_comparison_throughput(runs, title: str, out_path: str, get_store_rank=N
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Throughput (events/sec)")
     plt.title(title)
+    plt.legend()
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
+    """Plot CPU usage over time comparing multiple runs."""
+    plt.figure(figsize=(8, 5))
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    for run in sorted_runs:
+        ts = run.get_cpu_timeseries()
+        if ts is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(ts["time_s"], ts["cpu_percent"],
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None)
+
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("CPU Usage (%)")
+    plt.title(title)
+    plt.ylim(bottom=0)
+    plt.legend()
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None):
+    """Plot memory usage over time comparing multiple runs."""
+    plt.figure(figsize=(8, 5))
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    for run in sorted_runs:
+        ts = run.get_memory_timeseries()
+        if ts is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(ts["time_s"], ts["memory_mb"],
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None)
+
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Memory Usage (MB)")
+    plt.title(title)
+    plt.ylim(bottom=0)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -282,6 +372,94 @@ def plot_peak_cpu_scaling(runs, out_path: str, get_store_rank=None):
         plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
 
     plt.ylabel("Peak CPU (%)")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+
+    plt.legend()
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_avg_cpu_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average CPU usage vs worker count using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        avg_cpu = run.metrics.get("avg_cpu_percent")
+        if avg_cpu is not None:
+            data[run.worker_count][run.adapter] = avg_cpu
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0]
+    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    title = f"Average CPU by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
+    plt.ylabel("Avg CPU (%)")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+
+    plt.legend()
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_avg_mem_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average memory usage vs worker count using grouped bar charts."""
+    data = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        avg_mem = run.metrics.get("avg_memory_bytes")
+        if avg_mem is not None:
+            data[run.worker_count][run.adapter] = avg_mem / (1024 * 1024)
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0]
+    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    title = f"Average Memory by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    for i, adapter in enumerate(adapters):
+        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        offset = (i - (len(adapters) - 1) / 2) * width
+        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
+
+    plt.ylabel("Avg Memory (MB)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])

@@ -74,6 +74,8 @@ def main():
 
                 plotting.plot_latency_cdf(run, str(report_dir / "latency_cdf.png"))
                 plotting.plot_throughput_timeseries(run, str(report_dir / "throughput.png"))
+                plotting.plot_cpu_timeseries(run, str(report_dir / "cpu.png"))
+                plotting.plot_memory_timeseries(run, str(report_dir / "memory.png"))
                 html.generate_run_html(report_dir, run)
 
             # --- Generate consolidated workload reports ---
@@ -101,12 +103,26 @@ def main():
                     str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png"),
                     get_store_rank)
 
+                plotting.plot_comparison_cpu(
+                    group_runs, f"CPU Usage — {wc} {worker_label}(s)",
+                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_cpu.png"),
+                    get_store_rank)
+
+                plotting.plot_comparison_memory(
+                    group_runs, f"Memory Usage — {wc} {worker_label}(s)",
+                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_memory.png"),
+                    get_store_rank)
+
             # Always generate scaling plots
             plotting.plot_throughput_scaling(runs, str(workload_dir / f"{workload_name}_scaling_throughput.png"),
                                              get_store_rank)
             plotting.plot_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_latency.png"),
                                           get_store_rank)
+            plotting.plot_avg_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_avg_cpu.png"),
+                                           get_store_rank)
             plotting.plot_peak_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_cpu.png"),
+                                           get_store_rank)
+            plotting.plot_avg_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_avg_mem.png"),
                                            get_store_rank)
             plotting.plot_peak_mem_scaling(runs, str(workload_dir / f"{workload_name}_scaling_peak_mem.png"),
                                            get_store_rank)

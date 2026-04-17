@@ -20,6 +20,18 @@ pub struct LatencyPercentile {
     pub latency_us: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuSample {
+    pub elapsed_s: f64,
+    pub cpu_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySample {
+    pub elapsed_s: f64,
+    pub memory_bytes: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProcessMetrics {
     /// Average CPU usage percentage during run
@@ -81,6 +93,8 @@ impl WorkloadResults {
         path: &Path,
         throughput_samples: &[ThroughputSample],
         latency_percentiles: &[LatencyPercentile],
+        cpu_samples: &[CpuSample],
+        memory_samples: &[MemorySample],
     ) -> Result<()> {
         fs::write(
             path.join("config.yaml"),
@@ -95,6 +109,16 @@ impl WorkloadResults {
         fs::write(
             path.join("latency.json"),
             serde_json::to_string_pretty(latency_percentiles)?,
+        )?;
+
+        fs::write(
+            path.join("cpu.json"),
+            serde_json::to_string_pretty(cpu_samples)?,
+        )?;
+
+        fs::write(
+            path.join("memory.json"),
+            serde_json::to_string_pretty(memory_samples)?,
         )?;
 
         Ok(())
