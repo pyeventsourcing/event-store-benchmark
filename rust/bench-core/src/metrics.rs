@@ -101,8 +101,8 @@ impl WorkloadResults {
         path: &Path,
         throughput_samples: &[ThroughputSample],
         latency_percentiles: &[LatencyPercentile],
-        cpu_samples: &[CpuSample],
-        memory_samples: &[MemorySample],
+        cpu_samples: Option<&[CpuSample]>,
+        memory_samples: Option<&[MemorySample]>,
     ) -> Result<()> {
         fs::write(
             path.join("config.yaml"),
@@ -119,15 +119,19 @@ impl WorkloadResults {
             serde_json::to_string_pretty(latency_percentiles)?,
         )?;
 
-        fs::write(
-            path.join("cpu.json"),
-            serde_json::to_string_pretty(cpu_samples)?,
-        )?;
+        if let Some(cpu_samples) = cpu_samples {
+            fs::write(
+                path.join("cpu.json"),
+                serde_json::to_string_pretty(cpu_samples)?,
+            )?;
+        }
 
-        fs::write(
-            path.join("memory.json"),
-            serde_json::to_string_pretty(memory_samples)?,
-        )?;
+        if let Some(memory_samples) = memory_samples {
+            fs::write(
+                path.join("memory.json"),
+                serde_json::to_string_pretty(memory_samples)?,
+            )?;
+        }
 
         Ok(())
     }

@@ -126,7 +126,9 @@ def generate_run_html(report_dir: Path, run):
     elif avg_mem is not None:
         mem_display = f"{avg_mem / 1024 / 1024:.0f} MB"
 
-    resource_metrics_html = f"""
+    resource_metrics_html = ""
+    if avg_cpu is not None or avg_mem is not None:
+        resource_metrics_html = f"""
   <div class='row'>
     <div class='card'>
       <h2>Process Resource Metrics</h2>
@@ -144,6 +146,22 @@ def generate_run_html(report_dir: Path, run):
       <pre style='background: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; max-height: 500px; overflow-y: auto;'>{run.logs}</pre>
     </div>
   </div>"""
+
+    cpu_plot_html = ""
+    if not run.cpu_df.empty:
+        cpu_plot_html = f"""
+    <div class='card'>
+      <h2>CPU Usage over time</h2>
+      <img src='{cpu_img}' width='560'>
+    </div>"""
+
+    memory_plot_html = ""
+    if not run.memory_df.empty:
+        memory_plot_html = f"""
+    <div class='card'>
+      <h2>Memory Usage over time</h2>
+      <img src='{memory_img}' width='560'>
+    </div>"""
 
     html = f"""
 <!DOCTYPE html>
@@ -173,14 +191,8 @@ def generate_run_html(report_dir: Path, run):
     </div>
   </div>
   <div class='row'>
-    <div class='card'>
-      <h2>CPU Usage over time</h2>
-      <img src='{cpu_img}' width='560'>
-    </div>
-    <div class='card'>
-      <h2>Memory Usage over time</h2>
-      <img src='{memory_img}' width='560'>
-    </div>
+    {cpu_plot_html}
+    {memory_plot_html}
   </div>
   {resource_metrics_html}
   {container_stats_html}
@@ -245,6 +257,26 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
     comparison_sections = ""
     for wc in sorted(worker_groups.keys()):
+        group_runs = worker_groups[wc]
+        has_cpu = any(not r.cpu_df.empty for r in group_runs)
+        has_mem = any(not r.memory_df.empty for r in group_runs)
+
+        cpu_comp_html = ""
+        if has_cpu:
+            cpu_comp_html = f"""
+      <div class='card'>
+        <h3>CPU Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_cpu.png' width='560'>
+      </div>"""
+
+        mem_comp_html = ""
+        if has_mem:
+            mem_comp_html = f"""
+      <div class='card'>
+        <h3>Memory Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_memory.png' width='560'>
+      </div>"""
+
         comparison_sections += f"""
     <h2>{worker_label} = {wc}</h2>
     <div class='row'>
@@ -258,15 +290,38 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
       </div>
     </div>
     <div class='row'>
+      {cpu_comp_html}
+      {mem_comp_html}
+    </div>"""
+
+    has_any_cpu = any(not r.cpu_df.empty for r in runs)
+    has_any_mem = any(not r.memory_df.empty for r in runs)
+
+    cpu_scaling_html = ""
+    if has_any_cpu:
+        cpu_scaling_html = f"""
+    <div class='row'>
       <div class='card'>
-        <h3>CPU Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_cpu.png' width='560'>
+        <h3>Peak CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Memory Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_memory.png' width='560'>
+        <h3>Average CPU vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
       </div>
     </div>"""
+
+    mem_scaling_html = f"""
+    <div class='row'>
+      <div class='card'>
+        <h3>Peak Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
+      </div>
+      <div class='card'>
+        <h3>Average Memory vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
+      </div>
+    </div>""" if has_any_mem else ""
 
     performance_section = f"""
     <h2>Performance</h2>
@@ -280,26 +335,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
     </div>
-    <div class='row'>
-      <div class='card'>
-        <h3>Peak CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_cpu.png' width='560'>
-      </div>
-      <div class='card'>
-        <h3>Peak Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_peak_mem.png' width='560'>
-      </div>
-    </div>
-    <div class='row'>
-      <div class='card'>
-        <h3>Average CPU vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
-      </div>
-      <div class='card'>
-        <h3>Average Memory vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_avg_mem.png' width='560'>
-      </div>
-    </div>"""
+    {cpu_scaling_html}
+    {mem_scaling_html}"""
 
     container_stats_section = ""
     if has_container_stats:

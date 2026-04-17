@@ -293,8 +293,8 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             &workload_results_path,
             &throughput_samples,
             &latency_percentiles,
-            &cpu_samples,
-            &memory_samples,
+            cpu_samples.as_deref(),
+            memory_samples.as_deref(),
         )?;
         fs::write(
             workload_results_path.join("process_metrics.json"),

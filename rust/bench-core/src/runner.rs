@@ -18,7 +18,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Vec<CpuSample>, Vec<MemorySample>, String)> {
+) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Option<Vec<CpuSample>>, Option<Vec<MemorySample>>, String)> {
     // Start store container
     let store_name = store.name();
     let (monitor, startup_time_s) = if store.use_docker() {
@@ -154,9 +154,9 @@ pub async fn execute_run(
                     startup_time_s: startup_time_s.unwrap_or(0.0),
                     image_size_bytes,
                 });
-                (resources, cpu, mem, container)
+                (resources, Some(cpu), Some(mem), container)
             }
-            _ => (ProcessMetrics::default(), Vec::new(), Vec::new(), Some(ContainerStats {
+            _ => (ProcessMetrics::default(), None, None, Some(ContainerStats {
                 startup_time_s: startup_time_s.unwrap_or(0.0),
                 image_size_bytes: None,
             })),
@@ -171,8 +171,11 @@ pub async fn execute_run(
         (RunMetrics { resources, container }, cpu_samples, memory_samples, logs)
     } else {
         let (resources, cpu_samples, memory_samples) = match monitor {
-            Some(Monitor::Process(m)) => m.stop().await,
-            _ => (ProcessMetrics::default(), Vec::new(), Vec::new()),
+            Some(Monitor::Process(m)) => {
+                let (res, cpu, mem) = m.stop().await;
+                (res, Some(cpu), Some(mem))
+            }
+            _ => (ProcessMetrics::default(), None, None),
         };
         (RunMetrics { resources, container: None }, cpu_samples, memory_samples, String::new())
     };
