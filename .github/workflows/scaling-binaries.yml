@@ -71,8 +71,8 @@ jobs:
           curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip
           unzip axonserver.zip
           cd AxonServer-2025.2.7
-          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > axon.log 2>&1 &
-          echo $! > kurrentdb.pid
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/axonserver.pid
           for i in {1..60}; do
             if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
               echo "Axon Server is ready after $((i-1)) seconds"
@@ -81,7 +81,7 @@ jobs:
             sleep 1
           done
           echo "Axon Server failed to start after 60 seconds"
-          cat AxonServer-2025.2.7/axon.log
+          cat $GITHUB_WORKSPACE/axonserver.log
           exit 1
 
       - name: Install and start kurrentdb
@@ -90,8 +90,8 @@ jobs:
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
           sudo apt-get install kurrentdb=26.0.2
           sudo cat /etc/kurrentdb/kurrentdb.conf
-          sudo /usr/bin/kurrentd --insecure > kurrentdb.log 2>&1 &
-          echo $! > kurrentdb.pid
+          sudo /usr/bin/kurrentd --insecure > $GITHUB_WORKSPACE/kurrentdb.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/kurrentdb.pid
           for i in {1..60}; do
             if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
               echo "KurrentDB is ready after $((i-1)) seconds"
@@ -100,7 +100,7 @@ jobs:
             sleep 1
           done
           echo "KurrentDB failed to start after 60 seconds"
-          cat kurrentdb.log
+          cat $GITHUB_WORKSPACE/kurrentdb.log
           exit 1
 
       - name: Set up Rust
@@ -115,7 +115,18 @@ jobs:
         if: ${{ matrix.store == 'umadb' }}
         run: |
           cargo install umadb
-          umadb &
+          nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/umadb.pid
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 50051; then
+              echo "UmaDB is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "UmaDB failed to start after 60 seconds"
+          cat $GITHUB_WORKSPACE/umadb.log
+          exit 1
 
       - name: Download benchmark tool
         uses: actions/download-artifact@v8
@@ -140,7 +151,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: results-scaling-${{ matrix.store }}
-          path: results/raw/
+          path: |
+            results/raw/
+            ${{ github.workspace }}/${{ matrix.store }}.log
           retention-days: 1
 
   report:
