@@ -57,6 +57,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         # Calculate summary metrics
         self.duration_s = 0
         self.average_throughput = 0
+        self.peak_throughput = 0
         if not self.throughput_df.empty and len(self.throughput_df) >= 2:
             df = self.throughput_df.sort_values("elapsed_s")
             duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
@@ -64,6 +65,10 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             self.duration_s = duration
             if duration > 0:
                 self.average_throughput = total_count / duration
+            
+            ts = self.get_throughput_timeseries()
+            if ts:
+                self.peak_throughput = ts["throughput_eps_smooth"].max()
 
     @property
     def name(self) -> str:

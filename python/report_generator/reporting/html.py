@@ -243,11 +243,17 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         elif avg_mem is not None:
             mem_display = f"{avg_mem / 1024 / 1024:.0f}"
 
+        avg_throughput = run.average_throughput
+        peak_throughput = getattr(run, 'peak_throughput', 0)
+        throughput_display = f"{avg_throughput:.0f}"
+        if peak_throughput > 0:
+            throughput_display = f"{avg_throughput:.0f} / {peak_throughput:.0f}"
+
         summary_rows += f"""
       <tr>
         <td><a href='{report_link}'>{run.adapter}</a></td>
         <td>{run.worker_count}</td>
-        <td>{run.average_throughput:.0f}</td>
+        <td>{throughput_display}</td>
         <td>{run.get_latency_percentile(50.0):.2f}</td>
         <td>{run.get_latency_percentile(99.0):.2f}</td>
         <td>{run.get_latency_percentile(99.9):.2f}</td>

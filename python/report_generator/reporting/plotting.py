@@ -216,14 +216,17 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
 
 
 def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
-    """Plot throughput vs worker count using grouped bar charts."""
-    data = defaultdict(dict)
+    """Plot average and peak throughput vs worker count using overlaid bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
-        if run.average_throughput > 0:
-            data[run.worker_count][run.adapter] = run.average_throughput
+        if run.average_throughput > 0 or (hasattr(run, 'peak_throughput') and run.peak_throughput > 0):
+            data[run.worker_count][run.adapter] = {
+                "avg": run.average_throughput,
+                "peak": getattr(run, 'peak_throughput', 0)
+            }
             all_adapters.add(run.adapter)
             all_worker_counts.add(run.worker_count)
 
@@ -243,10 +246,17 @@ def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
 
     all_vals = []
     for i, adapter in enumerate(adapters):
-        vals = [data[wc].get(adapter, 0) for wc in worker_counts]
+        avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
+        peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
+        
         offset = (i - (len(adapters) - 1) / 2) * width
-        plt.bar(x + offset, vals, width, label=adapter, color=get_adapter_color(adapter), alpha=0.9)
-        all_vals.extend([v for v in vals if v > 0])
+        color = get_adapter_color(adapter)
+        
+        plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+        
+        all_vals.extend([v for v in avg_vals if v > 0])
+        all_vals.extend([v for v in peak_vals if v > 0])
 
     plt.yscale("log")
     
@@ -263,7 +273,13 @@ def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
     plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
     plt.gca().yaxis.set_minor_formatter(NullFormatter())
 
-    plt.legend()
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
