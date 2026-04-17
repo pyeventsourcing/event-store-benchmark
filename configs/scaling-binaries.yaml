@@ -3,11 +3,14 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 60
-  samples_per_second: 5
+#  duration_seconds: 60
+#  samples_per_second: 5
+  duration_seconds: 120
+  samples_per_second: 1
   concurrency:
     readers: 0
-    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+#    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    writers: [1, 4, 16, 64, 256, 1024]
   operations:
     write:
       event_size_bytes: 256
@@ -21,10 +24,13 @@ performance:
   mode: read
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 60
-  samples_per_second: 5
+#  duration_seconds: 60
+#  samples_per_second: 5
+  duration_seconds: 120
+  samples_per_second: 1
   concurrency:
-    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+#    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    readers: [1, 4, 16, 64, 256, 1024]
     writers: 0
   operations:
     write:
@@ -32,8 +38,8 @@ performance:
     read:
       limit: 10
   setup:
-    prepopulate_events: 5000
-    prepopulate_streams: 500
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
   stores:
     - umadb
     - kurrentdb
