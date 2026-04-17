@@ -297,9 +297,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     has_any_cpu = any(not r.cpu_df.empty for r in runs)
     has_any_mem = any(not r.memory_df.empty for r in runs)
 
-    cpu_scaling_html = ""
-    if has_any_cpu:
-        cpu_scaling_html = f"""
+    cpu_scaling_html = f"""
     <div class='row'>
       <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
@@ -309,7 +307,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <h3>Average CPU vs {worker_label}</h3>
         <img src='{workload_name}_scaling_avg_cpu.png' width='560'>
       </div>
-    </div>"""
+    </div>""" if has_any_cpu else ""
 
     mem_scaling_html = f"""
     <div class='row'>
