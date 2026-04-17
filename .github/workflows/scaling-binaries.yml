@@ -154,7 +154,6 @@ jobs:
           name: results-scaling-${{ matrix.store }}
           path: |
             results/raw/
-            ${{ github.workspace }}/${{ matrix.store }}.log
           retention-days: 1
 
   report:
