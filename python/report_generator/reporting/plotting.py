@@ -338,39 +338,25 @@ def plot_peak_mem_scaling(runs, out_path: str, get_store_rank=None):
 
 
 def plot_process_metrics(runs, out_path: str, get_store_rank=None):
-    """Create a visualization of resource usage."""
+    """Create a visualization of resource usage (CPU/Memory)."""
     adapter_data = {}
 
     for run in runs:
         metrics = run.metrics
         has_cpu = metrics.get("peak_cpu_percent") is not None
         has_mem = metrics.get("peak_memory_bytes") is not None
-        has_image = metrics.get("image_size_bytes") is not None
 
-        if not (has_cpu or has_mem or has_image):
+        if not (has_cpu or has_mem):
             continue
 
         if run.adapter not in adapter_data:
             adapter_data[run.adapter] = {
-                "image_size": [],
-                "startup_time": 0,
                 "peak_cpu": 0,
                 "peak_mem": 0,
-                "count": 0,
-                "startup_count": 0
+                "count": 0
             }
 
         data = adapter_data[run.adapter]
-        
-        img_size = metrics.get("image_size_bytes")
-        if img_size is not None:
-            data["image_size"].append(img_size / (1024 * 1024))
-            
-        startup = metrics.get("startup_time_s")
-        if startup is not None and startup > 0:
-            data["startup_time"] += startup
-            data["startup_count"] += 1
-            
         data["peak_cpu"] = max(data["peak_cpu"], metrics.get("peak_cpu_percent", 0))
         
         peak_mem = metrics.get("peak_memory_bytes")
@@ -390,31 +376,90 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
             max_val = max(values) if values else 1
             return [v / max_val if max_val > 0 else 0 for v in values]
 
-        raw_image = [np.mean(adapter_data[a]["image_size"]) if adapter_data[a]["image_size"] else 0 for a in adapters_list]
-        raw_startup = [adapter_data[a]["startup_time"] / adapter_data[a]["startup_count"] if adapter_data[a]["startup_count"] > 0 else 0 for a in adapters_list]
         raw_cpu = [adapter_data[a]["peak_cpu"] for a in adapters_list]
         raw_mem = [adapter_data[a]["peak_mem"] for a in adapters_list]
 
-        norm_image = normalize(raw_image)
-        norm_startup = normalize(raw_startup)
         norm_cpu = normalize(raw_cpu)
         norm_mem = normalize(raw_mem)
 
         composite_scores = []
         for i, adapter in enumerate(adapters_list):
-            score = (norm_image[i] + norm_startup[i] + norm_cpu[i] + norm_mem[i]) / 4.0
+            score = (norm_cpu[i] + norm_mem[i]) / 2.0
             composite_scores.append((adapter, score))
 
         composite_scores.sort(key=lambda x: x[1])
         adapters = [x[0] for x in composite_scores]
 
-    image_sizes = [np.mean(adapter_data[a]["image_size"]) if adapter_data[a]["image_size"] else 0 for a in adapters]
-    startup_times = [adapter_data[a]["startup_time"] / adapter_data[a]["startup_count"] if adapter_data[a]["startup_count"] > 0 else 0 for a in adapters]
     peak_cpus = [adapter_data[a]["peak_cpu"] for a in adapters]
     peak_mems = [adapter_data[a]["peak_mem"] for a in adapters]
 
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle("Resource Usage Comparison", fontsize=16, fontweight='bold')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle("Process Resource Usage Comparison", fontsize=16, fontweight='bold')
+
+    colors = [get_adapter_color(adapter) for adapter in adapters]
+
+    def plot_bar(ax, data, title, ylabel, fmt_str):
+        bars = ax.bar(adapters, data, color=colors, edgecolor='black', linewidth=1.5)
+        ax.set_ylabel(ylabel, fontweight='bold')
+        ax.set_title(title, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='y')
+        for bar, v in zip(bars, data):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2., height,
+                    fmt_str.format(v) if v > 0 else "N/A", ha='center', va='bottom', fontweight='bold')
+
+    plot_bar(ax1, peak_cpus, "Peak CPU Usage", "Peak CPU (%)", '{:.1f}%')
+    plot_bar(ax2, peak_mems, "Peak Memory Usage", "Peak Memory (MB)", '{:.0f}')
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def plot_container_stats(runs, out_path: str, get_store_rank=None):
+    """Create a visualization of container stats (Image size/Startup)."""
+    adapter_data = {}
+
+    for run in runs:
+        metrics = run.metrics
+        has_image = metrics.get("image_size_bytes") is not None
+        has_startup = metrics.get("startup_time_s") is not None
+
+        if not (has_image or has_startup):
+            continue
+
+        if run.adapter not in adapter_data:
+            adapter_data[run.adapter] = {
+                "image_size": [],
+                "startup_time": 0,
+                "startup_count": 0
+            }
+
+        data = adapter_data[run.adapter]
+        
+        img_size = metrics.get("image_size_bytes")
+        if img_size is not None:
+            data["image_size"].append(img_size / (1024 * 1024))
+            
+        startup = metrics.get("startup_time_s")
+        if startup is not None and startup > 0:
+            data["startup_time"] += startup
+            data["startup_count"] += 1
+
+    if not adapter_data:
+        return
+
+    adapters_list = list(adapter_data.keys())
+    if get_store_rank:
+        adapters = sorted(adapters_list, key=get_store_rank)
+    else:
+        adapters = sorted(adapters_list)
+
+    image_sizes = [np.mean(adapter_data[a]["image_size"]) if adapter_data[a]["image_size"] else 0 for a in adapters]
+    startup_times = [adapter_data[a]["startup_time"] / adapter_data[a]["startup_count"] if adapter_data[a]["startup_count"] > 0 else 0 for a in adapters]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle("Container Stats Comparison", fontsize=16, fontweight='bold')
 
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
@@ -436,8 +481,6 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
 
     plot_bar(ax1, image_sizes, "Image Size", "Image Size (MB)", '{:.0f}', show_if_zero=False)
     plot_bar(ax2, startup_times, "Startup Time", "Startup Time (seconds)", '{:.2f}s', show_if_zero=False)
-    plot_bar(ax3, peak_cpus, "Peak CPU Usage", "Peak CPU (%)", '{:.1f}%')
-    plot_bar(ax4, peak_mems, "Peak Memory Usage", "Peak Memory (MB)", '{:.0f}')
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches='tight')

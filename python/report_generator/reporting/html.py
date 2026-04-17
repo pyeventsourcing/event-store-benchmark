@@ -92,6 +92,47 @@ def generate_run_html(report_dir: Path, run):
     latency_img = "latency_cdf.png"
     throughput_img = "throughput.png"
 
+    metrics = run.metrics
+    has_container_stats = bool(metrics.get('startup_time_s') or metrics.get("image_size_bytes"))
+    
+    container_stats_html = ""
+    if has_container_stats:
+        startup_time = f"{metrics.get('startup_time_s', 0):.2f}s" if metrics.get('startup_time_s') else "N/A"
+        image_size_mb = f"{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f} MB" if metrics.get("image_size_bytes") else "N/A"
+        container_stats_html = f"""
+  <div class='row'>
+    <div class='card'>
+      <h2>Container Stats</h2>
+      <p><b>Startup Time:</b> {startup_time}</p>
+      <p><b>Image Size:</b> {image_size_mb}</p>
+    </div>
+  </div>"""
+
+    avg_cpu = metrics.get("avg_cpu_percent")
+    peak_cpu = metrics.get("peak_cpu_percent")
+    cpu_display = "N/A"
+    if avg_cpu is not None and peak_cpu is not None:
+        cpu_display = f"{avg_cpu:.1f}% / {peak_cpu:.1f}%"
+    elif avg_cpu is not None:
+        cpu_display = f"{avg_cpu:.1f}%"
+
+    avg_mem = metrics.get("avg_memory_bytes")
+    peak_mem = metrics.get("peak_memory_bytes")
+    mem_display = "N/A"
+    if avg_mem is not None and peak_mem is not None:
+        mem_display = f"{avg_mem / 1024 / 1024:.0f} / {peak_mem / 1024 / 1024:.0f} MB"
+    elif avg_mem is not None:
+        mem_display = f"{avg_mem / 1024 / 1024:.0f} MB"
+
+    resource_metrics_html = f"""
+  <div class='row'>
+    <div class='card'>
+      <h2>Process Resource Metrics</h2>
+      <p><b>CPU (avg/peak):</b> {cpu_display}</p>
+      <p><b>Memory (avg/peak):</b> {mem_display}</p>
+    </div>
+  </div>"""
+
     logs_html = ""
     if run.logs:
         logs_html = f"""
@@ -129,6 +170,8 @@ def generate_run_html(report_dir: Path, run):
       <img src='{throughput_img}' width='560'>
     </div>
   </div>
+  {resource_metrics_html}
+  {container_stats_html}
   {logs_html}
 </body>
 </html>
@@ -151,13 +194,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     worker_suffix = "r" if is_readers else "w"
 
     summary_rows = ""
+    has_container_stats = False
     for run in sorted(runs, key=row_key):
         report_link = f"report-{run.adapter}-r{run.readers:03d}-w{run.writers:03d}/index.html"
 
         metrics = run.metrics
-        startup_time = f"{metrics.get('startup_time_s', 0):.1f}s" if metrics.get('startup_time_s') else "N/A"
-        image_size_mb = f"{metrics.get('image_size_bytes', 0) / 1024 / 1024:.0f}" if metrics.get(
-            "image_size_bytes") else "N/A"
+        
+        if metrics.get('startup_time_s') or metrics.get("image_size_bytes"):
+            has_container_stats = True
 
         avg_cpu = metrics.get("avg_cpu_percent")
         peak_cpu = metrics.get("peak_cpu_percent")
@@ -183,8 +227,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <td>{run.get_latency_percentile(50.0):.2f}</td>
         <td>{run.get_latency_percentile(99.0):.2f}</td>
         <td>{run.get_latency_percentile(99.9):.2f}</td>
-        <td>{image_size_mb}</td>
-        <td>{startup_time}</td>
         <td>{cpu_display}</td>
         <td>{mem_display}</td>
       </tr>"""
@@ -208,6 +250,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <h2>Process Resource Metrics</h2>
     <div class='card' style='max-width: 100%;'>
         <img src='{workload_name}_process_metrics.png' style='width: 100%; max-width: 1200px;'>
+    </div>"""
+
+    container_stats_section = ""
+    if has_container_stats:
+        container_stats_section = f"""
+    <h2>Container Stats</h2>
+    <div class='card' style='max-width: 100%;'>
+        <img src='{workload_name}_container_stats.png' style='width: 100%; max-width: 1200px;'>
     </div>"""
 
     scaling_section = ""
@@ -257,18 +307,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     th, td {{ border: 1px solid #ddd; padding: 0.5rem 1rem; text-align: left; }}
     th {{ background: #f5f5f5; }}
     .row {{ display: flex; gap: 1rem; flex-wrap: wrap; }}
-    .card {{ border: 1px solid #eee; border-radius: 8px; padding: 1rem; }}
+    .card {{ border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }}
   </style>
 </head>
 <body>
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
   {process_section}
+  {container_stats_section}
   {scaling_section}
   {comparison_sections}
   <h2>Summary</h2>
   <table>
-    <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>Image (MB)</th><th>Startup</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
+    <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
     {summary_rows}
   </table>
   {config_section}
