@@ -49,10 +49,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
+        run: dotnet restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -p:TreatWarningsAsErrors=false
 
       - name: Build project
-        run: dotnet build --no-restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj
+        run: dotnet build --no-restore ./kurrentdb-repo/src/KurrentDB.TestClient/KurrentDB.TestClient.csproj -p:TreatWarningsAsErrors=false
 
       - name: Run write flood (1 client)
         run: |
