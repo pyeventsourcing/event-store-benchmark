@@ -9,6 +9,7 @@ use bench_core::adapter::{
 use bench_core::wait_for_ready;
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use tokio::time::Duration;
@@ -19,6 +20,7 @@ pub struct AxonServerStoreManager {
     container: Option<ContainerAsync<AxonServer>>,
     use_docker: bool,
     data_dir: StoreDataDir,
+    memory_limit_mb: Option<u64>,
 }
 
 impl AxonServerStoreManager {
@@ -28,6 +30,7 @@ impl AxonServerStoreManager {
             container: None,
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
+            memory_limit_mb: None,
         }
     }
 
@@ -60,7 +63,19 @@ impl StoreManager for AxonServerStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let container = AxonServer::new(mount_path).start().await?;
+        let image = AxonServer::new(mount_path);
+
+        let container = if let Some(limit_mb) = self.memory_limit_mb {
+            let bytes = limit_mb * 1024 * 1024;
+            image.with_host_config_modifier(move |host_config| {
+                host_config.memory = Some(bytes as i64);
+            })
+            .start()
+            .await?
+        } else {
+            image.start().await?
+        };
+
         let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
@@ -90,6 +105,10 @@ impl StoreManager for AxonServerStoreManager {
 
     fn container_id(&self) -> Option<String> {
         self.container.as_ref().map(|c| c.id().to_string())
+    }
+
+    fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
+        self.memory_limit_mb = limit_mb;
     }
 
     fn name(&self) -> &'static str {

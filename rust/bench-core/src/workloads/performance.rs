@@ -33,6 +33,8 @@ pub struct PerformanceConfig {
     #[serde(default)]
     pub use_docker: bool,
     #[serde(default)]
+    pub docker_memory_limit_mb: Option<u64>,
+    #[serde(default)]
     pub setup: SetupConfig,
     pub stores: StoreValue,
 }
@@ -56,6 +58,7 @@ impl PerformanceConfig {
                     new_config.concurrency.readers = ConcurrencyValue::Single(readers);
                     new_config.stores = StoreValue::Single(store.to_string());
                     new_config.use_docker = self.use_docker;
+                    new_config.docker_memory_limit_mb = self.docker_memory_limit_mb;
                     // Add sweep suffix to name
                     new_config.name = format!("{}-{}-w{}-r{}", self.name, store, writers, readers);
                     configs.push(new_config);

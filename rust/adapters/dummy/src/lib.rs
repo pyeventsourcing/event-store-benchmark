@@ -121,6 +121,7 @@ impl StoreManager for DummyStoreManager {
     fn container_id(&self) -> Option<String> {
         None
     }
+    fn set_memory_limit(&mut self, _limit_mb: Option<u64>) {}
     fn name(&self) -> &'static str {
         "dummy"
     }

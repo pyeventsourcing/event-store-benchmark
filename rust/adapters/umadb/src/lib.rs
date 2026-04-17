@@ -7,6 +7,7 @@ use bench_core::wait_for_ready;
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
 use std::sync::Arc;
+use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
@@ -19,6 +20,7 @@ pub struct UmaDbStoreManager {
     container: Option<ContainerAsync<UmaDb>>,
     use_docker: bool,
     data_dir: StoreDataDir,
+    memory_limit_mb: Option<u64>,
 }
 
 impl UmaDbStoreManager {
@@ -28,6 +30,7 @@ impl UmaDbStoreManager {
             container: None,
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
+            memory_limit_mb: None,
         }
     }
 
@@ -42,7 +45,19 @@ impl StoreManager for UmaDbStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let container = UmaDb::new(mount_path).start().await?;
+        let image = UmaDb::new(mount_path);
+
+        let container = if let Some(limit_mb) = self.memory_limit_mb {
+            let bytes = limit_mb * 1024 * 1024;
+            image.with_host_config_modifier(move |host_config| {
+                host_config.memory = Some(bytes as i64);
+            })
+            .start()
+            .await?
+        } else {
+            image.start().await?
+        };
+
         let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
@@ -78,6 +93,10 @@ impl StoreManager for UmaDbStoreManager {
 
     fn container_id(&self) -> Option<String> {
         self.container.as_ref().map(|c| c.id().to_string())
+    }
+
+    fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
+        self.memory_limit_mb = limit_mb;
     }
 
     fn name(&self) -> &'static str {

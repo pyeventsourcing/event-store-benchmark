@@ -61,6 +61,9 @@ pub trait StoreManager: Send + Sync {
     /// Get the container ID for stats collection (if applicable)
     fn container_id(&self) -> Option<String>;
 
+    /// Set memory limit for the container in MB
+    fn set_memory_limit(&mut self, limit_mb: Option<u64>);
+
 
     /// Store name (adapter name)
     fn name(&self) -> &'static str;

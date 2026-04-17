@@ -9,7 +9,7 @@ use marten_rs::{Marten as MartenClient, MartenDcbEvent};
 use std::sync::Arc;
 use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, Image};
+use testcontainers::{ContainerAsync, Image, ImageExt};
 use tokio::time::Duration;
 use std::borrow::Cow;
 
@@ -87,6 +87,7 @@ pub struct MartenStoreManager {
     use_docker: bool,
     data_dir: StoreDataDir,
     client: Option<MartenClient>,
+    memory_limit_mb: Option<u64>,
 }
 
 impl MartenStoreManager {
@@ -97,6 +98,7 @@ impl MartenStoreManager {
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "marten"),
             client: None,
+            memory_limit_mb: None,
         }
     }
 
@@ -117,7 +119,19 @@ impl StoreManager for MartenStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let container: ContainerAsync<Marten> = Marten::new(mount_path).start().await?;
+        let image = Marten::new(mount_path);
+
+        let container = if let Some(limit_mb) = self.memory_limit_mb {
+            let bytes = limit_mb * 1024 * 1024;
+            image.with_host_config_modifier(move |host_config| {
+                host_config.memory = Some(bytes as i64);
+            })
+            .start()
+            .await?
+        } else {
+            image.start().await?
+        };
+
         let host_port = container.get_host_port_ipv4(POSTGRES_PORT).await?;
         self.uri = Self::format_uri(host_port);
         self.container = Some(container);
@@ -156,6 +170,10 @@ impl StoreManager for MartenStoreManager {
 
     fn container_id(&self) -> Option<String> {
         self.container.as_ref().map(|c: &ContainerAsync<Marten>| c.id().to_string())
+    }
+
+    fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
+        self.memory_limit_mb = limit_mb;
     }
 
     fn name(&self) -> &'static str {

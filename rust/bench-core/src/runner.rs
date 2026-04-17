@@ -21,6 +21,12 @@ pub async fn execute_run(
 ) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Option<Vec<CpuSample>>, Option<Vec<MemorySample>>, String)> {
     // Start store container
     let store_name = store.name();
+    if store.use_docker() {
+        if let Ok(config) = workload.performance_config() {
+            store.set_memory_limit(config.docker_memory_limit_mb);
+        }
+    }
+
     let (monitor, startup_time_s) = if store.use_docker() {
         if !crate::is_image_pulled(store_name) {
             println!("Pulling {} image...", store_name);
