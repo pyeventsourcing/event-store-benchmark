@@ -58,6 +58,7 @@ jobs:
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
+      ESB_GIT_VERSION: ${{ github.sha }}
     steps:
       - name: Setup database
         if: ${{ matrix.store == 'marten' || matrix.store == 'py-eventsourcing' }}

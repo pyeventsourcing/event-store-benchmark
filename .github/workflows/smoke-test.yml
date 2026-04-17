@@ -9,6 +9,8 @@ on:
 jobs:
   run-smoke-test:
     runs-on: ubuntu-latest
+    env:
+      ESB_GIT_VERSION: ${{ github.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

@@ -10,6 +10,10 @@ use std::time::{Duration, Instant};
 
 /// Get the current git commit hash
 pub fn get_git_commit_hash() -> Result<String> {
+    if let Ok(version) = std::env::var("ESB_GIT_VERSION") {
+        return Ok(version);
+    }
+
     let output = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()?;
