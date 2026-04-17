@@ -6,14 +6,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-/// Throughput time-series sample: elapsed time from workload start and cumulative operation count
+/// Sampling configuration message
 #[derive(Debug, Clone, Copy)]
-pub struct BenchmarkMessage {
+pub struct SamplingConfigDecision {
     pub start_time: Instant,
     pub samples_per_second: u64,
     pub duration_seconds: u64,
 }
 
+/// Throughput time-series sample: elapsed time from workload start and cumulative operation count
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThroughputSample {
     pub elapsed_s: f64,

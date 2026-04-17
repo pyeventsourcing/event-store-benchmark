@@ -1,6 +1,6 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus, BenchmarkMessage};
+use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus, SamplingConfigDecision};
 use anyhow::Result;
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -239,8 +239,8 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-        benchmark_tx: watch::Sender<Option<BenchmarkMessage>>,
-        benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
+        benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
+        sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
     ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
         // Run preparation (prepopulation) if configured
         self.prepare(store).await?;
@@ -283,7 +283,7 @@ impl PerformanceWorkload {
                 cancel_token.clone(),
                 activate_metrics,
                 ready_barrier.clone(),
-                benchmark_rx.clone(),
+                sampling_config_rx.clone(),
             );
         }
 
@@ -305,7 +305,7 @@ impl PerformanceWorkload {
                 prepopulated_streams,
                 activate_metrics,
                 ready_barrier.clone(),
-                benchmark_rx.clone(),
+                sampling_config_rx.clone(),
             );
         }
 
@@ -315,7 +315,7 @@ impl PerformanceWorkload {
 
         // Signal benchmark start
         let start_time = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
-        let msg = BenchmarkMessage {
+        let msg = SamplingConfigDecision {
             start_time,
             samples_per_second,
             duration_seconds,
@@ -431,21 +431,21 @@ impl PerformanceWorkload {
         cancel_token: CancellationToken,
         activate_metrics: bool,
         ready_barrier: Arc<Barrier>,
-        mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
     ) {
         worker_tasks.spawn(async move {
             ready_barrier.wait().await;
             
             loop {
-                if benchmark_rx.borrow().is_some() {
+                if sampling_config_rx.borrow().is_some() {
                     break;
                 }
-                if benchmark_rx.changed().await.is_err() {
+                if sampling_config_rx.changed().await.is_err() {
                     return None;
                 }
             }
             
-            let msg = benchmark_rx.borrow().unwrap();
+            let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;
@@ -520,21 +520,21 @@ impl PerformanceWorkload {
         prepopulated_streams: u64,
         activate_metrics: bool,
         ready_barrier: Arc<Barrier>,
-        mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
     ) {
         worker_tasks.spawn(async move {
             ready_barrier.wait().await;
 
             loop {
-                if benchmark_rx.borrow().is_some() {
+                if sampling_config_rx.borrow().is_some() {
                     break;
                 }
-                if benchmark_rx.changed().await.is_err() {
+                if sampling_config_rx.changed().await.is_err() {
                     return None;
                 }
             }
 
-            let msg = benchmark_rx.borrow().unwrap();
+            let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;

@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, CpuSample, MemorySample, BenchmarkMessage};
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, CpuSample, MemorySample, SamplingConfigDecision};
 use crate::workloads::Workload;
 use crate::metrics::{ProcessMetrics, RunMetrics, ContainerStats};
 use crate::container_stats::ContainerMonitor;
@@ -108,7 +108,7 @@ pub async fn execute_run(
     };
 
     // Prepare synchronization primitives
-    let (tx, rx) = watch::channel(None::<BenchmarkMessage>);
+    let (tx, rx) = watch::channel(None::<SamplingConfigDecision>);
 
     // Start monitor if it exists
     let mut monitor = monitor;

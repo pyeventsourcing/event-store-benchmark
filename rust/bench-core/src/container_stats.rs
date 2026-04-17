@@ -5,7 +5,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, BenchmarkMessage};
+use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, SamplingConfigDecision};
 
 pub struct ContainerMonitor {
     docker: Docker,
@@ -33,7 +33,7 @@ impl ContainerMonitor {
         })
     }
 
-    pub async fn start(&mut self, mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>) {
+    pub async fn start(&mut self, mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>) {
         let docker = self.docker.clone();
         let container_id = self.container_id.clone();
         let stats_arc = self.stats.clone();
@@ -42,15 +42,15 @@ impl ContainerMonitor {
 
         let monitor_task = tokio::spawn(async move {
             loop {
-                if benchmark_rx.borrow().is_some() {
+                if sampling_config_rx.borrow().is_some() {
                     break;
                 }
-                if benchmark_rx.changed().await.is_err() {
+                if sampling_config_rx.changed().await.is_err() {
                     return;
                 }
             }
             
-            let msg = benchmark_rx.borrow().unwrap();
+            let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             
             let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));

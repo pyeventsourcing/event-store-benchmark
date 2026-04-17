@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 use tokio::sync::watch;
 
 use crate::adapter::StoreManager;
-use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, BenchmarkMessage};
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults, SamplingConfigDecision};
 use super::performance::{PerformanceWorkload, PerformanceConfig};
 use super::durability::DurabilityWorkload;
 use super::consistency::ConsistencyWorkload;
@@ -54,11 +54,11 @@ impl Workload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-        benchmark_tx: watch::Sender<Option<BenchmarkMessage>>,
-        benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>,
+        benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
+        sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
     ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
         match self {
-            Workload::Performance(w) => w.execute(store, cancel_token, benchmark_tx, benchmark_rx).await,
+            Workload::Performance(w) => w.execute(store, cancel_token, benchmark_tx, sampling_config_rx).await,
             Workload::Durability(w) => {
                 anyhow::bail!("Durability workloads not yet implemented: {}", w.name());
             }

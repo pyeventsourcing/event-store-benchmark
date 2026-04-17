@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use std::time::Duration;
-use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, BenchmarkMessage};
+use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, SamplingConfigDecision};
 use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate};
 
 pub struct ProcessMonitor {
@@ -28,7 +28,7 @@ impl ProcessMonitor {
         }
     }
 
-    pub async fn start(&mut self, mut benchmark_rx: watch::Receiver<Option<BenchmarkMessage>>) {
+    pub async fn start(&mut self, mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>) {
         let pid = self.pid;
         let stats_arc = self.stats.clone();
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
@@ -36,15 +36,15 @@ impl ProcessMonitor {
 
         let monitor_task = tokio::spawn(async move {
             loop {
-                if benchmark_rx.borrow().is_some() {
+                if sampling_config_rx.borrow().is_some() {
                     break;
                 }
-                if benchmark_rx.changed().await.is_err() {
+                if sampling_config_rx.changed().await.is_err() {
                     return;
                 }
             }
             
-            let msg = benchmark_rx.borrow().unwrap();
+            let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             
             let mut sys = System::new_with_specifics(
