@@ -48,7 +48,8 @@ def _load_environment_info(env_data: dict) -> Optional[EnvironmentInfo]:
 def load_raw_run_data(run_dir: Path) -> dict | None:
     """Loads all raw data files for a single run into a dictionary."""
     config_file = run_dir / "config.yaml"
-    results_file = run_dir / "workload_results.json"
+    throughput_file = run_dir / "throughput.json"
+    latency_file = run_dir / "latency.json"
     metrics_file = run_dir / "process_metrics.json"
 
     container_stats_file = run_dir / "container_stats.json"
@@ -63,9 +64,13 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
             config_data = yaml.safe_load(f)
 
         results_data = {}
-        if results_file.exists():
-            with open(results_file) as f:
-                results_data = json.load(f)
+        if throughput_file.exists():
+            with open(throughput_file) as f:
+                results_data["throughput_samples"] = json.load(f)
+        
+        if latency_file.exists():
+            with open(latency_file) as f:
+                results_data["latency_percentiles"] = json.load(f)
 
         metrics_data = {}
         if metrics_file.exists():

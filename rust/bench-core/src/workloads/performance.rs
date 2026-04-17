@@ -1,6 +1,6 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus};
+use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus};
 use anyhow::Result;
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -238,7 +238,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
+    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
         // Run preparation (prepopulation) if configured
         self.prepare(store).await?;
 
@@ -346,11 +346,15 @@ impl PerformanceWorkload {
             });
         }
 
-        Ok(WorkloadResults::new(
-            serde_json::to_value(&self.config)?,
-            store.name().to_string(),
+        let latency_percentiles = latency_histogram.to_percentiles();
+
+        Ok((
+            WorkloadResults::new(
+                serde_json::to_value(&self.config)?,
+                store.name().to_string(),
+            ),
             throughput_samples,
-            latency_histogram,
+            latency_percentiles,
         ))
     }
 

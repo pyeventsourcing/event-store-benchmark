@@ -1,5 +1,5 @@
 use crate::adapter::StoreManager;
-use crate::metrics::{WorkloadResults};
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults};
 use crate::workloads::Workload;
 use crate::metrics::{ProcessMetrics, RunMetrics, ContainerStats};
 use crate::container_stats::ContainerMonitor;
@@ -17,7 +17,7 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(RunMetrics, WorkloadResults, String)> {
+) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, String)> {
     // Start store container
     let store_name = store.name();
     let (monitor, startup_time_s) = if store.use_docker() {
@@ -120,7 +120,7 @@ pub async fn execute_run(
         }
     };
 
-    let workload_results = match workload_res {
+    let (workload_results, throughput_samples, latency_percentiles) = match workload_res {
         Ok(res) => res,
         Err(e) => {
             if store.use_docker() {
@@ -131,7 +131,7 @@ pub async fn execute_run(
         }
     };
 
-    workload_results.print_summary();
+    workload_results.print_summary(&throughput_samples);
 
     // Get container logs before stopping
     let (run_metrics, logs) = if store.use_docker() {
@@ -166,5 +166,5 @@ pub async fn execute_run(
         (RunMetrics { resources, container: None }, String::new())
     };
 
-    Ok((run_metrics, workload_results, logs))
+    Ok((run_metrics, workload_results, throughput_samples, latency_percentiles, logs))
 }

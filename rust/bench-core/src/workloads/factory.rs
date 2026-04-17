@@ -2,7 +2,7 @@ use anyhow::Result;
 use tokio_util::sync::CancellationToken;
 
 use crate::adapter::StoreManager;
-use crate::metrics::WorkloadResults;
+use crate::metrics::{LatencyPercentile, ThroughputSample, WorkloadResults};
 use super::performance::{PerformanceWorkload, PerformanceConfig};
 use super::durability::DurabilityWorkload;
 use super::consistency::ConsistencyWorkload;
@@ -52,7 +52,7 @@ impl Workload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-    ) -> Result<WorkloadResults> {
+    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
         match self {
             Workload::Performance(w) => w.execute(store, cancel_token).await,
             Workload::Durability(w) => {

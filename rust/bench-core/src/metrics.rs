@@ -50,15 +50,13 @@ pub struct RunMetrics {
 pub struct WorkloadResults {
     pub workload_config: serde_json::Value,
     pub store_name: String,
-    pub throughput_samples: Vec<ThroughputSample>,
-    pub latency_percentiles: Vec<LatencyPercentile>,
 }
 
 impl WorkloadResults {
-    pub(crate) fn print_summary(&self) {
-        if self.throughput_samples.len() >= 2 {
-            let first_sample = self.throughput_samples.first().unwrap();
-            let last_sample = self.throughput_samples.last().unwrap();
+    pub(crate) fn print_summary(&self, throughput_samples: &[ThroughputSample]) {
+        if throughput_samples.len() >= 2 {
+            let first_sample = throughput_samples.first().unwrap();
+            let last_sample = throughput_samples.last().unwrap();
             let duration = last_sample.elapsed_s - first_sample.elapsed_s;
             let count_delta = last_sample.count - first_sample.count;
             let throughput = (count_delta as f64) / duration.max(0.001);
@@ -71,18 +69,19 @@ impl WorkloadResults {
     pub fn new(
         workload_config: serde_json::Value,
         store_name: String,
-        throughput_samples: Vec<ThroughputSample>,
-        latency_recorder: LatencyRecorder,
     ) -> Self {
         Self {
             workload_config,
             store_name,
-            throughput_samples,
-            latency_percentiles: latency_recorder.to_percentiles(),
         }
     }
 
-    pub fn write_to_dir(&self, path: &Path) -> Result<()> {
+    pub fn write_to_dir(
+        &self,
+        path: &Path,
+        throughput_samples: &[ThroughputSample],
+        latency_percentiles: &[LatencyPercentile],
+    ) -> Result<()> {
         fs::write(
             path.join("config.yaml"),
             serde_yaml::to_string(&self.workload_config)?,
@@ -90,12 +89,12 @@ impl WorkloadResults {
 
         fs::write(
             path.join("throughput.json"),
-            serde_json::to_string_pretty(&self.throughput_samples)?,
+            serde_json::to_string_pretty(throughput_samples)?,
         )?;
 
         fs::write(
             path.join("latency.json"),
-            serde_json::to_string_pretty(&self.latency_percentiles)?,
+            serde_json::to_string_pretty(latency_percentiles)?,
         )?;
 
         Ok(())
