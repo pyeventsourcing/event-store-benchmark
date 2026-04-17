@@ -68,7 +68,8 @@ def plot_cpu_timeseries(run, out_path: str):
 
     plt.figure(figsize=(6, 4))
     plt.plot(ts["time_s"], ts["cpu_percent"],
-             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None)
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
+             drawstyle='steps-pre')
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
     plt.title("CPU Usage over Time")
@@ -87,7 +88,8 @@ def plot_memory_timeseries(run, out_path: str):
 
     plt.figure(figsize=(6, 4))
     plt.plot(ts["time_s"], ts["memory_mb"],
-             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None)
+             linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
+             drawstyle='steps-pre')
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title("Memory Usage over Time")
@@ -172,7 +174,8 @@ def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
 
         color = get_adapter_color(run.adapter)
         plt.plot(ts["time_s"], ts["cpu_percent"],
-                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None)
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                 drawstyle='steps-pre')
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
@@ -198,7 +201,8 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
 
         color = get_adapter_color(run.adapter)
         plt.plot(ts["time_s"], ts["memory_mb"],
-                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None)
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                 drawstyle='steps-pre')
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
