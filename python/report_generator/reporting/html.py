@@ -246,20 +246,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
       </div>
     </div>"""
 
-    process_section = f"""
-    <h2>Process Resource Metrics</h2>
-    <div class='card' style='max-width: 100%;'>
-        <img src='{workload_name}_process_metrics.png' style='width: 100%; max-width: 1200px;'>
-    </div>"""
-
-    container_stats_section = ""
-    if has_container_stats:
-        container_stats_section = f"""
-    <h2>Container Stats</h2>
-    <div class='card' style='max-width: 100%;'>
-        <img src='{workload_name}_container_stats.png' style='width: 100%; max-width: 1200px;'>
-    </div>"""
-
     performance_section = f"""
     <h2>Performance</h2>
     <div class='row'>
@@ -271,11 +257,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <h3>Latency vs {worker_label}</h3>
         <img src='{workload_name}_scaling_latency.png' width='560'>
       </div>
-    </div>"""
-
-    # Generate scaling plots for hardware resources
-    scaling_section = f"""
-    <h2>Scaling</h2>
+    </div>
     <div class='row'>
       <div class='card'>
         <h3>Peak CPU vs {worker_label}</h3>
@@ -285,6 +267,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <h3>Peak Memory vs {worker_label}</h3>
         <img src='{workload_name}_scaling_peak_mem.png' width='560'>
       </div>
+    </div>"""
+
+    container_stats_section = ""
+    if has_container_stats:
+        container_stats_section = f"""
+    <h2>Container Stats</h2>
+    <div class='card' style='max-width: 100%;'>
+        <img src='{workload_name}_container_stats.png' style='width: 100%; max-width: 1200px;'>
     </div>"""
 
     config_section = ""
@@ -316,9 +306,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
   {performance_section}
-  {process_section}
   {container_stats_section}
-  {scaling_section}
   {comparison_sections}
   <h2>Summary</h2>
   <table>
