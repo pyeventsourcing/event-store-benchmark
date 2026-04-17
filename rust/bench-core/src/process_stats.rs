@@ -3,7 +3,99 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use std::time::{Duration, Instant};
 use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, SamplingConfigDecision};
-use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate};
+use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate, Process};
+
+#[cfg(target_os = "macos")]
+mod macos_stats {
+    use std::mem;
+    use libc::{c_int, pid_t};
+
+    // macOS specific rusage structure and constants
+    #[repr(C)]
+    #[allow(non_camel_case_types)]
+    pub struct rusage_info_v4 {
+        pub ri_uuid: [u8; 16],
+        pub ri_user_time: u64,
+        pub ri_system_time: u64,
+        pub ri_pkg_idle_wkups: u64,
+        pub ri_interrupt_wkups: u64,
+        pub ri_pageins: u64,
+        pub ri_wired_size: u64,
+        pub ri_resident_size: u64,
+        pub ri_phys_footprint: u64,
+        pub ri_proc_start_abstime: u64,
+        pub ri_proc_exit_abstime: u64,
+        pub ri_child_user_time: u64,
+        pub ri_child_system_time: u64,
+        pub ri_child_pkg_idle_wkups: u64,
+        pub ri_child_interrupt_wkups: u64,
+        pub ri_child_pageins: u64,
+        pub ri_child_elapsed_abstime: u64,
+        pub ri_diskio_bytesread: u64,
+        pub ri_diskio_byteswritten: u64,
+        pub ri_cpu_time_qos_default: u64,
+        pub ri_cpu_time_qos_maintenance: u64,
+        pub ri_cpu_time_qos_background: u64,
+        pub ri_cpu_time_qos_utility: u64,
+        pub ri_cpu_time_qos_legacy: u64,
+        pub ri_cpu_time_qos_user_initiated: u64,
+        pub ri_cpu_time_qos_user_interactive: u64,
+        pub ri_billed_system_time: u64,
+        pub ri_serviced_system_time: u64,
+    }
+
+    const RUSAGE_INFO_V4: c_int = 4;
+
+    extern "C" {
+        fn proc_pid_rusage(pid: pid_t, flavor: c_int, buffer: *mut u8) -> c_int;
+    }
+
+pub fn get_memory_footprint(pid: u32) -> Option<u64> {
+    let mut rusage: rusage_info_v4 = unsafe { mem::zeroed() };
+    // RUSAGE_INFO_V4 might not be supported on older macOS versions or might be the problem.
+    // Try RUSAGE_INFO_V3 which also has ri_phys_footprint.
+    const RUSAGE_INFO_V3: c_int = 3;
+    let res = unsafe {
+        proc_pid_rusage(
+            pid as pid_t,
+            RUSAGE_INFO_V3,
+            &mut rusage as *mut _ as *mut u8,
+        )
+    };
+
+    if res == 0 {
+        Some(rusage.ri_phys_footprint)
+    } else {
+        // Fallback to V0 if V3 fails
+        const RUSAGE_INFO_V0: c_int = 0;
+        let mut rusage_v0: rusage_info_v4 = unsafe { mem::zeroed() };
+        let res = unsafe {
+            proc_pid_rusage(
+                pid as pid_t,
+                RUSAGE_INFO_V0,
+                &mut rusage_v0 as *mut _ as *mut u8,
+            )
+        };
+        if res == 0 {
+            Some(rusage_v0.ri_phys_footprint)
+        } else {
+            None
+        }
+    }
+}
+}
+
+fn get_process_memory(process: &Process) -> u64 {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(footprint) = macos_stats::get_memory_footprint(process.pid().as_u32()) {
+            return footprint;
+        }
+    }
+    
+    // Fallback for macOS if it fails, or default for other OSs (like Linux)
+    process.memory()
+}
 
 pub struct ProcessMonitor {
     pid: Pid,
@@ -90,7 +182,7 @@ impl ProcessMonitor {
                     let elapsed_s = (next_sample_time - start_time).as_secs_f64();
                     let mut guard = stats_arc.lock().await;
                     guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: process.cpu_usage() as f64 });
-                    guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: process.memory() });
+                    guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: get_process_memory(process) });
                 } else {
                     // Process no longer exists
                     break;
