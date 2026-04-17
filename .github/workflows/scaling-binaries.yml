@@ -95,7 +95,7 @@ jobs:
           for i in {1..60}; do
             if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
               echo "KurrentDB is ready after $((i-1)) seconds"
-              pgrep -f "/usr/bin/kurrentd" > $GITHUB_WORKSPACE/kurrentdb.pid
+              pgrep -x kurrentd > $GITHUB_WORKSPACE/kurrentdb.pid
               exit 0
             fi
             sleep 1
