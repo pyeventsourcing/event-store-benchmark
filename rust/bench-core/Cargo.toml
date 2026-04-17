@@ -22,5 +22,6 @@ tokio-util = { version = "0.7" }
 uuid = { version = "1.8", features = ["v4"] }
 bollard = "0.20"
 num_cpus = "1"
+sysinfo = "0.33"
 #tracing = "0.1"
 #tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

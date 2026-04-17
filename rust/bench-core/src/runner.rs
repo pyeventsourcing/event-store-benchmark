@@ -3,9 +3,15 @@ use crate::metrics::{WorkloadResults};
 use crate::workloads::Workload;
 use crate::metrics::ContainerMetrics;
 use crate::container_stats::ContainerMonitor;
+use crate::process_stats::ProcessMonitor;
 use anyhow::Result;
 use std::time::{Instant};
 use tokio_util::sync::CancellationToken;
+
+enum Monitor {
+    Container(ContainerMonitor),
+    Process(ProcessMonitor),
+}
 
 pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
@@ -14,7 +20,7 @@ pub async fn execute_run(
 ) -> Result<(ContainerMetrics, WorkloadResults, String)> {
     // Start store container
     let store_name = store.name();
-    let monitor = if store.use_docker() {
+    let monitor: Option<Monitor> = if store.use_docker() {
         if !crate::is_image_pulled(store_name) {
             println!("Pulling {} image...", store_name);
             let mut last_err = None;
@@ -72,7 +78,7 @@ pub async fn execute_run(
             match ContainerMonitor::new(id, startup_time_s) {
                 Ok(mut m) => {
                     m.start().await;
-                    Some(m)
+                    Some(Monitor::Container(m))
                 }
                 Err(e) => {
                     eprintln!("Failed to initialize container monitor: {}", e);
@@ -84,7 +90,21 @@ pub async fn execute_run(
         };
         monitor
     } else {
-        None
+        let pid_file = format!("{}.pid", store_name);
+        if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
+            if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
+                let mut pm = ProcessMonitor::new(pid, 0.0);
+                pm.start().await;
+                Some(Monitor::Process(pm))
+            } else {
+                eprintln!("Failed to parse PID from {}: {}", pid_file, pid_str);
+                None
+            }
+        } else {
+            println!("No PID file {} found for {}, skipping monitoring", pid_file, store_name);
+            None
+        }
     };
 
     // Execute workload
@@ -114,10 +134,9 @@ pub async fn execute_run(
 
     // Get container logs before stopping
     let (container_metrics, logs) = if store.use_docker() {
-        let container_metrics = if let Some(m) = monitor {
-            m.stop().await
-        } else {
-            ContainerMetrics::default()
+        let container_metrics = match monitor {
+            Some(Monitor::Container(m)) => m.stop().await,
+            _ => ContainerMetrics::default(),
         };
         // Ensure container is stopped on error/interruption
         store.stop().await?;
@@ -128,7 +147,11 @@ pub async fn execute_run(
 
         (container_metrics, logs)
     } else {
-        (ContainerMetrics::default(), String::new())
+        let metrics = match monitor {
+            Some(Monitor::Process(m)) => m.stop().await,
+            _ => ContainerMetrics::default(),
+        };
+        (metrics, String::new())
     };
 
     Ok((container_metrics, workload_results, logs))

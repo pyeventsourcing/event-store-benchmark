@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod common;
 pub mod container_stats;
+pub mod process_stats;
 pub mod metrics;
 pub mod retry;
 pub mod runner;
