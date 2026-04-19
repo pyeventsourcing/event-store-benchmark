@@ -101,6 +101,16 @@ impl StoreDataDir {
                 anyhow::bail!("Data directory already exists: {}", path.display());
             }
             std::fs::create_dir_all(&path)?;
+
+            #[cfg(unix)]
+            {
+                // Added this to hopefully make FactDB work on GitHub Actions.
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&path)?.permissions();
+                perms.set_mode(0o777);
+                std::fs::set_permissions(&path, perms)?;
+            }
+
             let path_str = path.to_string_lossy().to_string();
             self.active_path = Some(path);
             Ok(Some(path_str))
