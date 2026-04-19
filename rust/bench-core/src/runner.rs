@@ -24,6 +24,9 @@ pub async fn execute_run(
     if store.use_docker() {
         if let Ok(config) = workload.performance_config() {
             store.set_memory_limit(config.docker_memory_limit_mb);
+            if let Some(ref platform) = config.docker_platform {
+                store.set_docker_platform(Some(platform.clone()));
+            }
         }
     }
 

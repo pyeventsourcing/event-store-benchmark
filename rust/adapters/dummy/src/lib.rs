@@ -122,6 +122,7 @@ impl StoreManager for DummyStoreManager {
         None
     }
     fn set_memory_limit(&mut self, _limit_mb: Option<u64>) {}
+    fn set_docker_platform(&mut self, _platform: Option<String>) {}
     fn name(&self) -> &'static str {
         "dummy"
     }

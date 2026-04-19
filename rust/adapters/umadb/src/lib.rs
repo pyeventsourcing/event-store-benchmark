@@ -21,6 +21,7 @@ pub struct UmaDbStoreManager {
     use_docker: bool,
     data_dir: StoreDataDir,
     memory_limit_mb: Option<u64>,
+    docker_platform: Option<String>,
 }
 
 impl UmaDbStoreManager {
@@ -31,6 +32,7 @@ impl UmaDbStoreManager {
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "umadb"),
             memory_limit_mb: None,
+            docker_platform: None,
         }
     }
 
@@ -45,18 +47,20 @@ impl StoreManager for UmaDbStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let image = UmaDb::new(mount_path);
+        let mut image: ContainerRequest<_> = UmaDb::new(mount_path).into();
 
-        let container = if let Some(limit_mb) = self.memory_limit_mb {
+        if let Some(ref platform) = self.docker_platform {
+            image = image.with_platform(platform);
+        }
+
+        if let Some(limit_mb) = self.memory_limit_mb {
             let bytes = limit_mb * 1024 * 1024;
-            image.with_host_config_modifier(move |host_config| {
+            image = image.with_host_config_modifier(move |host_config| {
                 host_config.memory = Some(bytes as i64);
-            })
-            .start()
-            .await?
-        } else {
-            image.start().await?
-        };
+            });
+        }
+
+        let container = image.start().await?;
 
         let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
         self.uri = Self::format_uri(host_port);
@@ -73,10 +77,12 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let server = UmaDb::new(None);
-        let image: ContainerRequest<UmaDb> = server.clone().into();
+        let mut image: ContainerRequest<_> = UmaDb::new(None).into();
         if image.descriptor() != "umadb:local" {
-            let _ = server.pull_image().await?;
+            if let Some(ref platform) = self.docker_platform {
+                image = image.with_platform(platform);
+            }
+            let _ = image.pull_image().await?;
         }
         Ok(())
     }
@@ -97,6 +103,10 @@ impl StoreManager for UmaDbStoreManager {
 
     fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
         self.memory_limit_mb = limit_mb;
+    }
+
+    fn set_docker_platform(&mut self, platform: Option<String>) {
+        self.docker_platform = platform;
     }
 
     fn name(&self) -> &'static str {

@@ -64,6 +64,9 @@ pub trait StoreManager: Send + Sync {
     /// Set memory limit for the container in MB
     fn set_memory_limit(&mut self, limit_mb: Option<u64>);
 
+    /// Set Docker platform for the container (e.g., "linux/amd64")
+    fn set_docker_platform(&mut self, platform: Option<String>);
+
 
     /// Store name (adapter name)
     fn name(&self) -> &'static str;

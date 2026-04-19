@@ -11,7 +11,7 @@ use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::ContainerAsync;
+use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
 // Store manager - handles lifecycle and adapter creation
@@ -21,6 +21,7 @@ pub struct AxonServerStoreManager {
     use_docker: bool,
     data_dir: StoreDataDir,
     memory_limit_mb: Option<u64>,
+    docker_platform: Option<String>,
 }
 
 impl AxonServerStoreManager {
@@ -31,6 +32,7 @@ impl AxonServerStoreManager {
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
             memory_limit_mb: None,
+            docker_platform: None,
         }
     }
 
@@ -63,18 +65,20 @@ impl StoreManager for AxonServerStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let image = AxonServer::new(mount_path);
+        let mut image: ContainerRequest<_> = AxonServer::new(mount_path).into();
 
-        let container = if let Some(limit_mb) = self.memory_limit_mb {
+        if let Some(ref platform) = self.docker_platform {
+            image = image.with_platform(platform);
+        }
+
+        if let Some(limit_mb) = self.memory_limit_mb {
             let bytes = limit_mb * 1024 * 1024;
-            image.with_host_config_modifier(move |host_config| {
+            image = image.with_host_config_modifier(move |host_config| {
                 host_config.memory = Some(bytes as i64);
-            })
-            .start()
-            .await?
-        } else {
-            image.start().await?
-        };
+            });
+        }
+
+        let container = image.start().await?;
 
         let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
         self.uri = Self::format_uri(host_port);
@@ -91,7 +95,11 @@ impl StoreManager for AxonServerStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = AxonServer::new(None).pull_image().await?;
+        let mut image: ContainerRequest<_> = AxonServer::new(None).into();
+        if let Some(ref platform) = self.docker_platform {
+            image = image.with_platform(platform);
+        }
+        let _ = image.pull_image().await?;
         Ok(())
     }
 
@@ -109,6 +117,10 @@ impl StoreManager for AxonServerStoreManager {
 
     fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
         self.memory_limit_mb = limit_mb;
+    }
+
+    fn set_docker_platform(&mut self, platform: Option<String>) {
+        self.docker_platform = platform;
     }
 
     fn name(&self) -> &'static str {

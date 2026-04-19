@@ -11,7 +11,7 @@ use py_eventsourcing::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent};
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
-use testcontainers::ContainerAsync;
+use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
 // Store manager - handles lifecycle and adapter creation
@@ -22,6 +22,7 @@ pub struct PyEventsourcingStoreManager {
     data_dir: StoreDataDir,
     recorder: Option<PostgresDCBRecorderTT>,
     memory_limit_mb: Option<u64>,
+    docker_platform: Option<String>,
 }
 
 impl PyEventsourcingStoreManager {
@@ -33,6 +34,7 @@ impl PyEventsourcingStoreManager {
             data_dir: StoreDataDir::new(data_dir, "py-eventsourcing"),
             recorder: None,
             memory_limit_mb: None,
+            docker_platform: None,
         }
     }
 
@@ -51,18 +53,20 @@ impl StoreManager for PyEventsourcingStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         let mount_path = self.data_dir.setup()?;
-        let image = PyEventsourcingPostgres::new(mount_path);
+        let mut image: ContainerRequest<_> = PyEventsourcingPostgres::new(mount_path).into();
 
-        let container = if let Some(limit_mb) = self.memory_limit_mb {
+        if let Some(ref platform) = self.docker_platform {
+            image = image.with_platform(platform);
+        }
+
+        if let Some(limit_mb) = self.memory_limit_mb {
             let bytes = limit_mb * 1024 * 1024;
-            image.with_host_config_modifier(move |host_config| {
+            image = image.with_host_config_modifier(move |host_config| {
                 host_config.memory = Some(bytes as i64);
-            })
-            .start()
-            .await?
-        } else {
-            image.start().await?
-        };
+            });
+        }
+
+        let container = image.start().await?;
 
         let host_port = container.get_host_port_ipv4(POSTGRES_PORT).await?;
         self.uri = Self::format_uri(host_port);
@@ -83,7 +87,11 @@ impl StoreManager for PyEventsourcingStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let _ = PyEventsourcingPostgres::new(None).pull_image().await?;
+        let mut image: ContainerRequest<_> = PyEventsourcingPostgres::new(None).into();
+        if let Some(ref platform) = self.docker_platform {
+            image = image.with_platform(platform);
+        }
+        let _ = image.pull_image().await?;
         Ok(())
     }
 
@@ -101,6 +109,10 @@ impl StoreManager for PyEventsourcingStoreManager {
 
     fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
         self.memory_limit_mb = limit_mb;
+    }
+
+    fn set_docker_platform(&mut self, platform: Option<String>) {
+        self.docker_platform = platform;
     }
 
     fn name(&self) -> &'static str {
