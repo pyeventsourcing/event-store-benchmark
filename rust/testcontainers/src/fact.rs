@@ -2,7 +2,7 @@ use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::Image;
 
 const NAME: &str = "evntd/fact-bench-server";
-const TAG: &str = "latest";
+const TAG: &str = "0.3.1";
 
 /// Container port exposed by the Fact benchmark server (gRPC).
 pub const FACT_PORT: ContainerPort = ContainerPort::Tcp(4000);
