@@ -64,13 +64,30 @@ pub async fn execute_run(
         println!("Starting {} container...", store.name());
         let setup_start = Instant::now();
 
-        tokio::select! {
-            res = store.start() => res?,
+        let start_res = tokio::select! {
+            res = store.start() => res,
             _ = cancel_token.cancelled() => {
                 println!("Interrupted while starting container.");
                 store.stop().await.ok();
                 anyhow::bail!("Interrupted");
             }
+        };
+
+        if let Err(e) = start_res {
+            eprintln!("Failed to start {} container: {}", store.name(), e);
+            match store.logs().await {
+                Ok(logs) => {
+                    if !logs.is_empty() {
+                        eprintln!("--- {} container logs ---", store.name());
+                        eprintln!("{}", logs);
+                        eprintln!("--- end of logs ---");
+                    }
+                }
+                Err(log_err) => {
+                    eprintln!("Failed to fetch container logs: {}", log_err);
+                }
+            }
+            return Err(e);
         }
 
         let startup_time_s = setup_start.elapsed().as_secs_f64();
