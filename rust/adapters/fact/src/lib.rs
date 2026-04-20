@@ -161,14 +161,14 @@ pub struct FactAdapter {
 #[async_trait]
 impl EventStoreAdapter for FactAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
         let request = proto::AppendRequest {
             events: events
-                .into_iter()
+                .iter()
                 .map(|evt| proto::EventData {
-                    payload: evt.payload,
-                    event_type: evt.event_type,
-                    tags: evt.tags,
+                    payload: evt.payload.to_vec(),
+                    event_type: evt.event_type.to_string(),
+                    tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 })
                 .collect(),
         };
@@ -196,8 +196,8 @@ impl EventStoreAdapter for FactAdapter {
             .into_iter()
             .map(|evt| ReadEvent {
                 offset: evt.offset,
-                event_type: evt.event_type,
-                payload: evt.payload,
+                event_type: Arc::from(evt.event_type.as_str()),
+                payload: Arc::from(evt.payload.as_slice()),
                 timestamp_ms: evt.timestamp_ms,
             })
             .collect())

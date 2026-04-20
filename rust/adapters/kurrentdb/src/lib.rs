@@ -153,15 +153,15 @@ impl KurrentDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for KurrentDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
         if events.is_empty() {
             return Ok(());
         }
-        let stream_name = events[0].tags[0].clone();
+        let stream_name = events[0].tags[0].to_string();
         let k_events: Vec<kurrentdb::EventData> = events
-            .into_iter()
+            .iter()
             .map(|evt| {
-                kurrentdb::EventData::binary(evt.event_type, evt.payload.into()).id(Uuid::new_v4())
+                kurrentdb::EventData::binary(evt.event_type.to_string(), evt.payload.to_vec().into()).id(Uuid::new_v4())
             })
             .collect();
         let options = AppendToStreamOptions::default();
@@ -188,8 +188,8 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 if (out.len() as u64) < lim {
                     out.push(ReadEvent {
                         offset: recorded.revision,
-                        event_type: recorded.event_type.clone(),
-                        payload: recorded.data.to_vec(),
+                        event_type: Arc::from(recorded.event_type.as_str()),
+                        payload: Arc::from(recorded.data.as_ref()),
                         timestamp_ms: recorded.created.timestamp_millis() as u64,
                     });
                 } else {
@@ -198,8 +198,8 @@ impl EventStoreAdapter for KurrentDbAdapter {
             } else {
                 out.push(ReadEvent {
                     offset: recorded.revision,
-                    event_type: recorded.event_type.clone(),
-                    payload: recorded.data.to_vec(),
+                    event_type: Arc::from(recorded.event_type.as_str()),
+                    payload: Arc::from(recorded.data.as_ref()),
                     timestamp_ms: recorded.created.timestamp_millis() as u64,
                 });
             }

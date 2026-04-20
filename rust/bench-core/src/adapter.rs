@@ -12,10 +12,10 @@ pub struct ConnectionParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventData {
-    pub payload: Vec<u8>,
-    pub event_type: String,
+    pub payload: Arc<[u8]>,
+    pub event_type: Arc<str>,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: Vec<Arc<str>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,8 +30,8 @@ pub struct ReadRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadEvent {
     pub offset: u64,
-    pub event_type: String,
-    pub payload: Vec<u8>,
+    pub event_type: Arc<str>,
+    pub payload: Arc<[u8]>,
     pub timestamp_ms: u64,
 }
 
@@ -40,7 +40,7 @@ pub struct ReadEvent {
 #[async_trait]
 pub trait EventStoreAdapter: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
-    async fn append(&self, events: Vec<EventData>) -> anyhow::Result<()>;
+    async fn append(&self, events: &[EventData]) -> anyhow::Result<()>;
     async fn read(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
 }
 

@@ -143,7 +143,7 @@ pub struct DummyAdapter {
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, _events: Vec<EventData>) -> Result<()> {
+    async fn append(&self, _events: &[EventData]) -> Result<()> {
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok(())
     }
@@ -152,8 +152,8 @@ impl EventStoreAdapter for DummyAdapter {
         Ok((0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {
                 offset: 0,
-                event_type: String::from("DummyEvent"),
-                payload: vec![],
+                event_type: Arc::from("DummyEvent"),
+                payload: Arc::from(vec![].as_slice()),
                 timestamp_ms: 0,
             })
             .collect())

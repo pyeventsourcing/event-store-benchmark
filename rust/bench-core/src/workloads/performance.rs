@@ -403,11 +403,11 @@ impl PerformanceWorkload {
 
             let stream_prefix = self.stream_prefix.clone();
             setup_set.spawn(async move {
-                let event_type = "setup".to_string();
-                let payload = vec![0u8; event_size];
+                let event_type: Arc<str> = Arc::from("setup");
+                let payload: Arc<[u8]> = Arc::from(vec![0u8; event_size]);
                 for stream_idx in start_stream..end_stream {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
-                    let tags = vec![stream_name];
+                    let tags = vec![Arc::from(stream_name.as_str())];
                     let mut events = Vec::with_capacity(events_per_stream as usize);
                     for _ in 0..events_per_stream {
                         events.push(EventData {
@@ -416,7 +416,7 @@ impl PerformanceWorkload {
                             tags: tags.clone(),
                         });
                     }
-                    adapter.append(events).await?;
+                    adapter.append(&events).await?;
                 }
                 Ok::<(), anyhow::Error>(())
             });
@@ -465,7 +465,7 @@ impl PerformanceWorkload {
             let size = write_cfg.event_size_bytes;
 
             // Pre-allocate strings outside loop
-            let payload = vec![0u8; size];
+            let payload: Arc<[u8]> = Arc::from(vec![0u8; size]);
 
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
@@ -475,7 +475,7 @@ impl PerformanceWorkload {
 
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
-            let mut tags = vec![stream_name.clone()];
+            let mut tags = vec![Arc::from(stream_name.as_str())];
             let stream_len = 10;
             let mut stream_position = 0;
 
@@ -494,7 +494,7 @@ impl PerformanceWorkload {
 
                 let evt = EventData {
                     payload: payload.clone(),
-                    event_type: event_type_str.clone(),
+                    event_type: Arc::from(event_type_str.as_str()),
                     tags: tags.clone(),
                 };
 
@@ -502,7 +502,7 @@ impl PerformanceWorkload {
                     operation_started = Some(Instant::now());
                 }
                 let mut success = false;
-                match adapter.append(vec![evt]).await {
+                match adapter.append(&[evt]).await {
                     Ok(_) => success = true,
                     Err(e) => {
                         eprintln!("Operation failed: {}", e);
@@ -526,7 +526,7 @@ impl PerformanceWorkload {
                     stream_position += 1;
                     if stream_position == stream_len {
                         stream_name = format!("stream-{}-", Uuid::new_v4());
-                        tags = vec![stream_name.clone()];
+                        tags = vec![Arc::from(stream_name.as_str())];
                         stream_position = 0;
                     }
                 }

@@ -151,11 +151,11 @@ impl UmaDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        let dcb_events: Vec<DcbEvent> = events.into_iter().map(|evt| DcbEvent {
-            event_type: evt.event_type,
-            tags: evt.tags,
-            data: evt.payload,
+    async fn append(&self, events: &[EventData]) -> Result<()> {
+        let dcb_events: Vec<DcbEvent> = events.iter().map(|evt| DcbEvent {
+            event_type: evt.event_type.to_string(),
+            tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+            data: evt.payload.to_vec(),
             uuid: None,
         }).collect();
         let _pos: u64 = self.client.append(dcb_events, None, None).await?;
@@ -186,16 +186,16 @@ impl EventStoreAdapter for UmaDbAdapter {
                         if (out.len() as u64) < lim {
                             out.push(ReadEvent {
                                 offset: se.position,
-                                event_type: se.event.event_type.clone(),
-                                payload: se.event.data.clone(),
+                                event_type: Arc::from(se.event.event_type.as_str()),
+                                payload: Arc::from(se.event.data.as_slice()),
                                 timestamp_ms: 0,
                             });
                         }
                     } else {
                         out.push(ReadEvent {
                             offset: se.position,
-                            event_type: se.event.event_type.clone(),
-                            payload: se.event.data.clone(),
+                            event_type: Arc::from(se.event.event_type.as_str()),
+                            payload: Arc::from(se.event.data.as_slice()),
                             timestamp_ms: 0,
                         });
                     }
