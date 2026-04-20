@@ -54,6 +54,11 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
     memory_file = run_dir / "memory.json"
     metrics_file = run_dir / "process_metrics.json"
 
+    benchmark_latency_file = run_dir / "benchmark_latency.json"
+    benchmark_cpu_file = run_dir / "benchmark_cpu.json"
+    benchmark_memory_file = run_dir / "benchmark_memory.json"
+    benchmark_metrics_file = run_dir / "benchmark_process_metrics.json"
+
     container_stats_file = run_dir / "container_stats.json"
     logs_file = run_dir / "logs.txt"
 
@@ -82,10 +87,29 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
             with open(memory_file) as f:
                 results_data["memory_samples"] = json.load(f)
 
+        if benchmark_latency_file.exists():
+            with open(benchmark_latency_file) as f:
+                results_data["benchmark_latency_percentiles"] = json.load(f)
+
+        if benchmark_cpu_file.exists():
+            with open(benchmark_cpu_file) as f:
+                results_data["benchmark_cpu_samples"] = json.load(f)
+
+        if benchmark_memory_file.exists():
+            with open(benchmark_memory_file) as f:
+                results_data["benchmark_memory_samples"] = json.load(f)
+
         metrics_data = {}
         if metrics_file.exists():
             with open(metrics_file) as f:
                 metrics_data = json.load(f)
+
+        if benchmark_metrics_file.exists():
+            with open(benchmark_metrics_file) as f:
+                benchmark_metrics_data = json.load(f)
+                # Prefix benchmark metrics to avoid collision with store metrics
+                for k, v in benchmark_metrics_data.items():
+                    metrics_data[f"benchmark_{k}"] = v
 
         # Merge container stats if present
         if container_stats_file.exists():

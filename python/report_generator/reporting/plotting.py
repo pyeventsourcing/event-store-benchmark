@@ -41,6 +41,31 @@ def plot_latency_cdf(run, out_path: str):
     plt.close()
 
 
+def plot_benchmark_latency_cdf(run, out_path: str):
+    """Plot benchmark process latency CDF from a single run object."""
+    latencies_ms, percentiles = run.get_benchmark_latency_cdf_data()
+    if latencies_ms is None:
+        return
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(latencies_ms, percentiles, label="benchmark latency CDF", linewidth=2, color='#ff7f0e')
+    plt.xscale("log")
+    
+    valid_latencies = [l for l in latencies_ms if l > 0]
+    if valid_latencies:
+        plt.xlim(left=min(valid_latencies) / 2)
+
+    plt.xlabel("Latency (ms) [log]")
+    plt.ylabel("Percentile (%)")
+    plt.title("Benchmark Process Latency CDF")
+    plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_throughput_timeseries(run, out_path: str):
     """Plot throughput over time for a single run object."""
     timeseries = run.get_throughput_timeseries()
@@ -80,6 +105,26 @@ def plot_cpu_timeseries(run, out_path: str):
     plt.close()
 
 
+def plot_benchmark_cpu_timeseries(run, out_path: str):
+    """Plot benchmark process CPU usage over time for a single run object."""
+    ts = run.get_benchmark_cpu_timeseries()
+    if ts is None:
+        return
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(ts["time_s"], ts["cpu_percent"],
+             linewidth=2.0, alpha=0.9, color='#ff7f0e', marker=None,
+             drawstyle='steps-pre')
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("CPU Usage (%)")
+    plt.title("Benchmark CPU Usage over Time")
+    plt.ylim(bottom=0)
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_memory_timeseries(run, out_path: str):
     """Plot memory usage over time for a single run object."""
     ts = run.get_memory_timeseries()
@@ -93,6 +138,26 @@ def plot_memory_timeseries(run, out_path: str):
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title("Memory Usage over Time")
+    plt.ylim(bottom=0)
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_benchmark_memory_timeseries(run, out_path: str):
+    """Plot benchmark process memory usage over time for a single run object."""
+    ts = run.get_benchmark_memory_timeseries()
+    if ts is None:
+        return
+
+    plt.figure(figsize=(6, 4))
+    plt.plot(ts["time_s"], ts["memory_mb"],
+             linewidth=2.0, alpha=0.9, color='#ff7f0e', marker=None,
+             drawstyle='steps-pre')
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Memory Usage (MB)")
+    plt.title("Benchmark Memory Usage over Time")
     plt.ylim(bottom=0)
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()

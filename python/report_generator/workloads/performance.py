@@ -51,8 +51,11 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         """Processes raw result data into structured formats and summary metrics."""
         self.throughput_df = pd.DataFrame(self.results.get("throughput_samples", []))
         self.latency_percentiles = self.results.get("latency_percentiles", [])
+        self.benchmark_latency_percentiles = self.results.get("benchmark_latency_percentiles", [])
         self.cpu_df = pd.DataFrame(self.results.get("cpu_samples", []))
         self.memory_df = pd.DataFrame(self.results.get("memory_samples", []))
+        self.benchmark_cpu_df = pd.DataFrame(self.results.get("benchmark_cpu_samples", []))
+        self.benchmark_memory_df = pd.DataFrame(self.results.get("benchmark_memory_samples", []))
 
         # Calculate summary metrics
         self.duration_s = 0
@@ -91,6 +94,14 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             return None, None
         percentiles = [p["percentile"] for p in self.latency_percentiles]
         latencies_ms = [p["latency_us"] / 1000.0 for p in self.latency_percentiles]
+        return latencies_ms, percentiles
+
+    def get_benchmark_latency_cdf_data(self):
+        """Returns data needed for a benchmark latency CDF plot."""
+        if not self.benchmark_latency_percentiles:
+            return None, None
+        percentiles = [p["percentile"] for p in self.benchmark_latency_percentiles]
+        latencies_ms = [p["latency_us"] / 1000.0 for p in self.benchmark_latency_percentiles]
         return latencies_ms, percentiles
 
     def get_throughput_timeseries(self) -> dict | None:
@@ -141,11 +152,31 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "cpu_percent": df["cpu_percent"].values,
         }
 
+    def get_benchmark_cpu_timeseries(self) -> dict | None:
+        """Returns benchmark process CPU usage time series."""
+        if self.benchmark_cpu_df.empty:
+            return None
+        df = self.benchmark_cpu_df.sort_values("elapsed_s")
+        return {
+            "time_s": df["elapsed_s"].values,
+            "cpu_percent": df["cpu_percent"].values,
+        }
+
     def get_memory_timeseries(self) -> dict | None:
         """Returns memory usage time series."""
         if self.memory_df.empty:
             return None
         df = self.memory_df.sort_values("elapsed_s")
+        return {
+            "time_s": df["elapsed_s"].values,
+            "memory_mb": df["memory_bytes"].values / (1024 * 1024),
+        }
+
+    def get_benchmark_memory_timeseries(self) -> dict | None:
+        """Returns benchmark process memory usage time series."""
+        if self.benchmark_memory_df.empty:
+            return None
+        df = self.benchmark_memory_df.sort_values("elapsed_s")
         return {
             "time_s": df["elapsed_s"].values,
             "memory_mb": df["memory_bytes"].values / (1024 * 1024),

@@ -509,6 +509,8 @@ impl PerformanceWorkload {
                             // Record latency sample
                             operation_duration = Some(operation_completed - operation_started.unwrap());
                             store_latencies.record(operation_duration.unwrap());
+                        } else {
+                            operation_duration = None;
                         }
                     }
                     // Increment stream position, maybe reset and change name.

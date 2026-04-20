@@ -76,6 +76,9 @@ def main():
                 plotting.plot_throughput_timeseries(run, str(report_dir / "throughput.png"))
                 plotting.plot_cpu_timeseries(run, str(report_dir / "cpu.png"))
                 plotting.plot_memory_timeseries(run, str(report_dir / "memory.png"))
+                plotting.plot_benchmark_latency_cdf(run, str(report_dir / "benchmark_latency_cdf.png"))
+                plotting.plot_benchmark_cpu_timeseries(run, str(report_dir / "benchmark_cpu.png"))
+                plotting.plot_benchmark_memory_timeseries(run, str(report_dir / "benchmark_memory.png"))
                 html.generate_run_html(report_dir, run)
 
             # --- Generate consolidated workload reports ---

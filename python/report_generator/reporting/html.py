@@ -93,6 +93,9 @@ def generate_run_html(report_dir: Path, run):
     throughput_img = "throughput.png"
     cpu_img = "cpu.png"
     memory_img = "memory.png"
+    benchmark_latency_img = "benchmark_latency_cdf.png"
+    benchmark_cpu_img = "benchmark_cpu.png"
+    benchmark_memory_img = "benchmark_memory.png"
 
     metrics = run.metrics
     has_container_stats = bool(metrics.get('startup_time_s') or metrics.get("image_size_bytes"))
@@ -131,9 +134,33 @@ def generate_run_html(report_dir: Path, run):
         resource_metrics_html = f"""
   <div class='row'>
     <div class='card'>
-      <h2>Process Resource Metrics</h2>
+      <h2>Store Process Resource Metrics</h2>
       <p><b>CPU (avg/peak):</b> {cpu_display}</p>
       <p><b>Memory (avg/peak):</b> {mem_display}</p>
+    </div>
+  </div>"""
+
+    # Benchmark Resource Metrics
+    b_avg_cpu = metrics.get("benchmark_avg_cpu_percent")
+    b_peak_cpu = metrics.get("benchmark_peak_cpu_percent")
+    b_cpu_display = "N/A"
+    if b_avg_cpu is not None and b_peak_cpu is not None:
+        b_cpu_display = f"{b_avg_cpu:.1f}% / {b_peak_cpu:.1f}%"
+    
+    b_avg_mem = metrics.get("benchmark_avg_memory_bytes")
+    b_peak_mem = metrics.get("benchmark_peak_memory_bytes")
+    b_mem_display = "N/A"
+    if b_avg_mem is not None and b_peak_mem is not None:
+        b_mem_display = f"{b_avg_mem / 1024 / 1024:.0f} / {b_peak_mem / 1024 / 1024:.0f} MB"
+
+    benchmark_resource_metrics_html = ""
+    if b_avg_cpu is not None or b_avg_mem is not None:
+        benchmark_resource_metrics_html = f"""
+  <div class='row'>
+    <div class='card'>
+      <h2>Benchmark Process Resource Metrics</h2>
+      <p><b>CPU (avg/peak):</b> {b_cpu_display}</p>
+      <p><b>Memory (avg/peak):</b> {b_mem_display}</p>
     </div>
   </div>"""
 
@@ -162,6 +189,34 @@ def generate_run_html(report_dir: Path, run):
       <h2>Memory Usage over time</h2>
       <img src='{memory_img}' width='560'>
     </div>"""
+
+    benchmark_plots_html = ""
+    has_b_latency = not run.benchmark_latency_percentiles == []
+    has_b_cpu = not run.benchmark_cpu_df.empty
+    has_b_mem = not run.benchmark_memory_df.empty
+
+    if has_b_latency or has_b_cpu or has_b_mem:
+        plots = []
+        if has_b_latency:
+            plots.append(f"""
+    <div class='card'>
+      <h2>Benchmark Latency CDF</h2>
+      <img src='{benchmark_latency_img}' width='560'>
+    </div>""")
+        if has_b_cpu:
+            plots.append(f"""
+    <div class='card'>
+      <h2>Benchmark CPU Usage</h2>
+      <img src='{benchmark_cpu_img}' width='560'>
+    </div>""")
+        if has_b_mem:
+            plots.append(f"""
+    <div class='card'>
+      <h2>Benchmark Memory Usage</h2>
+      <img src='{benchmark_memory_img}' width='560'>
+    </div>""")
+        
+        benchmark_plots_html = f"<div class='row'>{''.join(plots)}</div>"
 
     html = f"""
 <!DOCTYPE html>
@@ -194,7 +249,9 @@ def generate_run_html(report_dir: Path, run):
     {cpu_plot_html}
     {memory_plot_html}
   </div>
+  {benchmark_plots_html}
   {resource_metrics_html}
+  {benchmark_resource_metrics_html}
   {container_stats_html}
   {logs_html}
 </body>
