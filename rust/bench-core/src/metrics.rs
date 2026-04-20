@@ -215,12 +215,12 @@ impl ThroughputRecorder {
 impl LatencyRecorder {
     pub fn new() -> Self {
         Self {
-            hist: Histogram::new(3).expect("hist"),
-        } // 3 sigfigs
+            hist: Histogram::new_with_bounds(1, 60_000_000_000, 3).expect("hist"),
+        }
     }
     pub fn record(&mut self, dur: Duration) {
         let ns = dur.as_nanos() as u64;
-        let _ = self.hist.record(ns.max(1));
+        self.hist.saturating_record(ns.max(1));
     }
 
     /// Export histogram percentiles

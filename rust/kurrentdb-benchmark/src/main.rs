@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     println!("Connection string: {}", args.conn);
 
     let payload: Vec<u8> = vec![b'x'; args.size];
-    let mut histogram = Histogram::<u64>::new_with_bounds(1, 10_000_000_000, 3)?; // 1ns to 10s
+    let mut histogram = Histogram::<u64>::new_with_bounds(1, 60_000_000_000, 3)?; // 1ns to 60s
 
     let options = AppendToStreamOptions::default();
 
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!(e))?;
         let step_duration = step_start.elapsed();
         
-        histogram.record(step_duration.as_nanos() as u64)?;
+        histogram.saturating_record(step_duration.as_nanos() as u64);
 
         if (i + 1) % 100 == 0 {
             println!("Appended {}/{} events...", i + 1, args.events);
