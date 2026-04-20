@@ -226,12 +226,12 @@ impl MartenAdapter {
 #[async_trait]
 impl EventStoreAdapter for MartenAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
         let mut marten_events: Vec<MartenDcbEvent> = events
-            .into_iter()
+            .iter()
             .map(|evt| MartenDcbEvent {
-                event_type: evt.event_type,
-                tags: evt.tags,
+                event_type: evt.event_type.to_string(),
+                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 data: serde_json::from_slice(&evt.payload).unwrap_or(serde_json::Value::Null),
             })
             .collect();
@@ -264,8 +264,8 @@ impl EventStoreAdapter for MartenAdapter {
             }
             out.push(ReadEvent {
                 offset: se.seq_id as u64,
-                event_type: se.event_type,
-                payload: serde_json::to_vec(&se.data)?,
+                event_type: se.event_type.into(),
+                payload: serde_json::to_vec(&se.data)?.into(),
                 timestamp_ms: 0, // MartenEvent doesn't seem to have timestamp in read::MartenEvent based on what I saw
             });
         }

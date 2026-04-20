@@ -168,12 +168,12 @@ impl PyEventsourcingAdapter {
 #[async_trait]
 impl EventStoreAdapter for PyEventsourcingAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        let pg_events: Vec<DcbEvent> = events.into_iter().map(|evt| {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
+        let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
             DcbEvent {
-                type_name: evt.event_type,
-                data: evt.payload,
-                tags: evt.tags,
+                type_name: evt.event_type.to_string(),
+                data: evt.payload.to_vec(),
+                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
             }
         }).collect();
 
@@ -203,8 +203,8 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
         Ok(events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
                 offset: e.position as u64,
-                event_type: e.event.type_name,
-                payload: e.event.data,
+                event_type: e.event.type_name.into(),
+                payload: e.event.data.into(),
                 timestamp_ms: 0,
             }
         }).collect())

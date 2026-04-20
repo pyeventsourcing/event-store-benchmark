@@ -157,8 +157,8 @@ impl EventsourcingDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for EventsourcingDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        let candidates: Vec<EventCandidate> = events.into_iter().map(|evt| {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
+        let candidates: Vec<EventCandidate> = events.iter().map(|evt| {
             let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
                 json!({"raw": serde_json::Value::String(
                     String::from_utf8_lossy(&evt.payload).to_string()
@@ -168,7 +168,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                 .source("https://bench.eventsourcingdb.io".to_string())
                 .subject(format!("/{}", evt.tags[0]))
                 .ty(if evt.event_type.contains('.') {
-                    evt.event_type
+                    evt.event_type.to_string()
                 } else {
                     format!("io.eventsourcingdb.bench.{}", evt.event_type)
                 })
@@ -214,8 +214,8 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                 let timestamp_ms = event.time().timestamp_millis() as u64;
                 out.push(ReadEvent {
                     offset: current_offset,
-                    event_type: event.ty().to_string(),
-                    payload,
+                    event_type: event.ty().to_string().into(),
+                    payload: payload.into(),
                     timestamp_ms,
                 });
             }

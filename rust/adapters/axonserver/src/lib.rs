@@ -164,8 +164,8 @@ impl AxonServerAdapter {
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: Vec<EventData>) -> Result<()> {
-        let tagged_events: Vec<TaggedEvent> = events.into_iter().map(|evt| {
+    async fn append(&self, events: &[EventData]) -> Result<()> {
+        let tagged_events: Vec<TaggedEvent> = events.iter().map(|evt| {
             let tags: Vec<Tag> = evt
                 .tags
                 .iter()
@@ -178,9 +178,9 @@ impl EventStoreAdapter for AxonServerAdapter {
             let event = Event {
                 identifier: uuid::Uuid::new_v4().to_string(),
                 timestamp: now_millis(),
-                name: evt.event_type,
+                name: evt.event_type.to_string(),
                 version: String::new(),
-                payload: evt.payload.into(),
+                payload: evt.payload.to_vec().into(),
                 metadata: Default::default(),
             };
             TaggedEvent {
@@ -214,8 +214,8 @@ impl EventStoreAdapter for AxonServerAdapter {
                         if let Some(evt) = seq_evt.event {
                             out.push(ReadEvent {
                                 offset: seq_evt.sequence as u64,
-                                event_type: evt.name,
-                                payload: evt.payload.to_vec(),
+                                event_type: evt.name.into(),
+                                payload: evt.payload.to_vec().into(),
                                 timestamp_ms: evt.timestamp as u64,
                             });
                         }
