@@ -340,6 +340,40 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <img src='{workload_name}_comparison_{worker_suffix}{wc}_memory.png' width='560'>
       </div>"""
 
+        has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
+        has_benchmark_cpu = any(not r.benchmark_cpu_df.empty for r in group_runs)
+        has_benchmark_mem = any(not r.benchmark_memory_df.empty for r in group_runs)
+
+        benchmark_comparison_html = ""
+        if has_benchmark_latency or has_benchmark_cpu or has_benchmark_mem:
+            benchmark_latency_comp_html = f"""
+      <div class='card'>
+        <h3>Benchmark Latency CDF</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
+      </div>""" if has_benchmark_latency else ""
+
+            benchmark_cpu_comp_html = f"""
+      <div class='card'>
+        <h3>Benchmark CPU Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_cpu.png' width='560'>
+      </div>""" if has_benchmark_cpu else ""
+
+            benchmark_mem_comp_html = f"""
+      <div class='card'>
+        <h3>Benchmark Memory Usage over time</h3>
+        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_memory.png' width='560'>
+      </div>""" if has_benchmark_mem else ""
+
+            benchmark_comparison_html = f"""
+    <h3>Benchmark Process Comparison</h3>
+    <div class='row'>
+      {benchmark_latency_comp_html}
+    </div>
+    <div class='row'>
+      {benchmark_cpu_comp_html}
+      {benchmark_mem_comp_html}
+    </div>"""
+
         comparison_sections += f"""
     <h2>{worker_label} = {wc}</h2>
     <div class='row'>
@@ -355,7 +389,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       {cpu_comp_html}
       {mem_comp_html}
-    </div>"""
+    </div>
+    {benchmark_comparison_html}"""
 
     has_any_cpu = any(not r.cpu_df.empty for r in runs)
     has_any_mem = any(not r.memory_df.empty for r in runs)
@@ -394,6 +429,40 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     </div>
     {resource_usage_html}"""
 
+    has_any_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in runs)
+    has_any_benchmark_cpu = any(not r.benchmark_cpu_df.empty for r in runs)
+    has_any_benchmark_mem = any(not r.benchmark_memory_df.empty for r in runs)
+
+    benchmark_performance_section = ""
+    if has_any_benchmark_latency or has_any_benchmark_cpu or has_any_benchmark_mem:
+        benchmark_latency_scaling_html = f"""
+      <div class='card'>
+        <h3>Benchmark Latency vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_benchmark_latency.png' width='560'>
+      </div>""" if has_any_benchmark_latency else ""
+
+        benchmark_cpu_scaling_html = f"""
+      <div class='card'>
+        <h3>Benchmark CPU Usage vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_benchmark_cpu.png' width='560'>
+      </div>""" if has_any_benchmark_cpu else ""
+
+        benchmark_mem_scaling_html = f"""
+      <div class='card'>
+        <h3>Benchmark Memory Usage vs {worker_label}</h3>
+        <img src='{workload_name}_scaling_benchmark_memory.png' width='560'>
+      </div>""" if has_any_benchmark_mem else ""
+
+        benchmark_performance_section = f"""
+    <h2>Benchmark Process Performance</h2>
+    <div class='row'>
+      {benchmark_latency_scaling_html}
+    </div>
+    <div class='row'>
+      {benchmark_cpu_scaling_html}
+      {benchmark_mem_scaling_html}
+    </div>"""
+
     container_stats_section = ""
     if has_container_stats:
         container_stats_section = f"""
@@ -431,6 +500,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
   {performance_section}
+  {benchmark_performance_section}
   {container_stats_section}
   {comparison_sections}
   <h2>Summary</h2>

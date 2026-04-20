@@ -88,6 +88,13 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
                 return p["latency_us"] / 1000.0
         return 0.0
 
+    def get_benchmark_latency_percentile(self, percentile: float) -> float:
+        """Extracts a specific benchmark latency percentile (in ms) from the results."""
+        for p in self.benchmark_latency_percentiles:
+            if p["percentile"] == percentile:
+                return p["latency_us"] / 1000.0
+        return 0.0
+
     def get_latency_cdf_data(self):
         """Returns data needed for a latency CDF plot."""
         if not self.latency_percentiles:

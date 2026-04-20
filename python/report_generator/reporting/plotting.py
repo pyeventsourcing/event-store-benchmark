@@ -200,6 +200,40 @@ def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=
     plt.close()
 
 
+def plot_comparison_benchmark_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
+    """Plot benchmark latency CDF comparing multiple runs."""
+    plt.figure(figsize=(8, 5))
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    all_latencies = []
+    for run in sorted_runs:
+        latencies_ms, percentiles = run.get_benchmark_latency_cdf_data()
+        if latencies_ms is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
+        all_latencies.extend([l for l in latencies_ms if l > 0])
+
+    plt.xscale("log")
+    
+    if all_latencies:
+        plt.xlim(left=min(all_latencies) / 2)
+
+    plt.xlabel("Latency (ms) [log]")
+    plt.ylabel("Percentile (%)")
+    plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
+    plt.gca().xaxis.set_minor_formatter(NullFormatter())
+    plt.ticklabel_format(style='plain', axis='y')
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which="both", ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_comparison_throughput(runs, title: str, out_path: str, get_store_rank=None):
     """Plot throughput over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
@@ -253,6 +287,33 @@ def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
     plt.close()
 
 
+def plot_comparison_benchmark_cpu(runs, title: str, out_path: str, get_store_rank=None):
+    """Plot benchmark CPU usage over time comparing multiple runs."""
+    plt.figure(figsize=(8, 5))
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    for run in sorted_runs:
+        ts = run.get_benchmark_cpu_timeseries()
+        if ts is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(ts["time_s"], ts["cpu_percent"],
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                 drawstyle='steps-pre')
+
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("CPU Usage (%)")
+    plt.title(title)
+    plt.ylim(bottom=0)
+    plt.legend()
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None):
     """Plot memory usage over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
@@ -261,6 +322,33 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
 
     for run in sorted_runs:
         ts = run.get_memory_timeseries()
+        if ts is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(ts["time_s"], ts["memory_mb"],
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                 drawstyle='steps-pre')
+
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Memory Usage (MB)")
+    plt.title(title)
+    plt.ylim(bottom=0)
+    plt.legend()
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_comparison_benchmark_memory(runs, title: str, out_path: str, get_store_rank=None):
+    """Plot benchmark memory usage over time comparing multiple runs."""
+    plt.figure(figsize=(8, 5))
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    for run in sorted_runs:
+        ts = run.get_benchmark_memory_timeseries()
         if ts is None:
             continue
 
@@ -424,6 +512,86 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
+def plot_benchmark_latency_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        p50 = run.get_benchmark_latency_percentile(50.0) if hasattr(run, 'get_benchmark_latency_percentile') else 0
+        p99 = run.get_benchmark_latency_percentile(99.0) if hasattr(run, 'get_benchmark_latency_percentile') else 0
+        p999 = run.get_benchmark_latency_percentile(99.9) if hasattr(run, 'get_benchmark_latency_percentile') else 0
+        
+        # Fallback if get_benchmark_latency_percentile is not available (though it should be)
+        if p50 == 0 and hasattr(run, 'benchmark_latency_percentiles'):
+            for p in run.benchmark_latency_percentiles:
+                if p["percentile"] == 50.0: p50 = p["latency_us"] / 1000.0
+                if p["percentile"] == 99.0: p99 = p["latency_us"] / 1000.0
+                if p["percentile"] == 99.9: p999 = p["latency_us"] / 1000.0
+
+        if p50 > 0 or p99 > 0 or p999 > 0:
+            data[run.worker_count][run.adapter] = {"p50": p50, "p99": p99, "p999": p999}
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0]
+    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    title = f"Benchmark Latency by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(12, 7))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    all_p50_vals = []
+    for i, adapter in enumerate(adapters):
+        p50_vals = np.array([data[wc].get(adapter, {}).get("p50", 0) for wc in worker_counts])
+        p99_vals = np.array([data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts])
+        p999_vals = np.array([data[wc].get(adapter, {}).get("p999", 0) for wc in worker_counts])
+
+        offset = (i - (len(adapters) - 1) / 2) * width
+        color = get_adapter_color(adapter)
+
+        plt.bar(x + offset, p50_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, p99_vals - p50_vals), width, bottom=p50_vals, color=color, alpha=0.6)
+        plt.bar(x + offset, np.maximum(0, p999_vals - p99_vals), width, bottom=p99_vals, color=color, alpha=0.3)
+        
+        all_p50_vals.extend([v for v in p50_vals if v > 0])
+
+    plt.yscale("log")
+    
+    if all_p50_vals:
+        plt.ylim(bottom=min(all_p50_vals) / 2)
+
+    plt.ylabel("Latency (ms) [log]")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(_format_tick))
+    plt.gca().yaxis.set_major_locator(LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
+    plt.gca().yaxis.set_minor_formatter(NullFormatter())
+
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='p50'),
+        Line2D([0], [0], color='gray', alpha=0.6, lw=4, label='p99'),
+        Line2D([0], [0], color='gray', alpha=0.3, lw=4, label='p99.9')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=len(adapters) if len(adapters) < 4 else 4)
+
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
     """Plot average and peak CPU usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
@@ -481,6 +649,64 @@ def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
+def plot_benchmark_cpu_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average and peak benchmark CPU usage vs worker count using overlaid bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        avg_cpu = run.metrics.get("benchmark_avg_cpu_percent", 0)
+        peak_cpu = run.metrics.get("benchmark_peak_cpu_percent", 0)
+
+        if avg_cpu > 0 or peak_cpu > 0:
+            data[run.worker_count][run.adapter] = {"avg": avg_cpu, "peak": peak_cpu}
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0]
+    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    title = f"Benchmark CPU Usage by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    for i, adapter in enumerate(adapters):
+        avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
+        peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
+        
+        offset = (i - (len(adapters) - 1) / 2) * width
+        color = get_adapter_color(adapter)
+        
+        plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+
+    plt.ylabel("CPU Usage (%)")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    plt.ylim(bottom=0)
+
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
     """Plot average and peak memory usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
@@ -507,6 +733,64 @@ def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
     title = f"Memory Usage by {xlabel[:-1]} Count"
+
+    plt.figure(figsize=(10, 6))
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    for i, adapter in enumerate(adapters):
+        avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
+        peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
+        
+        offset = (i - (len(adapters) - 1) / 2) * width
+        color = get_adapter_color(adapter)
+        
+        plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
+        plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+
+    plt.ylabel("Memory Usage (MB)")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+    plt.ylim(bottom=0)
+
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
+def plot_benchmark_memory_scaling(runs, out_path: str, get_store_rank=None):
+    """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
+    data = defaultdict(lambda: defaultdict(dict))
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        avg_mem = run.metrics.get("benchmark_avg_memory_bytes", 0) / 1024 / 1024
+        peak_mem = run.metrics.get("benchmark_peak_memory_bytes", 0) / 1024 / 1024
+
+        if avg_mem > 0 or peak_mem > 0:
+            data[run.worker_count][run.adapter] = {"avg": avg_mem, "peak": peak_mem}
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0]
+    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    title = f"Benchmark Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
     x = np.arange(len(worker_counts))
