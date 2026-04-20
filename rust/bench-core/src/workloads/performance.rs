@@ -403,13 +403,14 @@ impl PerformanceWorkload {
 
             let stream_prefix = self.stream_prefix.clone();
             setup_set.spawn(async move {
+                let mut event_type = "setup".to_string();
                 for stream_idx in start_stream..end_stream {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
                     let mut events = Vec::with_capacity(events_per_stream as usize);
                     for _ in 0..events_per_stream {
                         events.push(EventData {
                             payload: vec![0u8; event_size],
-                            event_type: "setup".to_string(),
+                            event_type: event_type.clone(),
                             tags: vec![stream_name.clone()],
                         });
                     }
@@ -480,10 +481,18 @@ impl PerformanceWorkload {
             let mut operation_completed: Instant;
             let mut operation_duration: Option<Duration> = None;
             let mut loop_started = Instant::now();
+
+            let mut event_type_str = String::with_capacity(64);
+            let event_type_prefix = "test";
+
             while !out_of_time && !cancel_token.is_cancelled() {
+                event_type_str.clear();
+                use std::fmt::Write;
+                write!(&mut event_type_str, "{}-{}", event_type_prefix, stream_position).unwrap();
+
                 let evt = EventData {
                     payload: payload.clone(),
-                    event_type: format!("{}-{}", event_type.clone(), stream_position),
+                    event_type: event_type_str.clone(),
                     tags: vec![stream_name.clone()],
                 };
 
@@ -491,7 +500,7 @@ impl PerformanceWorkload {
                     operation_started = Some(Instant::now());
                 }
                 let mut success = false;
-                match adapter.append(vec![evt.clone()]).await {
+                match adapter.append(vec![evt]).await {
                     Ok(_) => success = true,
                     Err(e) => {
                         eprintln!("Operation failed: {}", e);
