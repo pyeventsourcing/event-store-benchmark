@@ -4,7 +4,7 @@ performance:
   use_docker: true
   warmup_seconds: 1
   duration_seconds: 3
-  samples_per_second: 10
+  samples_per_second: 2
   concurrency:
     writers: [1, 4]
   operations:
@@ -29,7 +29,7 @@ performance:
   use_docker: true
   warmup_seconds: 1
   duration_seconds: 3
-  samples_per_second: 10
+  samples_per_second: 2
   concurrency:
     readers: [1, 4]
   operations:
