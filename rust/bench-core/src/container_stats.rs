@@ -52,12 +52,10 @@ impl ContainerMonitor {
             
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
-            let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;
-            let interval = std::time::Duration::from_secs_f64(1.0 / samples_per_second as f64);
             let end_time = start_time + std::time::Duration::from_secs(duration_seconds);
 
-            let expected_samples = (samples_per_second * duration_seconds) as usize;
+            let expected_samples = (duration_seconds + 1) as usize;
             {
                 let mut guard = stats_arc.lock().await;
                 guard.cpu_samples = Vec::with_capacity(expected_samples);
@@ -66,17 +64,27 @@ impl ContainerMonitor {
             
             let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));
             let mut stop_rx = stop_rx;
+            let mut first_sample = true;
 
             loop {
                 tokio::select! {
                     _ = &mut stop_rx => break,
                     Some(Ok(stats)) = stream.next() => {
                         let now = std::time::Instant::now();
-                        if now >= end_time {
-                            break;
-                        }
 
-                        let elapsed_s = start_time.elapsed().as_secs_f64();
+                        // Docker stats stream returns data approximately every 1s.
+                        // We want to skip very early samples and wait until at least 1s after start_time for the first sample.
+                        let elapsed = if now > start_time {
+                            now.duration_since(start_time)
+                        } else {
+                            std::time::Duration::from_secs(0)
+                        };
+                        if first_sample && elapsed < std::time::Duration::from_secs(1) {
+                            continue;
+                        }
+                        first_sample = false;
+
+                        let elapsed_s = elapsed.as_secs_f64();
                         let mut guard = stats_arc.lock().await;
 
                         if let (Some(cpu_stats), Some(precpu_stats)) = (&stats.cpu_stats, &stats.precpu_stats) {
@@ -97,11 +105,11 @@ impl ContainerMonitor {
                             let mem_usage = memory_stats.usage.unwrap_or(0);
                             guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: mem_usage });
                         }
-                    }
-                    _ = tokio::time::sleep(interval) => {
-                        if std::time::Instant::now() >= end_time {
+
+                        if now >= end_time {
                             break;
                         }
+
                     }
                     else => break,
                 }
