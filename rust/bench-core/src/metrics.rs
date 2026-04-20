@@ -14,7 +14,7 @@ pub struct SamplingConfigDecision {
     pub duration_seconds: u64,
 }
 
-/// Throughput time-series sample: elapsed time from workload start and cumulative operation count
+/// Throughput time-series sample: elapsed time from workload start and interval operation count
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThroughputSample {
     pub elapsed_s: f64,
@@ -75,12 +75,11 @@ pub struct WorkloadResults {
 
 impl WorkloadResults {
     pub(crate) fn print_summary(&self, throughput_samples: &[ThroughputSample]) {
-        if throughput_samples.len() >= 2 {
-            let first_sample = throughput_samples.first().unwrap();
+        if !throughput_samples.is_empty() {
+            let total_count: u64 = throughput_samples.iter().map(|s| s.count).sum();
             let last_sample = throughput_samples.last().unwrap();
-            let duration = last_sample.elapsed_s - first_sample.elapsed_s;
-            let count_delta = last_sample.count - first_sample.count;
-            let throughput = (count_delta as f64) / duration.max(0.001);
+            let duration = last_sample.elapsed_s;
+            let throughput = (total_count as f64) / duration.max(0.001);
             println!("Throughput: {:.2} eps", throughput);
         }
     }
@@ -181,7 +180,7 @@ pub enum RecordingStatus {
 impl ThroughputRecorder {
     pub fn new(samples_per_second: u64, num_intervals: usize, start_time: Instant) -> Self {
         Self {
-            counts: vec![0; num_intervals + 1],
+            counts: vec![0; num_intervals],
             samples_per_second,
             start_time,
         }
@@ -203,12 +202,10 @@ impl ThroughputRecorder {
 
     pub fn to_samples(&self) -> Vec<ThroughputSample> {
         let mut samples = Vec::with_capacity(self.counts.len());
-        let mut cumulative_count = 0;
         for (i, &count) in self.counts.iter().enumerate() {
-            cumulative_count += count;
             samples.push(ThroughputSample {
-                elapsed_s: i as f64 / self.samples_per_second as f64,
-                count: cumulative_count,
+                elapsed_s: (i + 1) as f64 / self.samples_per_second as f64,
+                count,
             });
         }
         samples

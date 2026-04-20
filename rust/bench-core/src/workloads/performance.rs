@@ -332,7 +332,7 @@ impl PerformanceWorkload {
         let mut store_latencies = LatencyRecorder::new();
         let mut benchmark_latencies = LatencyRecorder::new();
         let num_intervals = (duration_seconds * samples_per_second) as usize;
-        let mut combined_counts = vec![0u64; num_intervals + 1];
+        let mut combined_counts = vec![0u64; num_intervals];
 
         while let Some(worker_result) = worker_tasks.join_next().await {
             if let Ok(Some((worker_latencies, worker_throughput, worker_benchmark_latencies))) = worker_result {
@@ -348,12 +348,10 @@ impl PerformanceWorkload {
 
         // Convert combined counts to ThroughputSamples
         let mut throughput_samples = Vec::with_capacity(combined_counts.len());
-        let mut cumulative_count = 0;
         for (i, &count) in combined_counts.iter().enumerate() {
-            cumulative_count += count;
             throughput_samples.push(ThroughputSample {
-                elapsed_s: i as f64 / samples_per_second as f64,
-                count: cumulative_count,
+                elapsed_s: (i + 1) as f64 / samples_per_second as f64,
+                count,
             });
         }
 

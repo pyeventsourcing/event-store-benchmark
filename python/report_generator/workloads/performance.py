@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 from .base import BaseWorkloadResult
@@ -61,16 +62,15 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         self.duration_s = 0
         self.average_throughput = 0
         self.peak_throughput = 0
-        if not self.throughput_df.empty and len(self.throughput_df) >= 2:
+        if not self.throughput_df.empty:
             df = self.throughput_df.sort_values("elapsed_s")
-            duration = df["elapsed_s"].iloc[-1] - df["elapsed_s"].iloc[0]
-            total_count = df["count"].iloc[-1] - df["count"].iloc[0]
-            self.duration_s = duration
-            if duration > 0:
-                self.average_throughput = total_count / duration
+            self.duration_s = df["elapsed_s"].iloc[-1]
+            total_count = df["count"].sum()
+            if self.duration_s > 0:
+                self.average_throughput = total_count / self.duration_s
             
             ts = self.get_throughput_timeseries()
-            if ts:
+            if ts is not None:
                 self.peak_throughput = ts["throughput_eps_smooth"].max()
 
     @property
@@ -113,40 +113,38 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
 
     def get_throughput_timeseries(self) -> dict | None:
         """
-        Computes throughput time series from cumulative samples.
-        This logic is moved from the original `compute_throughput_timeseries`.
+        Computes throughput time series from interval samples.
         """
         if self.throughput_df.empty or "count" not in self.throughput_df.columns:
             return None
 
         df = self.throughput_df.copy()
-        if len(df) < 2:
+        if len(df) < 1:
             return None
 
         df = df.sort_values("elapsed_s").reset_index(drop=True)
 
-        time_diffs = df["elapsed_s"].diff().iloc[1:]
-        count_diffs = df["count"].diff().iloc[1:]
-
-        # Calculate throughput (events per second) for each interval
-        eps = count_diffs / time_diffs
+        times = df["elapsed_s"].values
+        counts = df["count"].values
+        
+        # Calculate time diffs
+        time_diffs = df["elapsed_s"].diff().fillna(df["elapsed_s"].iloc[0])
+        eps = counts / time_diffs
 
         # Apply moving average smoothing
         window_size = min(3, len(eps))
-        eps_smooth = eps.rolling(window=window_size, center=True, min_periods=1).mean()
+        eps_smooth = pd.Series(eps).rolling(window=window_size, center=True, min_periods=1).mean()
 
-        time_s = df["elapsed_s"].iloc[1:]
-
-        # Prepend t0 to make step plots start from the beginning of the first interval
-        t0 = df["elapsed_s"].iloc[0]
-        extended_time_s = pd.concat([pd.Series([t0]), time_s])
-        extended_eps = pd.concat([pd.Series([eps.iloc[0]]), eps])
-        extended_eps_smooth = pd.concat([pd.Series([eps_smooth.iloc[0]]), eps_smooth])
+        # Prepend t=0 value for steps-pre plotting as requested
+        # The line should start at t=0 with the first interval's throughput.
+        extended_time_s = np.concatenate([[0.0], times])
+        extended_eps = np.concatenate([[eps[0]], eps])
+        extended_eps_smooth = np.concatenate([[eps_smooth.iloc[0]], eps_smooth.values])
 
         return {
-            "time_s": extended_time_s.values,
-            "throughput_eps": extended_eps.values,
-            "throughput_eps_smooth": extended_eps_smooth.values,
+            "time_s": extended_time_s,
+            "throughput_eps": extended_eps,
+            "throughput_eps_smooth": extended_eps_smooth,
         }
 
     def get_cpu_timeseries(self) -> dict | None:
@@ -154,9 +152,17 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if self.cpu_df.empty:
             return None
         df = self.cpu_df.sort_values("elapsed_s")
+        
+        times = df["elapsed_s"].values
+        cpu_percent = df["cpu_percent"].values
+        
+        # Prepend t=0 value for steps-pre plotting
+        extended_times = np.concatenate([[0.0], times])
+        extended_cpu = np.concatenate([[cpu_percent[0]], cpu_percent])
+        
         return {
-            "time_s": df["elapsed_s"].values,
-            "cpu_percent": df["cpu_percent"].values,
+            "time_s": extended_times,
+            "cpu_percent": extended_cpu,
         }
 
     def get_benchmark_cpu_timeseries(self) -> dict | None:
@@ -164,9 +170,17 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if self.benchmark_cpu_df.empty:
             return None
         df = self.benchmark_cpu_df.sort_values("elapsed_s")
+        
+        times = df["elapsed_s"].values
+        cpu_percent = df["cpu_percent"].values
+        
+        # Prepend t=0 value for steps-pre plotting
+        extended_times = np.concatenate([[0.0], times])
+        extended_cpu = np.concatenate([[cpu_percent[0]], cpu_percent])
+        
         return {
-            "time_s": df["elapsed_s"].values,
-            "cpu_percent": df["cpu_percent"].values,
+            "time_s": extended_times,
+            "cpu_percent": extended_cpu,
         }
 
     def get_memory_timeseries(self) -> dict | None:
@@ -174,9 +188,17 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if self.memory_df.empty:
             return None
         df = self.memory_df.sort_values("elapsed_s")
+        
+        times = df["elapsed_s"].values
+        memory_mb = df["memory_bytes"].values / (1024 * 1024)
+        
+        # Prepend t=0 value for steps-pre plotting
+        extended_times = np.concatenate([[0.0], times])
+        extended_memory = np.concatenate([[memory_mb[0]], memory_mb])
+        
         return {
-            "time_s": df["elapsed_s"].values,
-            "memory_mb": df["memory_bytes"].values / (1024 * 1024),
+            "time_s": extended_times,
+            "memory_mb": extended_memory,
         }
 
     def get_benchmark_memory_timeseries(self) -> dict | None:
@@ -184,7 +206,15 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if self.benchmark_memory_df.empty:
             return None
         df = self.benchmark_memory_df.sort_values("elapsed_s")
+        
+        times = df["elapsed_s"].values
+        memory_mb = df["memory_bytes"].values / (1024 * 1024)
+        
+        # Prepend t=0 value for steps-pre plotting
+        extended_times = np.concatenate([[0.0], times])
+        extended_memory = np.concatenate([[memory_mb[0]], memory_mb])
+        
         return {
-            "time_s": df["elapsed_s"].values,
-            "memory_mb": df["memory_bytes"].values / (1024 * 1024),
+            "time_s": extended_times,
+            "memory_mb": extended_memory,
         }
