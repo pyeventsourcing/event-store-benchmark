@@ -72,7 +72,7 @@ jobs:
           curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip
           unzip axonserver.zip
           cd AxonServer-2025.2.7
-          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true taskset -c 0,1 nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/axonserver.pid
           for i in {1..60}; do
             if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
@@ -91,7 +91,7 @@ jobs:
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
           sudo apt-get install kurrentdb=26.0.2
           sudo cat /etc/kurrentdb/kurrentdb.conf
-          sudo /usr/bin/kurrentd --insecure > $GITHUB_WORKSPACE/kurrentdb.log 2>&1 &
+          sudo taskset -c 0,1 /usr/bin/kurrentd --insecure > $GITHUB_WORKSPACE/kurrentdb.log 2>&1 &
           for i in {1..60}; do
             if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
               echo "KurrentDB is ready after $((i-1)) seconds"
@@ -116,7 +116,7 @@ jobs:
         if: ${{ matrix.store == 'umadb' }}
         run: |
           cargo install umadb
-          UMADB_READ_METHOD=fileio nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
+          UMADB_READ_METHOD=fileio taskset -c 0,1 nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/umadb.pid
           for i in {1..60}; do
             if nc -z 127.0.0.1 50051; then
@@ -146,7 +146,7 @@ jobs:
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          make run-scaling-binaries
+          taskset -c 2,3 make run-scaling-binaries
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v6
