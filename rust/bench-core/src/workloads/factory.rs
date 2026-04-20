@@ -56,7 +56,7 @@ impl Workload {
         cancel_token: CancellationToken,
         benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
         sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
-    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
+    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Vec<LatencyPercentile>)> {
         match self {
             Workload::Performance(w) => w.execute(store, cancel_token, benchmark_tx, sampling_config_rx).await,
             Workload::Durability(w) => {

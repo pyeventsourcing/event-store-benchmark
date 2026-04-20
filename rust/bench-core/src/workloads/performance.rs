@@ -247,7 +247,7 @@ impl PerformanceWorkload {
         cancel_token: CancellationToken,
         benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
         sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
-    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>)> {
+    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Vec<LatencyPercentile>)> {
         // Run preparation (prepopulation) if configured
         self.prepare(store).await?;
 
@@ -329,13 +329,15 @@ impl PerformanceWorkload {
         let _ = benchmark_tx.send(Some(msg));
 
         // Collect results
-        let mut latency_histogram = LatencyRecorder::new();
+        let mut store_latencies = LatencyRecorder::new();
+        let mut benchmark_latencies = LatencyRecorder::new();
         let num_intervals = (duration_seconds * samples_per_second) as usize;
         let mut combined_counts = vec![0u64; num_intervals + 1];
 
         while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput))) = worker_result {
-                latency_histogram.hist.add(&worker_latencies.hist).unwrap();
+            if let Ok(Some((worker_latencies, worker_throughput, worker_benchmark_latencies))) = worker_result {
+                store_latencies.hist.add(&worker_latencies.hist).unwrap();
+                benchmark_latencies.hist.add(&worker_benchmark_latencies.hist).unwrap();
                 for (i, count) in worker_throughput.counts.iter().enumerate() {
                     if i < combined_counts.len() {
                         combined_counts[i] += count;
@@ -355,7 +357,8 @@ impl PerformanceWorkload {
             });
         }
 
-        let latency_percentiles = latency_histogram.to_percentiles();
+        let store_latency_percentiles = store_latencies.to_percentiles();
+        let benchmark_latency_percentiles = benchmark_latencies.to_percentiles();
 
         Ok((
             WorkloadResults::new(
@@ -363,7 +366,8 @@ impl PerformanceWorkload {
                 store.name().to_string(),
             ),
             throughput_samples,
-            latency_percentiles,
+            store_latency_percentiles,
+            benchmark_latency_percentiles,
         ))
     }
 
@@ -431,7 +435,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_writer_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -466,12 +470,18 @@ impl PerformanceWorkload {
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut latencies = LatencyRecorder::new();
+            let mut store_latencies = LatencyRecorder::new();
+            let mut benchmark_latencies = LatencyRecorder::new();
 
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
             let stream_len = 10;
             let mut stream_position = 0;
+
+            let mut operation_started: Option<Instant> = None;
+            let mut operation_completed: Instant;
+            let mut operation_duration: Option<Duration> = None;
+            let mut loop_started = Instant::now();
             while !out_of_time && !cancel_token.is_cancelled() {
                 let evt = EventData {
                     payload: payload.clone(),
@@ -479,7 +489,9 @@ impl PerformanceWorkload {
                     tags: vec![stream_name.clone()],
                 };
 
-                let operation_started = Instant::now();
+                if activate_metrics {
+                    operation_started = Some(Instant::now());
+                }
                 let mut success = false;
                 match adapter.append(vec![evt.clone()]).await {
                     Ok(_) => success = true,
@@ -488,14 +500,15 @@ impl PerformanceWorkload {
                         sleep(Duration::from_secs(1)).await;
                     }
                 }
-                let operation_completed = Instant::now();
+                operation_completed = Instant::now();
                 if success {
                     if activate_metrics {
                         // Record throughput sample
                         let status = throughput_recorder.record(operation_completed, 1);
                         if status == RecordingStatus::During {
                             // Record latency sample
-                            latencies.record(operation_completed - operation_started);
+                            operation_duration = Some(operation_completed - operation_started.unwrap());
+                            store_latencies.record(operation_duration.unwrap());
                         }
                     }
                     // Increment stream position, maybe reset and change name.
@@ -506,10 +519,17 @@ impl PerformanceWorkload {
                     }
                 }
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+
+                if operation_duration.is_some() {
+                    benchmark_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
+                }
+                if activate_metrics {
+                    loop_started = Instant::now();
+                }
             }
 
             if activate_metrics {
-                Some((latencies, throughput_recorder))
+                Some((store_latencies, throughput_recorder, benchmark_latencies))
             } else {
                 None
             }
@@ -517,7 +537,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_reader_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
         seed: u64,
@@ -551,8 +571,13 @@ impl PerformanceWorkload {
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut latencies = LatencyRecorder::new();
+            let mut store_latencies = LatencyRecorder::new();
+            let mut benchmark_latencies = LatencyRecorder::new();
 
+            let mut operation_started: Option<Instant> = None;
+            let mut operation_completed: Instant;
+            let mut operation_duration: Option<Duration> = None;
+            let mut loop_started = Instant::now();
 
             while !out_of_time && !cancel_token.is_cancelled() {
                 let stream_idx = rng.random_range(0..prepopulated_streams);
@@ -563,9 +588,11 @@ impl PerformanceWorkload {
                     limit: Some(read_cfg.limit as u64),
                 };
 
-                let operation_started = Instant::now();
+                if activate_metrics {
+                    operation_started = Some(Instant::now());
+                }
                 let result = adapter.read(req).await;
-                let operation_completed = Instant::now();
+                operation_completed = Instant::now();
 
                 match result {
                     Ok(events) => {
@@ -574,7 +601,10 @@ impl PerformanceWorkload {
                             let status = throughput_recorder.record(operation_completed, events.len() as u64);
                             if status == RecordingStatus::During {
                                 // Record latency sample
-                                latencies.record(operation_completed - operation_started);
+                                operation_duration = Some(operation_completed - operation_started.unwrap());
+                                store_latencies.record(operation_duration.unwrap());
+                            } else {
+                                operation_duration = None;
                             }
                         }
                     }
@@ -585,9 +615,15 @@ impl PerformanceWorkload {
                 }
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
+                if operation_duration.is_some() {
+                    benchmark_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
+                }
+                if activate_metrics {
+                    loop_started = Instant::now();
+                }
             }
             if activate_metrics {
-                Some((latencies, throughput_recorder))
+                Some((store_latencies, throughput_recorder, benchmark_latencies))
             } else {
                 None
             }

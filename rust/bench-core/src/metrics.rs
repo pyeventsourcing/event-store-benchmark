@@ -63,6 +63,7 @@ pub struct ContainerStats {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RunMetrics {
     pub resources: ProcessMetrics,
+    pub benchmark_resources: Option<ProcessMetrics>,
     pub container: Option<ContainerStats>,
 }
 
@@ -100,9 +101,12 @@ impl WorkloadResults {
         &self,
         path: &Path,
         throughput_samples: &[ThroughputSample],
-        latency_percentiles: &[LatencyPercentile],
+        store_latency_percentiles: &[LatencyPercentile],
+        benchmark_latency_percentiles: &[LatencyPercentile],
         cpu_samples: Option<&[CpuSample]>,
         memory_samples: Option<&[MemorySample]>,
+        benchmark_cpu_samples: Option<&[CpuSample]>,
+        benchmark_memory_samples: Option<&[MemorySample]>,
     ) -> Result<()> {
         fs::write(
             path.join("config.yaml"),
@@ -116,7 +120,11 @@ impl WorkloadResults {
 
         fs::write(
             path.join("latency.json"),
-            serde_json::to_string_pretty(latency_percentiles)?,
+            serde_json::to_string_pretty(store_latency_percentiles)?,
+        )?;
+        fs::write(
+            path.join("benchmark_latency.json"),
+            serde_json::to_string_pretty(benchmark_latency_percentiles)?,
         )?;
 
         if let Some(cpu_samples) = cpu_samples {
@@ -129,6 +137,20 @@ impl WorkloadResults {
         if let Some(memory_samples) = memory_samples {
             fs::write(
                 path.join("memory.json"),
+                serde_json::to_string_pretty(memory_samples)?,
+            )?;
+        }
+
+        if let Some(cpu_samples) = benchmark_cpu_samples {
+            fs::write(
+                path.join("benchmark_cpu.json"),
+                serde_json::to_string_pretty(cpu_samples)?,
+            )?;
+        }
+
+        if let Some(memory_samples) = benchmark_memory_samples {
+            fs::write(
+                path.join("benchmark_memory.json"),
                 serde_json::to_string_pretty(memory_samples)?,
             )?;
         }

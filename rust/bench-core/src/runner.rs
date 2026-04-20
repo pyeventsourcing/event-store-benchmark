@@ -18,7 +18,18 @@ pub async fn execute_run(
     mut store: Box<dyn StoreManager>,
     workload: &Workload,
     cancel_token: CancellationToken,
-) -> Result<(RunMetrics, WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Option<Vec<CpuSample>>, Option<Vec<MemorySample>>, String)> {
+) -> Result<(
+    RunMetrics,
+    WorkloadResults,
+    Vec<ThroughputSample>,
+    Vec<LatencyPercentile>,
+    Vec<LatencyPercentile>,
+    Option<Vec<CpuSample>>,
+    Option<Vec<MemorySample>>,
+    Option<Vec<CpuSample>>,
+    Option<Vec<MemorySample>>,
+    String,
+)> {
     // Start store container
     let store_name = store.name();
     if store.use_docker() {
@@ -30,7 +41,7 @@ pub async fn execute_run(
         }
     }
 
-    let (monitor, startup_time_s) = if store.use_docker() {
+    let (mut monitor, startup_time_s) = if store.use_docker() {
         if !crate::is_image_pulled(store_name) {
             println!("Pulling {} image...", store_name);
             let mut last_err = None;
@@ -136,8 +147,11 @@ pub async fn execute_run(
     // Prepare synchronization primitives
     let (tx, rx) = watch::channel(None::<SamplingConfigDecision>);
 
+    // Start benchmark process monitor
+    let mut benchmark_monitor = ProcessMonitor::new(std::process::id());
+    benchmark_monitor.start(rx.clone()).await;
+
     // Start monitor if it exists
-    let mut monitor = monitor;
     if let Some(m) = &mut monitor {
         match m {
             Monitor::Container(cm) => cm.start(rx.clone()).await,
@@ -157,7 +171,7 @@ pub async fn execute_run(
         }
     };
 
-    let (workload_results, throughput_samples, latency_percentiles) = match workload_res {
+    let (workload_results, throughput_samples, store_latency_percentiles, benchmark_latency_percentiles) = match workload_res {
         Ok(res) => res,
         Err(e) => {
             if store.use_docker() {
@@ -171,7 +185,7 @@ pub async fn execute_run(
     workload_results.print_summary(&throughput_samples);
 
     // Get container logs before stopping
-    let (run_metrics, cpu_samples, memory_samples, logs) = if store.use_docker() {
+    let (run_metrics, cpu_samples, memory_samples, b_cpu_samples, b_memory_samples, logs) = if store.use_docker() {
         let (resources, cpu_samples, memory_samples, container) = match monitor {
             Some(Monitor::Container(m)) => {
                 let image_size_bytes = m.get_image_size().await.ok();
@@ -187,6 +201,9 @@ pub async fn execute_run(
                 image_size_bytes: None,
             })),
         };
+
+        let (b_resources, b_cpu, b_mem) = benchmark_monitor.stop().await;
+
         // Ensure container is stopped on error/interruption
         store.stop().await?;
         let logs = store.logs().await.unwrap_or_else(|e| {
@@ -194,7 +211,7 @@ pub async fn execute_run(
             String::new()
         });
 
-        (RunMetrics { resources, container }, cpu_samples, memory_samples, logs)
+        (RunMetrics { resources, benchmark_resources: Some(b_resources), container }, cpu_samples, memory_samples, Some(b_cpu), Some(b_mem), logs)
     } else {
         let (resources, cpu_samples, memory_samples) = match monitor {
             Some(Monitor::Process(m)) => {
@@ -203,8 +220,11 @@ pub async fn execute_run(
             }
             _ => (ProcessMetrics::default(), None, None),
         };
-        (RunMetrics { resources, container: None }, cpu_samples, memory_samples, String::new())
+
+        let (b_resources, b_cpu, b_mem) = benchmark_monitor.stop().await;
+
+        (RunMetrics { resources, benchmark_resources: Some(b_resources), container: None }, cpu_samples, memory_samples, Some(b_cpu), Some(b_mem), String::new())
     };
 
-    Ok((run_metrics, workload_results, throughput_samples, latency_percentiles, cpu_samples, memory_samples, logs))
+    Ok((run_metrics, workload_results, throughput_samples, store_latency_percentiles, benchmark_latency_percentiles, cpu_samples, memory_samples, b_cpu_samples, b_memory_samples, logs))
 }
