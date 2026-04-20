@@ -403,15 +403,17 @@ impl PerformanceWorkload {
 
             let stream_prefix = self.stream_prefix.clone();
             setup_set.spawn(async move {
-                let mut event_type = "setup".to_string();
+                let event_type = "setup".to_string();
+                let payload = vec![0u8; event_size];
                 for stream_idx in start_stream..end_stream {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
+                    let tags = vec![stream_name];
                     let mut events = Vec::with_capacity(events_per_stream as usize);
                     for _ in 0..events_per_stream {
                         events.push(EventData {
-                            payload: vec![0u8; event_size],
+                            payload: payload.clone(),
                             event_type: event_type.clone(),
-                            tags: vec![stream_name.clone()],
+                            tags: tags.clone(),
                         });
                     }
                     adapter.append(events).await?;
@@ -463,7 +465,6 @@ impl PerformanceWorkload {
             let size = write_cfg.event_size_bytes;
 
             // Pre-allocate strings outside loop
-            let event_type = "test".to_string();
             let payload = vec![0u8; size];
 
             // Sampling for metrics measurement
@@ -474,6 +475,7 @@ impl PerformanceWorkload {
 
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
+            let mut tags = vec![stream_name.clone()];
             let stream_len = 10;
             let mut stream_position = 0;
 
@@ -493,7 +495,7 @@ impl PerformanceWorkload {
                 let evt = EventData {
                     payload: payload.clone(),
                     event_type: event_type_str.clone(),
-                    tags: vec![stream_name.clone()],
+                    tags: tags.clone(),
                 };
 
                 if activate_metrics {
@@ -524,6 +526,7 @@ impl PerformanceWorkload {
                     stream_position += 1;
                     if stream_position == stream_len {
                         stream_name = format!("stream-{}-", Uuid::new_v4());
+                        tags = vec![stream_name.clone()];
                         stream_position = 0;
                     }
                 }
