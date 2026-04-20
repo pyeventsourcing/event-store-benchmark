@@ -16,6 +16,17 @@ def _format_tick(x, pos):
     return np.format_float_positional(x, trim='-', precision=6, fractional=True)
 
 
+def _set_y_limit_with_margin(ax, values, margin=0.05):
+    """Set the y-axis limit to a few percent greater than the max plotted value."""
+    if values is None or len(values) == 0:
+        return
+    max_val = np.max(values)
+    if max_val > 0:
+        ax.set_ylim(bottom=0, top=max_val * (1 + margin))
+    else:
+        ax.set_ylim(bottom=0, top=1)
+
+
 def plot_latency_cdf(run, out_path: str):
     """Plot latency CDF from a single run object."""
     latencies_ms, percentiles = run.get_latency_cdf_data()
@@ -98,7 +109,7 @@ def plot_cpu_timeseries(run, out_path: str):
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
     plt.title("CPU Usage over Time")
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), ts["cpu_percent"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -118,7 +129,7 @@ def plot_benchmark_cpu_timeseries(run, out_path: str):
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
     plt.title("Benchmark CPU Usage over Time")
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), ts["cpu_percent"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -138,7 +149,7 @@ def plot_memory_timeseries(run, out_path: str):
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title("Memory Usage over Time")
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), ts["memory_mb"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -158,7 +169,7 @@ def plot_benchmark_memory_timeseries(run, out_path: str):
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title("Benchmark Memory Usage over Time")
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), ts["memory_mb"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
@@ -266,6 +277,7 @@ def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
+    all_cpu = []
     for run in sorted_runs:
         ts = run.get_cpu_timeseries()
         if ts is None:
@@ -275,11 +287,12 @@ def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
         plt.plot(ts["time_s"], ts["cpu_percent"],
                  label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
                  drawstyle='steps-pre')
+        all_cpu.extend(ts["cpu_percent"])
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
     plt.title(title)
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_cpu)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -293,6 +306,7 @@ def plot_comparison_benchmark_cpu(runs, title: str, out_path: str, get_store_ran
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
+    all_cpu = []
     for run in sorted_runs:
         ts = run.get_benchmark_cpu_timeseries()
         if ts is None:
@@ -302,11 +316,12 @@ def plot_comparison_benchmark_cpu(runs, title: str, out_path: str, get_store_ran
         plt.plot(ts["time_s"], ts["cpu_percent"],
                  label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
                  drawstyle='steps-pre')
+        all_cpu.extend(ts["cpu_percent"])
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
     plt.title(title)
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_cpu)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -320,6 +335,7 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
+    all_mem = []
     for run in sorted_runs:
         ts = run.get_memory_timeseries()
         if ts is None:
@@ -329,11 +345,12 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
         plt.plot(ts["time_s"], ts["memory_mb"],
                  label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
                  drawstyle='steps-pre')
+        all_mem.extend(ts["memory_mb"])
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title(title)
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_mem)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -347,6 +364,7 @@ def plot_comparison_benchmark_memory(runs, title: str, out_path: str, get_store_
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
+    all_mem = []
     for run in sorted_runs:
         ts = run.get_benchmark_memory_timeseries()
         if ts is None:
@@ -356,11 +374,12 @@ def plot_comparison_benchmark_memory(runs, title: str, out_path: str, get_store_
         plt.plot(ts["time_s"], ts["memory_mb"],
                  label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
                  drawstyle='steps-pre')
+        all_mem.extend(ts["memory_mb"])
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
     plt.title(title)
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_mem)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -620,6 +639,7 @@ def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_cpu = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -629,12 +649,15 @@ def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
         plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+        
+        all_cpu.extend(avg_vals)
+        all_cpu.extend(peak_vals)
 
     plt.ylabel("CPU Usage (%)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_cpu)
 
     adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
     metric_handles = [
@@ -678,6 +701,7 @@ def plot_benchmark_cpu_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_cpu = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -687,12 +711,15 @@ def plot_benchmark_cpu_scaling(runs, out_path: str, get_store_rank=None):
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
         plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+        
+        all_cpu.extend(avg_vals)
+        all_cpu.extend(peak_vals)
 
     plt.ylabel("CPU Usage (%)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_cpu)
 
     adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
     metric_handles = [
@@ -738,6 +765,7 @@ def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_mem = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -747,12 +775,15 @@ def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
         plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+        
+        all_mem.extend(avg_vals)
+        all_mem.extend(peak_vals)
 
     plt.ylabel("Memory Usage (MB)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_mem)
 
     adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
     metric_handles = [
@@ -796,6 +827,7 @@ def plot_benchmark_memory_scaling(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
+    all_mem = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -805,12 +837,15 @@ def plot_benchmark_memory_scaling(runs, out_path: str, get_store_rank=None):
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
         plt.bar(x + offset, np.maximum(0, peak_vals - avg_vals), width, bottom=avg_vals, color=color, alpha=0.5)
+        
+        all_mem.extend(avg_vals)
+        all_mem.extend(peak_vals)
 
     plt.ylabel("Memory Usage (MB)")
     plt.xlabel(xlabel)
     plt.title(title)
     plt.xticks(x, [str(wc) for wc in worker_counts])
-    plt.ylim(bottom=0)
+    _set_y_limit_with_margin(plt.gca(), all_mem)
 
     adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
     metric_handles = [
