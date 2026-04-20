@@ -407,7 +407,7 @@ impl PerformanceWorkload {
                 let payload: Arc<[u8]> = Arc::from(vec![0u8; event_size]);
                 for stream_idx in start_stream..end_stream {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
-                    let tags = vec![Arc::from(stream_name.as_str())];
+                    let tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
                     let mut events = Vec::with_capacity(events_per_stream as usize);
                     for _ in 0..events_per_stream {
                         events.push(EventData {
@@ -475,26 +475,26 @@ impl PerformanceWorkload {
 
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
-            let mut tags = vec![Arc::from(stream_name.as_str())];
+            let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
             let stream_len = 10;
             let mut stream_position = 0;
+
+            // Cache event types to avoid allocations in the loop
+            let event_type_prefix = "test";
+            let mut event_types: Vec<Arc<str>> = Vec::with_capacity(stream_len);
+            for i in 0..stream_len {
+                event_types.push(Arc::from(format!("{}-{}", event_type_prefix, i).as_str()));
+            }
 
             let mut operation_started: Option<Instant> = None;
             let mut operation_completed: Instant;
             let mut operation_duration: Option<Duration> = None;
             let mut loop_started = Instant::now();
 
-            let mut event_type_str = String::with_capacity(64);
-            let event_type_prefix = "test";
-
             while !out_of_time && !cancel_token.is_cancelled() {
-                event_type_str.clear();
-                use std::fmt::Write;
-                write!(&mut event_type_str, "{}-{}", event_type_prefix, stream_position).unwrap();
-
                 let evt = EventData {
                     payload: payload.clone(),
-                    event_type: Arc::from(event_type_str.as_str()),
+                    event_type: event_types[stream_position].clone(),
                     tags: tags.clone(),
                 };
 
@@ -526,7 +526,7 @@ impl PerformanceWorkload {
                     stream_position += 1;
                     if stream_position == stream_len {
                         stream_name = format!("stream-{}-", Uuid::new_v4());
-                        tags = vec![Arc::from(stream_name.as_str())];
+                        tags = Arc::from([Arc::from(stream_name.as_str())]);
                         stream_position = 0;
                     }
                 }
@@ -580,6 +580,11 @@ impl PerformanceWorkload {
             let mut out_of_time = false;
             let mut rng = StdRng::seed_from_u64(seed);
 
+            // Pre-calculate stream names to avoid formatting in the loop
+            let stream_names: Vec<String> = (0..prepopulated_streams)
+                .map(|i| format!("{}{}", stream_prefix, i))
+                .collect();
+
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
@@ -595,7 +600,7 @@ impl PerformanceWorkload {
                 let stream_idx = rng.random_range(0..prepopulated_streams);
 
                 let req = ReadRequest {
-                    stream: format!("{}{}", stream_prefix, stream_idx),
+                    stream: stream_names[stream_idx as usize].clone(),
                     from_offset: None,
                     limit: Some(read_cfg.limit as u64),
                 };

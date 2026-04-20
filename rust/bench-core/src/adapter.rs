@@ -15,7 +15,7 @@ pub struct EventData {
     pub payload: Arc<[u8]>,
     pub event_type: Arc<str>,
     #[serde(default)]
-    pub tags: Vec<Arc<str>>,
+    pub tags: Arc<[Arc<str>]>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
