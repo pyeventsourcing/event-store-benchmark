@@ -63,6 +63,13 @@ impl ProcessMonitor {
             let interval = Duration::from_secs_f64(1.0 / samples_per_second as f64)
                 .max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL * 2);
             let end_time = start_time + Duration::from_secs(duration_seconds);
+
+            let expected_samples = (samples_per_second * duration_seconds) as usize;
+            {
+                let mut guard = stats_arc.lock().await;
+                guard.cpu_samples = Vec::with_capacity(expected_samples);
+                guard.memory_samples = Vec::with_capacity(expected_samples);
+            }
             
             let mut sys = System::new_with_specifics(
                 RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory())

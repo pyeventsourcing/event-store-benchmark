@@ -56,6 +56,13 @@ impl ContainerMonitor {
             let duration_seconds = msg.duration_seconds;
             let interval = std::time::Duration::from_secs_f64(1.0 / samples_per_second as f64);
             let end_time = start_time + std::time::Duration::from_secs(duration_seconds);
+
+            let expected_samples = (samples_per_second * duration_seconds) as usize;
+            {
+                let mut guard = stats_arc.lock().await;
+                guard.cpu_samples = Vec::with_capacity(expected_samples);
+                guard.memory_samples = Vec::with_capacity(expected_samples);
+            }
             
             let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));
             let mut stop_rx = stop_rx;
