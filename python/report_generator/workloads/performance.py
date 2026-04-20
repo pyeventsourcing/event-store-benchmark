@@ -85,14 +85,14 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         """Extracts a specific latency percentile (in ms) from the results."""
         for p in self.latency_percentiles:
             if p["percentile"] == percentile:
-                return p["latency_us"] / 1000.0
+                return p["latency_ns"] / 1000000.0
         return 0.0
 
     def get_benchmark_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific benchmark latency percentile (in ms) from the results."""
         for p in self.benchmark_latency_percentiles:
             if p["percentile"] == percentile:
-                return p["latency_us"] / 1000.0
+                return p["latency_ns"] / 1000000.0
         return 0.0
 
     def get_latency_cdf_data(self):
@@ -100,7 +100,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if not self.latency_percentiles:
             return None, None
         percentiles = [p["percentile"] for p in self.latency_percentiles]
-        latencies_ms = [p["latency_us"] / 1000.0 for p in self.latency_percentiles]
+        latencies_ms = [p["latency_ns"] / 1000000.0 for p in self.latency_percentiles]
         return latencies_ms, percentiles
 
     def get_benchmark_latency_cdf_data(self):
@@ -108,7 +108,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         if not self.benchmark_latency_percentiles:
             return None, None
         percentiles = [p["percentile"] for p in self.benchmark_latency_percentiles]
-        latencies_ms = [p["latency_us"] / 1000.0 for p in self.benchmark_latency_percentiles]
+        latencies_ms = [p["latency_ns"] / 1000000.0 for p in self.benchmark_latency_percentiles]
         return latencies_ms, percentiles
 
     def get_throughput_timeseries(self) -> dict | None:

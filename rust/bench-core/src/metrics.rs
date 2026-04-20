@@ -25,7 +25,7 @@ pub struct ThroughputSample {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LatencyPercentile {
     pub percentile: f64,
-    pub latency_us: u64,
+    pub latency_ns: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,8 +219,8 @@ impl LatencyRecorder {
         } // 3 sigfigs
     }
     pub fn record(&mut self, dur: Duration) {
-        let us = dur.as_micros() as u64;
-        let _ = self.hist.record(us.max(1));
+        let ns = dur.as_nanos() as u64;
+        let _ = self.hist.record(ns.max(1));
     }
 
     /// Export histogram percentiles
@@ -230,20 +230,20 @@ impl LatencyRecorder {
         // Sample key percentiles with fine granularity in the tail
         for p in 0..100 {
             let quantile = p as f64 / 100.0;
-            let latency_us = self.hist.value_at_quantile(quantile);
+            let latency_ns = self.hist.value_at_quantile(quantile);
             percentiles.push(LatencyPercentile{
                 percentile: p as f64,
-                latency_us
+                latency_ns
             });
         }
 
         // Add fine-grained tail percentiles
-        for p in [99.0, 99.5, 99.9, 99.99, 99.999] {
+        for p in [99.5, 99.9, 99.99, 99.999] {
             let quantile = p / 100.0;
-            let latency_us = self.hist.value_at_quantile(quantile);
+            let latency_ns = self.hist.value_at_quantile(quantile);
             percentiles.push(LatencyPercentile{
                 percentile: p,
-                latency_us: latency_us
+                latency_ns
             });
         }
         percentiles

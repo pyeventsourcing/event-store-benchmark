@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     println!("Connection string: {}", args.conn);
 
     let payload: Vec<u8> = vec![b'x'; args.size];
-    let mut histogram = Histogram::<u64>::new_with_bounds(1, 10_000_000, 3)?; // 1us to 10s
+    let mut histogram = Histogram::<u64>::new_with_bounds(1, 10_000_000_000, 3)?; // 1ns to 10s
 
     let options = AppendToStreamOptions::default();
 
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!(e))?;
         let step_duration = step_start.elapsed();
         
-        histogram.record(step_duration.as_micros() as u64)?;
+        histogram.record(step_duration.as_nanos() as u64)?;
 
         if (i + 1) % 100 == 0 {
             println!("Appended {}/{} events...", i + 1, args.events);
@@ -69,12 +69,12 @@ async fn main() -> Result<()> {
     println!("Throughput: {:.2} events/s", throughput);
 
     println!("Latency:");
-    println!("  Mean:   {:.3} ms", histogram.mean() / 1000.0);
-    println!("  Min:    {:.3} ms", histogram.min() as f64 / 1000.0);
-    println!("  Max:    {:.3} ms", histogram.max() as f64 / 1000.0);
-    println!("  P50:    {:.3} ms", histogram.value_at_quantile(0.5) as f64 / 1000.0);
-    println!("  P95:    {:.3} ms", histogram.value_at_quantile(0.95) as f64 / 1000.0);
-    println!("  P99:    {:.3} ms", histogram.value_at_quantile(0.99) as f64 / 1000.0);
+    println!("  Mean:   {:.3} ms", histogram.mean() / 1000000.0);
+    println!("  Min:    {:.3} ms", histogram.min() as f64 / 1000000.0);
+    println!("  Max:    {:.3} ms", histogram.max() as f64 / 1000000.0);
+    println!("  P50:    {:.3} ms", histogram.value_at_quantile(0.5) as f64 / 1000000.0);
+    println!("  P95:    {:.3} ms", histogram.value_at_quantile(0.95) as f64 / 1000000.0);
+    println!("  P99:    {:.3} ms", histogram.value_at_quantile(0.99) as f64 / 1000000.0);
 
     Ok(())
 }

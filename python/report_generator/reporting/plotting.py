@@ -545,9 +545,9 @@ def plot_benchmark_latency_scaling(runs, out_path: str, get_store_rank=None):
         # Fallback if get_benchmark_latency_percentile is not available (though it should be)
         if p50 == 0 and hasattr(run, 'benchmark_latency_percentiles'):
             for p in run.benchmark_latency_percentiles:
-                if p["percentile"] == 50.0: p50 = p["latency_us"] / 1000.0
-                if p["percentile"] == 99.0: p99 = p["latency_us"] / 1000.0
-                if p["percentile"] == 99.9: p999 = p["latency_us"] / 1000.0
+                if p["percentile"] == 50.0: p50 = p["latency_ns"] / 1000000.0
+                if p["percentile"] == 99.0: p99 = p["latency_ns"] / 1000000.0
+                if p["percentile"] == 99.9: p999 = p["latency_ns"] / 1000000.0
 
         if p50 > 0 or p99 > 0 or p999 > 0:
             data[run.worker_count][run.adapter] = {"p50": p50, "p99": p99, "p999": p999}
