@@ -68,7 +68,11 @@ def main():
 
             # --- Generate individual run reports ---
             for run in runs:
-                report_dir_name = f"report-{run.adapter}-r{run.readers:03d}-w{run.writers:03d}"
+                report_dir_name = run.adapter
+                if run.readers > 0:
+                    report_dir_name += f"-r{run.readers}"
+                if run.writers > 0:
+                    report_dir_name += f"-w{run.writers}"
                 report_dir = workload_dir / report_dir_name
                 report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -96,37 +100,37 @@ def main():
             worker_suffix = "r" if first_run.is_read_workload else "w"
 
             for wc, group_runs in sorted(worker_groups.items()):
-                plotting.plot_comparison_latency_cdf(
+                plotting.plot_worker_slice_latency_cdf(
                     group_runs, f"Latency CDF — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_latency_cdf.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_throughput(
+                plotting.plot_worker_slice_throughput(
                     group_runs, f"Throughput — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_throughput_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_cpu(
+                plotting.plot_worker_slice_cpu(
                     group_runs, f"CPU Usage — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_cpu_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_memory(
+                plotting.plot_worker_slice_memory(
                     group_runs, f"Memory Usage — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_memory_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_benchmark_latency_cdf(
+                plotting.plot_worker_slice_benchmark_latency_cdf(
                     group_runs, f"Benchmark Latency CDF — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_benchmark_latency_cdf.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_benchmark_cpu(
+                plotting.plot_worker_slice_benchmark_cpu(
                     group_runs, f"Benchmark CPU Usage — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_benchmark_cpu_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_comparison_benchmark_memory(
+                plotting.plot_worker_slice_benchmark_memory(
                     group_runs, f"Benchmark Memory Usage — {wc} {worker_label}(s)",
                     str(workload_dir / f"{worker_suffix}{wc}_benchmark_memory_timeseries.png"),
                     get_store_rank)

@@ -176,7 +176,7 @@ def plot_benchmark_memory_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
     """Plot latency CDF comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -211,7 +211,7 @@ def plot_comparison_latency_cdf(runs, title: str, out_path: str, get_store_rank=
     plt.close()
 
 
-def plot_comparison_benchmark_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark latency CDF comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -245,7 +245,7 @@ def plot_comparison_benchmark_latency_cdf(runs, title: str, out_path: str, get_s
     plt.close()
 
 
-def plot_comparison_throughput(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_throughput(runs, title: str, out_path: str, get_store_rank=None):
     """Plot throughput over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -271,7 +271,7 @@ def plot_comparison_throughput(runs, title: str, out_path: str, get_store_rank=N
     plt.close()
 
 
-def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_cpu(runs, title: str, out_path: str, get_store_rank=None):
     """Plot CPU usage over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -300,7 +300,7 @@ def plot_comparison_cpu(runs, title: str, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_comparison_benchmark_cpu(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_cpu(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark CPU usage over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -329,7 +329,7 @@ def plot_comparison_benchmark_cpu(runs, title: str, out_path: str, get_store_ran
     plt.close()
 
 
-def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_memory(runs, title: str, out_path: str, get_store_rank=None):
     """Plot memory usage over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 
@@ -358,7 +358,7 @@ def plot_comparison_memory(runs, title: str, out_path: str, get_store_rank=None)
     plt.close()
 
 
-def plot_comparison_benchmark_memory(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark memory usage over time comparing multiple runs."""
     plt.figure(figsize=(8, 5))
 

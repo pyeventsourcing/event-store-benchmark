@@ -277,7 +277,12 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     summary_rows = ""
     has_container_stats = False
     for run in sorted(runs, key=row_key):
-        report_link = f"report-{run.adapter}-r{run.readers:03d}-w{run.writers:03d}/index.html"
+        report_dir_name = run.adapter
+        if run.readers > 0:
+            report_dir_name += f"-r{run.readers}"
+        if run.writers > 0:
+            report_dir_name += f"-w{run.writers}"
+        report_link = f"{report_dir_name}/index.html"
 
         metrics = run.metrics
         
@@ -318,23 +323,23 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         <td>{mem_display}</td>
       </tr>"""
 
-    comparison_sections = ""
+    worker_slice_sections = ""
     for wc in sorted(worker_groups.keys()):
         group_runs = worker_groups[wc]
         has_cpu = any(not r.cpu_df.empty for r in group_runs)
         has_mem = any(not r.memory_df.empty for r in group_runs)
 
-        cpu_comp_html = ""
+        cpu_slice_html = ""
         if has_cpu:
-            cpu_comp_html = f"""
+            cpu_slice_html = f"""
       <div class='card'>
         <h3>CPU Usage over time</h3>
         <img src='{worker_suffix}{wc}_cpu_timeseries.png' width='560'>
       </div>"""
 
-        mem_comp_html = ""
+        mem_slice_html = ""
         if has_mem:
-            mem_comp_html = f"""
+            mem_slice_html = f"""
       <div class='card'>
         <h3>Memory Usage over time</h3>
         <img src='{worker_suffix}{wc}_memory_timeseries.png' width='560'>
@@ -344,37 +349,37 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         has_benchmark_cpu = any(not r.benchmark_cpu_df.empty for r in group_runs)
         has_benchmark_mem = any(not r.benchmark_memory_df.empty for r in group_runs)
 
-        benchmark_comparison_html = ""
+        benchmark_slice_html = ""
         if has_benchmark_latency or has_benchmark_cpu or has_benchmark_mem:
-            benchmark_latency_comp_html = f"""
+            benchmark_latency_slice_html = f"""
       <div class='card'>
         <h3>Benchmark Latency CDF</h3>
         <img src='{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
       </div>""" if has_benchmark_latency else ""
 
-            benchmark_cpu_comp_html = f"""
+            benchmark_cpu_slice_html = f"""
       <div class='card'>
         <h3>Benchmark CPU Usage over time</h3>
         <img src='{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='560'>
       </div>""" if has_benchmark_cpu else ""
 
-            benchmark_mem_comp_html = f"""
+            benchmark_mem_slice_html = f"""
       <div class='card'>
         <h3>Benchmark Memory Usage over time</h3>
         <img src='{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='560'>
       </div>""" if has_benchmark_mem else ""
 
-            benchmark_comparison_html = f"""
+            benchmark_slice_html = f"""
     <h3>Benchmark Process Comparison</h3>
     <div class='row'>
-      {benchmark_latency_comp_html}
+      {benchmark_latency_slice_html}
     </div>
     <div class='row'>
-      {benchmark_cpu_comp_html}
-      {benchmark_mem_comp_html}
+      {benchmark_cpu_slice_html}
+      {benchmark_mem_slice_html}
     </div>"""
 
-        comparison_sections += f"""
+        worker_slice_sections += f"""
     <h2>{worker_label} = {wc}</h2>
     <div class='row'>
       <div class='card'>
@@ -387,10 +392,10 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
       </div>
     </div>
     <div class='row'>
-      {cpu_comp_html}
-      {mem_comp_html}
+      {cpu_slice_html}
+      {mem_slice_html}
     </div>
-    {benchmark_comparison_html}"""
+    {benchmark_slice_html}"""
 
     has_any_cpu = any(not r.cpu_df.empty for r in runs)
     has_any_mem = any(not r.memory_df.empty for r in runs)
@@ -502,7 +507,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
   {performance_section}
   {benchmark_performance_section}
   {container_stats_section}
-  {comparison_sections}
+  {worker_slice_sections}
   <h2>Summary</h2>
   <table>
     <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
