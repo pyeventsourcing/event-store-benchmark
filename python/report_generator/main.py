@@ -98,57 +98,57 @@ def main():
             for wc, group_runs in sorted(worker_groups.items()):
                 plotting.plot_comparison_latency_cdf(
                     group_runs, f"Latency CDF — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_latency_cdf.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_throughput(
                     group_runs, f"Throughput — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_throughput.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_throughput.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_cpu(
                     group_runs, f"CPU Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_cpu.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_cpu.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_memory(
                     group_runs, f"Memory Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_memory.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_memory.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_benchmark_latency_cdf(
                     group_runs, f"Benchmark Latency CDF — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_benchmark_latency_cdf.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_latency_cdf.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_benchmark_cpu(
                     group_runs, f"Benchmark CPU Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_benchmark_cpu.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_cpu.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_benchmark_memory(
                     group_runs, f"Benchmark Memory Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"{workload_name}_comparison_{worker_suffix}{wc}_benchmark_memory.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_memory.png"),
                     get_store_rank)
 
             # Always generate scaling plots
-            plotting.plot_throughput_scaling(runs, str(workload_dir / f"{workload_name}_scaling_throughput.png"),
+            plotting.plot_throughput_scaling(runs, str(workload_dir / "scaling_throughput.png"),
                                              get_store_rank)
-            plotting.plot_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_latency.png"),
+            plotting.plot_latency_scaling(runs, str(workload_dir / "scaling_latency.png"),
                                           get_store_rank)
-            plotting.plot_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_cpu.png"),
+            plotting.plot_cpu_scaling(runs, str(workload_dir / "scaling_cpu.png"),
                                       get_store_rank)
-            plotting.plot_memory_scaling(runs, str(workload_dir / f"{workload_name}_scaling_memory.png"),
+            plotting.plot_memory_scaling(runs, str(workload_dir / "scaling_memory.png"),
                                          get_store_rank)
-            plotting.plot_benchmark_latency_scaling(runs, str(workload_dir / f"{workload_name}_scaling_benchmark_latency.png"),
+            plotting.plot_benchmark_latency_scaling(runs, str(workload_dir / "scaling_benchmark_latency.png"),
                                                    get_store_rank)
-            plotting.plot_benchmark_cpu_scaling(runs, str(workload_dir / f"{workload_name}_scaling_benchmark_cpu.png"),
+            plotting.plot_benchmark_cpu_scaling(runs, str(workload_dir / "scaling_benchmark_cpu.png"),
                                                get_store_rank)
-            plotting.plot_benchmark_memory_scaling(runs, str(workload_dir / f"{workload_name}_scaling_benchmark_memory.png"),
+            plotting.plot_benchmark_memory_scaling(runs, str(workload_dir / "scaling_benchmark_memory.png"),
                                                   get_store_rank)
 
             # Generate container stats plots, and main workload HTML
-            plotting.plot_container_stats(runs, str(workload_dir / f"{workload_name}_container_stats.png"),
+            plotting.plot_container_stats(runs, str(workload_dir / "container_stats.png"),
                                             get_store_rank)
             html.generate_workload_html(published_session_dir, workload_name, runs, worker_groups, workload_config,
                                         get_store_rank)

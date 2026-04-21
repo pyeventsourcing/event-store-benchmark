@@ -329,7 +329,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             cpu_comp_html = f"""
       <div class='card'>
         <h3>CPU Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_cpu.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_cpu.png' width='560'>
       </div>"""
 
         mem_comp_html = ""
@@ -337,7 +337,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             mem_comp_html = f"""
       <div class='card'>
         <h3>Memory Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_memory.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_memory.png' width='560'>
       </div>"""
 
         has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
@@ -349,19 +349,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             benchmark_latency_comp_html = f"""
       <div class='card'>
         <h3>Benchmark Latency CDF</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
       </div>""" if has_benchmark_latency else ""
 
             benchmark_cpu_comp_html = f"""
       <div class='card'>
         <h3>Benchmark CPU Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_cpu.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_benchmark_cpu.png' width='560'>
       </div>""" if has_benchmark_cpu else ""
 
             benchmark_mem_comp_html = f"""
       <div class='card'>
         <h3>Benchmark Memory Usage over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_benchmark_memory.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_benchmark_memory.png' width='560'>
       </div>""" if has_benchmark_mem else ""
 
             benchmark_comparison_html = f"""
@@ -379,11 +379,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       <div class='card'>
         <h3>Throughput over time</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_throughput.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_throughput.png' width='560'>
       </div>
       <div class='card'>
         <h3>Latency CDF</h3>
-        <img src='{workload_name}_comparison_{worker_suffix}{wc}_latency_cdf.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_latency_cdf.png' width='560'>
       </div>
     </div>
     <div class='row'>
@@ -398,14 +398,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     cpu_scaling_html = f"""
       <div class='card'>
         <h3>CPU Usage vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_cpu.png' width='560'>
+        <img src='scaling_cpu.png' width='560'>
       </div>""" if has_any_cpu else ""
 
 
     mem_scaling_html = f"""
       <div class='card'>
         <h3>Memory Usage vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_memory.png' width='560'>
+        <img src='scaling_memory.png' width='560'>
       </div>""" if has_any_mem else ""
 
     resource_usage_html = f"""
@@ -420,11 +420,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       <div class='card'>
         <h3>Throughput vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_throughput.png' width='560'>
+        <img src='scaling_throughput.png' width='560'>
       </div>
       <div class='card'>
         <h3>Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_latency.png' width='560'>
+        <img src='scaling_latency.png' width='560'>
       </div>
     </div>
     {resource_usage_html}"""
@@ -438,19 +438,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         benchmark_latency_scaling_html = f"""
       <div class='card'>
         <h3>Benchmark Latency vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_benchmark_latency.png' width='560'>
+        <img src='scaling_benchmark_latency.png' width='560'>
       </div>""" if has_any_benchmark_latency else ""
 
         benchmark_cpu_scaling_html = f"""
       <div class='card'>
         <h3>Benchmark CPU Usage vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_benchmark_cpu.png' width='560'>
+        <img src='scaling_benchmark_cpu.png' width='560'>
       </div>""" if has_any_benchmark_cpu else ""
 
         benchmark_mem_scaling_html = f"""
       <div class='card'>
         <h3>Benchmark Memory Usage vs {worker_label}</h3>
-        <img src='{workload_name}_scaling_benchmark_memory.png' width='560'>
+        <img src='scaling_benchmark_memory.png' width='560'>
       </div>""" if has_any_benchmark_mem else ""
 
         benchmark_performance_section = f"""
@@ -468,7 +468,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         container_stats_section = f"""
     <h2>Container Stats</h2>
     <div class='card' style='max-width: 100%;'>
-        <img src='{workload_name}_container_stats.png' style='width: 100%; max-width: 1200px;'>
+        <img src='container_stats.png' style='width: 100%; max-width: 1200px;'>
     </div>"""
 
     config_section = ""
@@ -609,11 +609,11 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
-          <img src='{workload_name}/{workload_name}_scaling_throughput.png' width='560'>
+          <img src='{workload_name}/scaling_throughput.png' width='560'>
         </div>
         <div class='card'>
           <h3>Latency</h3>
-          <img src='{workload_name}/{workload_name}_scaling_latency.png' width='560'>
+          <img src='{workload_name}/scaling_latency.png' width='560'>
         </div>
       </div>"""
 

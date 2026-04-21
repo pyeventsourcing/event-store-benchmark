@@ -63,7 +63,14 @@ impl PerformanceConfig {
                     new_config.docker_memory_limit_mb = self.docker_memory_limit_mb;
                     new_config.docker_platform = self.docker_platform.clone();
                     // Add sweep suffix to name
-                    new_config.name = format!("{}-{}-w{}-r{}", self.name, store, writers, readers);
+                    let mut name = store.clone();
+                    if readers > 0 {
+                        name.push_str(&format!("-r{}", readers));
+                    }
+                    if writers > 0 {
+                        name.push_str(&format!("-w{}", writers));
+                    }
+                    new_config.name = name;
                     configs.push(new_config);
                 }
             }
