@@ -1,6 +1,13 @@
 PYTHON ?= python3
 ESB_CONTAINER_DATA_DIR ?= ./container-data
 ESB_SEED ?= 42
+ESB_RUST_TARGET ?= release
+
+ifeq ($(ESB_RUST_TARGET),release)
+	CARGO_RELEASE_FLAG := --release
+else
+	CARGO_RELEASE_FLAG :=
+endif
 
 .PHONY: build
 .PHONY: venv
@@ -29,7 +36,7 @@ help:
 
 # Build the es-bench binary
 build:
-	cargo build --release
+	cargo build $(CARGO_RELEASE_FLAG)
 
 # Create Python virtual environment and install dependencies
 venv:
@@ -66,7 +73,7 @@ run-scaling-postgres:
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE
-	./target/release/es-bench run --config $@ --seed $(ESB_SEED) --data-dir=$(ESB_CONTAINER_DATA_DIR)
+	./target/$(ESB_RUST_TARGET)/es-bench run --config $@ --seed $(ESB_SEED) --data-dir=$(ESB_CONTAINER_DATA_DIR)
 
 FORCE:
 
@@ -103,13 +110,13 @@ kurrentdb-benchmark-python:
 
 .PHONY: kurrentdb-benchmark-rust-build
 kurrentdb-benchmark-rust-build:
-	@cargo build --release --package kurrentdb-benchmark
+	@cargo build $(CARGO_RELEASE_FLAG) --package kurrentdb-benchmark
 
 .PHONY: kurrentdb-benchmark-rust-official
 kurrentdb-benchmark-rust-official:
-	./target/release/kurrentdb-benchmark-official
+	./target/$(ESB_RUST_TARGET)/kurrentdb-benchmark-official
 
 .PHONY: kurrentdb-benchmark-rust-minimal
 kurrentdb-benchmark-rust-minimal:
-	./target/release/kurrentdb-benchmark-minimal
+	./target/$(ESB_RUST_TARGET)/kurrentdb-benchmark-minimal
 
