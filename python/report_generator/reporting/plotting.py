@@ -3,7 +3,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
-from matplotlib.ticker import LogLocator, NullFormatter, ScalarFormatter, FormatStrFormatter, FuncFormatter
+from matplotlib.ticker import LogLocator, NullFormatter, FuncFormatter
 
 from .style import get_adapter_color
 
