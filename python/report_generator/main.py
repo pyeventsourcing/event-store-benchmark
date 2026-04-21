@@ -73,12 +73,12 @@ def main():
                 report_dir.mkdir(parents=True, exist_ok=True)
 
                 plotting.plot_latency_cdf(run, str(report_dir / "latency_cdf.png"))
-                plotting.plot_throughput_timeseries(run, str(report_dir / "throughput.png"))
-                plotting.plot_cpu_timeseries(run, str(report_dir / "cpu.png"))
-                plotting.plot_memory_timeseries(run, str(report_dir / "memory.png"))
+                plotting.plot_throughput_timeseries(run, str(report_dir / "throughput_over_time.png"))
+                plotting.plot_cpu_timeseries(run, str(report_dir / "cpu_over_time.png"))
+                plotting.plot_memory_timeseries(run, str(report_dir / "memory_over_time.png"))
                 plotting.plot_benchmark_latency_cdf(run, str(report_dir / "benchmark_latency_cdf.png"))
-                plotting.plot_benchmark_cpu_timeseries(run, str(report_dir / "benchmark_cpu.png"))
-                plotting.plot_benchmark_memory_timeseries(run, str(report_dir / "benchmark_memory.png"))
+                plotting.plot_benchmark_cpu_timeseries(run, str(report_dir / "benchmark_cpu_over_time.png"))
+                plotting.plot_benchmark_memory_timeseries(run, str(report_dir / "benchmark_memory_over_time.png"))
                 html.generate_run_html(report_dir, run)
 
             # --- Generate consolidated workload reports ---
@@ -103,17 +103,17 @@ def main():
 
                 plotting.plot_comparison_throughput(
                     group_runs, f"Throughput — {wc} {worker_label}(s)",
-                    str(workload_dir / f"comparison_{worker_suffix}{wc}_throughput.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_throughput_over_time.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_cpu(
                     group_runs, f"CPU Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"comparison_{worker_suffix}{wc}_cpu.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_cpu_over_time.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_memory(
                     group_runs, f"Memory Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"comparison_{worker_suffix}{wc}_memory.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_memory_over_time.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_benchmark_latency_cdf(
@@ -123,12 +123,12 @@ def main():
 
                 plotting.plot_comparison_benchmark_cpu(
                     group_runs, f"Benchmark CPU Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_cpu.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_cpu_over_time.png"),
                     get_store_rank)
 
                 plotting.plot_comparison_benchmark_memory(
                     group_runs, f"Benchmark Memory Usage — {wc} {worker_label}(s)",
-                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_memory.png"),
+                    str(workload_dir / f"comparison_{worker_suffix}{wc}_benchmark_memory_over_time.png"),
                     get_store_rank)
 
             # Always generate scaling plots

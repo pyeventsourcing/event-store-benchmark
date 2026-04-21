@@ -90,12 +90,12 @@ def generate_run_html(report_dir: Path, run):
     """Generates an HTML report for a single run."""
     workload_name = run.name
     latency_img = "latency_cdf.png"
-    throughput_img = "throughput.png"
-    cpu_img = "cpu.png"
-    memory_img = "memory.png"
+    throughput_img = "throughput_over_time.png"
+    cpu_img = "cpu_over_time.png"
+    memory_img = "memory_over_time.png"
     benchmark_latency_img = "benchmark_latency_cdf.png"
-    benchmark_cpu_img = "benchmark_cpu.png"
-    benchmark_memory_img = "benchmark_memory.png"
+    benchmark_cpu_img = "benchmark_cpu_over_time.png"
+    benchmark_memory_img = "benchmark_memory_over_time.png"
 
     metrics = run.metrics
     has_container_stats = bool(metrics.get('startup_time_s') or metrics.get("image_size_bytes"))
@@ -329,7 +329,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             cpu_comp_html = f"""
       <div class='card'>
         <h3>CPU Usage over time</h3>
-        <img src='comparison_{worker_suffix}{wc}_cpu.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_cpu_over_time.png' width='560'>
       </div>"""
 
         mem_comp_html = ""
@@ -337,7 +337,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             mem_comp_html = f"""
       <div class='card'>
         <h3>Memory Usage over time</h3>
-        <img src='comparison_{worker_suffix}{wc}_memory.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_memory_over_time.png' width='560'>
       </div>"""
 
         has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
@@ -355,13 +355,13 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             benchmark_cpu_comp_html = f"""
       <div class='card'>
         <h3>Benchmark CPU Usage over time</h3>
-        <img src='comparison_{worker_suffix}{wc}_benchmark_cpu.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_benchmark_cpu_over_time.png' width='560'>
       </div>""" if has_benchmark_cpu else ""
 
             benchmark_mem_comp_html = f"""
       <div class='card'>
         <h3>Benchmark Memory Usage over time</h3>
-        <img src='comparison_{worker_suffix}{wc}_benchmark_memory.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_benchmark_memory_over_time.png' width='560'>
       </div>""" if has_benchmark_mem else ""
 
             benchmark_comparison_html = f"""
@@ -379,7 +379,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       <div class='card'>
         <h3>Throughput over time</h3>
-        <img src='comparison_{worker_suffix}{wc}_throughput.png' width='560'>
+        <img src='comparison_{worker_suffix}{wc}_throughput_over_time.png' width='560'>
       </div>
       <div class='card'>
         <h3>Latency CDF</h3>
