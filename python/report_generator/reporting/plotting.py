@@ -387,7 +387,7 @@ def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_stor
     plt.close()
 
 
-def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
+def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak throughput vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -458,7 +458,7 @@ def plot_throughput_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
+def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -531,7 +531,7 @@ def plot_latency_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_latency_scaling(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -611,7 +611,7 @@ def plot_benchmark_latency_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
+def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak CPU usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -672,7 +672,7 @@ def plot_cpu_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_cpu_scaling(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak benchmark CPU usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -734,7 +734,7 @@ def plot_benchmark_cpu_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
+def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak memory usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -798,7 +798,7 @@ def plot_memory_scaling(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_memory_scaling(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
     data = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()

@@ -136,19 +136,19 @@ def main():
                     get_store_rank)
 
             # Always generate scaling plots
-            plotting.plot_throughput_scaling(runs, str(workload_dir / "scaling_throughput.png"),
+            plotting.plot_throughput_by_workers(runs, str(workload_dir / "scaling_throughput.png"),
                                              get_store_rank)
-            plotting.plot_latency_scaling(runs, str(workload_dir / "scaling_latency.png"),
+            plotting.plot_latency_by_workers(runs, str(workload_dir / "scaling_latency.png"),
                                           get_store_rank)
-            plotting.plot_cpu_scaling(runs, str(workload_dir / "scaling_cpu.png"),
+            plotting.plot_cpu_by_workers(runs, str(workload_dir / "scaling_cpu.png"),
                                       get_store_rank)
-            plotting.plot_memory_scaling(runs, str(workload_dir / "scaling_memory.png"),
+            plotting.plot_memory_by_workers(runs, str(workload_dir / "scaling_memory.png"),
                                          get_store_rank)
-            plotting.plot_benchmark_latency_scaling(runs, str(workload_dir / "scaling_benchmark_latency.png"),
+            plotting.plot_benchmark_latency_by_workers(runs, str(workload_dir / "scaling_benchmark_latency.png"),
                                                    get_store_rank)
-            plotting.plot_benchmark_cpu_scaling(runs, str(workload_dir / "scaling_benchmark_cpu.png"),
+            plotting.plot_benchmark_cpu_by_workers(runs, str(workload_dir / "scaling_benchmark_cpu.png"),
                                                get_store_rank)
-            plotting.plot_benchmark_memory_scaling(runs, str(workload_dir / "scaling_benchmark_memory.png"),
+            plotting.plot_benchmark_memory_by_workers(runs, str(workload_dir / "scaling_benchmark_memory.png"),
                                                   get_store_rank)
 
             # Generate container stats plots, and main workload HTML

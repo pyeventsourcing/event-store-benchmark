@@ -399,14 +399,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     has_any_cpu = any(not r.cpu_df.empty for r in runs)
     has_any_mem = any(not r.memory_df.empty for r in runs)
 
-    cpu_scaling_html = f"""
+    cpu_by_workers_html = f"""
       <div class='card'>
         <h3>CPU Usage vs {worker_label}</h3>
         <img src='scaling_cpu.png' width='560'>
       </div>""" if has_any_cpu else ""
 
 
-    mem_scaling_html = f"""
+    mem_by_workers_html = f"""
       <div class='card'>
         <h3>Memory Usage vs {worker_label}</h3>
         <img src='scaling_memory.png' width='560'>
@@ -414,8 +414,8 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
     resource_usage_html = f"""
     <div class='row'>
-      {cpu_scaling_html}
-      {mem_scaling_html}
+      {cpu_by_workers_html}
+      {mem_by_workers_html}
     </div>""" if has_any_cpu or has_any_mem else ""
 
 
@@ -439,19 +439,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
     benchmark_performance_section = ""
     if has_any_benchmark_latency or has_any_benchmark_cpu or has_any_benchmark_mem:
-        benchmark_latency_scaling_html = f"""
+        benchmark_latency_by_workers_html = f"""
       <div class='card'>
         <h3>Benchmark Latency vs {worker_label}</h3>
         <img src='scaling_benchmark_latency.png' width='560'>
       </div>""" if has_any_benchmark_latency else ""
 
-        benchmark_cpu_scaling_html = f"""
+        benchmark_cpu_by_workers_html = f"""
       <div class='card'>
         <h3>Benchmark CPU Usage vs {worker_label}</h3>
         <img src='scaling_benchmark_cpu.png' width='560'>
       </div>""" if has_any_benchmark_cpu else ""
 
-        benchmark_mem_scaling_html = f"""
+        benchmark_mem_by_workers_html = f"""
       <div class='card'>
         <h3>Benchmark Memory Usage vs {worker_label}</h3>
         <img src='scaling_benchmark_memory.png' width='560'>
@@ -460,11 +460,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         benchmark_performance_section = f"""
     <h2>Benchmark Process Performance</h2>
     <div class='row'>
-      {benchmark_latency_scaling_html}
+      {benchmark_latency_by_workers_html}
     </div>
     <div class='row'>
-      {benchmark_cpu_scaling_html}
-      {benchmark_mem_scaling_html}
+      {benchmark_cpu_by_workers_html}
+      {benchmark_mem_by_workers_html}
     </div>"""
 
     container_stats_section = ""
