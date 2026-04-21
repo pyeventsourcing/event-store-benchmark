@@ -302,16 +302,6 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             benchmark_cpu_samples.as_deref(),
             benchmark_memory_samples.as_deref(),
         )?;
-        fs::write(
-            workload_results_path.join("process_metrics.json"),
-            serde_json::to_string_pretty(&run_metrics.resources)?,
-        )?;
-        if let Some(benchmark_resources) = run_metrics.benchmark_resources {
-            fs::write(
-                workload_results_path.join("benchmark_process_metrics.json"),
-                serde_json::to_string_pretty(&benchmark_resources)?,
-            )?;
-        }
         if let Some(container) = run_metrics.container {
             fs::write(
                 workload_results_path.join("container_stats.json"),

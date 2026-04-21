@@ -58,7 +58,24 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         self.benchmark_cpu_df = pd.DataFrame(self.results.get("benchmark_cpu_samples", []))
         self.benchmark_memory_df = pd.DataFrame(self.results.get("benchmark_memory_samples", []))
 
-        # Calculate summary metrics
+        # Calculate summary metrics from samples
+        if not self.cpu_df.empty:
+            self.metrics["avg_cpu_percent"] = self.cpu_df["cpu_percent"].mean()
+            self.metrics["peak_cpu_percent"] = self.cpu_df["cpu_percent"].max()
+
+        if not self.memory_df.empty:
+            self.metrics["avg_memory_bytes"] = self.memory_df["memory_bytes"].mean()
+            self.metrics["peak_memory_bytes"] = self.memory_df["memory_bytes"].max()
+
+        if not self.benchmark_cpu_df.empty:
+            self.metrics["benchmark_avg_cpu_percent"] = self.benchmark_cpu_df["cpu_percent"].mean()
+            self.metrics["benchmark_peak_cpu_percent"] = self.benchmark_cpu_df["cpu_percent"].max()
+
+        if not self.benchmark_memory_df.empty:
+            self.metrics["benchmark_avg_memory_bytes"] = self.benchmark_memory_df["memory_bytes"].mean()
+            self.metrics["benchmark_peak_memory_bytes"] = self.benchmark_memory_df["memory_bytes"].max()
+
+        # Calculate throughput metrics
         self.duration_s = 0
         self.average_throughput = 0
         self.peak_throughput = 0
