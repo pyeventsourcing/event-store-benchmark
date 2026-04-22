@@ -297,6 +297,24 @@ Responsible for:
 * Producing PDF/HTML reports
 * Detecting regressions between runs
 
+### Data Analysis Model: Hierarchical Dimensional Slicing
+
+The benchmark suite produces multidimensional data (Time, Metric, Worker Count, Adapter). To make this data actionable, the Python reporter performs a **hierarchical dimensional analysis**:
+
+#### 1. Worker Slices (Cross-Sectional Analysis)
+A "Worker Slice" is a 2D slice of the data where the **concurrency level (Worker Count) is fixed**. 
+*   **Purpose**: Compares different database adapters side-by-side under the exact same load.
+*   **Visualization**: Time-series plots (Throughput, CPU, Memory over time) and Latency CDFs.
+*   **Insight**: Reveals tactical behavior like stability, jitter, warm-up periods, and tail latency distribution for a specific workload density.
+*   **Filenames**: Prefixed with `worker_slice_` (e.g., `worker_slice_r8_throughput.png`).
+
+#### 2. By Workers (Trend & Scaling Analysis)
+"By Workers" analysis performs **dimensionality reduction** by collapsing the Time dimension into summary statistics (mean, peak, or percentiles) and plotting them against the Worker Count.
+*   **Purpose**: Observes how a system scales as load increases.
+*   **Visualization**: Scaling plots where the X-axis is the number of readers or writers.
+*   **Insight**: Reveals strategic characteristics like the saturation point, resource efficiency, and whether throughput scales linearly or degrades under contention.
+*   **Filenames**: Prefixed with `by_workers_` (e.g., `by_workers_throughput.png`).
+
 ### Publishing Results
 
 Published benchmark reports must include:
