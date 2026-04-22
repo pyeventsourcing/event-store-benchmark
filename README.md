@@ -297,24 +297,6 @@ Responsible for:
 * Producing PDF/HTML reports
 * Detecting regressions between runs
 
-### Data Analysis Model: Hierarchical Dimensional Slicing
-
-The benchmark suite produces multidimensional data (Time, Metric, Worker Count, Adapter). To make this data actionable, the Python reporter performs a **hierarchical dimensional analysis**:
-
-#### 1. Worker Slices (Cross-Sectional Analysis)
-A "Worker Slice" is a 2D slice of the data where the **concurrency level (Worker Count) is fixed**. 
-*   **Purpose**: Compares different database adapters side-by-side under the exact same load.
-*   **Visualization**: Time-series plots (Throughput, CPU, Memory over time) and Latency CDFs.
-*   **Insight**: Reveals tactical behavior like stability, jitter, warm-up periods, and tail latency distribution for a specific workload density.
-*   **Filenames**: Prefixed with `worker_slice_` (e.g., `worker_slice_r8_throughput.png`).
-
-#### 2. By Workers (Trend & Scaling Analysis)
-"By Workers" analysis performs **dimensionality reduction** by collapsing the Time dimension into summary statistics (mean, peak, or percentiles) and plotting them against the Worker Count.
-*   **Purpose**: Observes how a system scales as load increases.
-*   **Visualization**: Scaling plots where the X-axis is the number of readers or writers.
-*   **Insight**: Reveals strategic characteristics like the saturation point, resource efficiency, and whether throughput scales linearly or degrades under contention.
-*   **Filenames**: Prefixed with `by_workers_` (e.g., `by_workers_throughput.png`).
-
 ### Publishing Results
 
 Published benchmark reports must include:
@@ -328,6 +310,31 @@ Published benchmark reports must include:
 * Exact version of target system
 
 Transparency is mandatory.
+
+### Performance Workload Data Analysis
+
+The benchmark suite generates a comprehensive set of reports for performance workloads, transforming raw measurements into actionable insights through three levels of analysis.
+
+#### 1. Data Collection
+During each benchmark run, the engine collects high-frequency samples of:
+*   **Throughput**: The number of events appended or read per second.
+*   **Latency**: Exact timing for every individual operation, used to build high-resolution distribution profiles (p50 to p99.9).
+*   **Resource Usage**: CPU and Memory consumption of both the database store and the benchmark process.
+
+#### 2. Individual Run Reports
+For every combination of database and worker count, a detailed report is generated. This is the most granular view, showing the raw "shape" of a single run. It helps identify if a specific store is stable or if it suffers from periodic background tasks like compaction or garbage collection.
+
+#### 3. Worker Slices (Comparing Stores)
+To compare different databases fairly, we "slice" the entire dataset by **Worker Count** (concurrency). A Worker Slice presents all databases side-by-side at a fixed load (e.g., "8 Readers").
+*   **Purpose**: Shows which database performs best under specific conditions.
+*   **Visuals**: Comparative time-series plots and Latency CDFs (Cumulative Distribution Functions).
+*   **Insight**: Identifies which store has the most consistent performance and the lowest tail latency at a given concurrency level.
+
+#### 4. Grouping By Workers (Trend Analysis)
+Finally, we group all runs together to observe how the workflow performs as a whole. This analysis "collapses" the time dimension of each run into summary statistics and plots them against the worker count.
+*   **Purpose**: Reveals how well a database scales as you add more concurrent users.
+*   **Visuals**: Trend lines showing how throughput increases (or plateaus) and how latency increases as the system is loaded.
+*   **Insight**: Helps determine the saturation point and the efficiency of each database as it scales.
 
 # Non-Goals
 
