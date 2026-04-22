@@ -4,7 +4,7 @@ use testcontainers::Image;
 // const NAME: &str = "umadb";
 // const TAG: &str = "local";
 const NAME: &str = "umadb/umadb";
-const TAG: &str = "0.5.1";
+const TAG: &str = "0.5.2";
 
 /// Container port exposed by UmaDB (gRPC).
 pub const UMADB_PORT: ContainerPort = ContainerPort::Tcp(50051);
@@ -24,6 +24,7 @@ impl UmaDb {
         Self {
             env_vars: vec![
                 ("UMADB_READ_METHOD", "fileio"),
+                ("UMADB_PAGE_CACHE_SIZE", "1000"),
             ],
             mounts: vec![mount],
         }
