@@ -189,7 +189,9 @@ In alphabetical order:
 
 * Axon Server
 * EventsourcingDB
+* FactDB
 * KurrentDB
+* Marten
 * UmaDB
 
 ### Level Playing Ground (Technical Summary)
@@ -227,7 +229,6 @@ The benchmark supports four workload categories:
 Generic event store usage patterns with configurable concurrency and operations:
 - **Write mode**: Concurrent writers appending events
 - **Read mode**: Concurrent readers consuming events
-- **Mixed mode**: Combined read/write operations
 
 #### 2. Durability Workloads *(stub)*
 Testing persistence guarantees:
