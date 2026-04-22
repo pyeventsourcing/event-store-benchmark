@@ -927,6 +927,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
         ax.set_ylabel(ylabel, fontweight='bold')
         ax.set_title(title, fontweight='bold')
         ax.grid(True, alpha=0.3, axis='y')
+        _set_y_limit_with_margin(ax, data, margin=0.1)
         for bar, v in zip(bars, data):
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width() / 2., height,
@@ -940,35 +941,21 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_container_stats(runs, out_path: str, get_store_rank=None):
-    """Create a visualization of container stats (Image size/Startup)."""
+def plot_image_size(runs, out_path: str, get_store_rank=None):
+    """Create a visualization of container image sizes with average and peak bars."""
     adapter_data = {}
 
     for run in runs:
         metrics = run.metrics
-        has_image = metrics.get("image_size_bytes") is not None
-        has_startup = metrics.get("startup_time_s") is not None
+        img_size = metrics.get("image_size_bytes")
 
-        if not (has_image or has_startup):
+        if img_size is None:
             continue
 
         if run.adapter not in adapter_data:
-            adapter_data[run.adapter] = {
-                "image_size": [],
-                "startup_time": 0,
-                "startup_count": 0
-            }
+            adapter_data[run.adapter] = []
 
-        data = adapter_data[run.adapter]
-        
-        img_size = metrics.get("image_size_bytes")
-        if img_size is not None:
-            data["image_size"].append(img_size / (1024 * 1024))
-            
-        startup = metrics.get("startup_time_s")
-        if startup is not None and startup > 0:
-            data["startup_time"] += startup
-            data["startup_count"] += 1
+        adapter_data[run.adapter].append(img_size / (1024 * 1024))
 
     if not adapter_data:
         return
@@ -979,32 +966,113 @@ def plot_container_stats(runs, out_path: str, get_store_rank=None):
     else:
         adapters = sorted(adapters_list)
 
-    image_sizes = [np.mean(adapter_data[a]["image_size"]) if adapter_data[a]["image_size"] else 0 for a in adapters]
-    startup_times = [adapter_data[a]["startup_time"] / adapter_data[a]["startup_count"] if adapter_data[a]["startup_count"] > 0 else 0 for a in adapters]
+    avg_image_sizes = []
+    peak_image_sizes = []
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle("Container Stats Comparison", fontsize=16, fontweight='bold')
+    for a in adapters:
+        img_sizes = adapter_data[a]
+        avg_image_sizes.append(np.mean(img_sizes))
+        peak_image_sizes.append(np.max(img_sizes))
 
+    fig, ax = plt.subplots(figsize=(8, 6))
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
-    def plot_bar(ax, data, title, ylabel, fmt_str, show_if_zero=True):
-        if not show_if_zero and all(v == 0 for v in data):
-            ax.text(0.5, 0.5, "N/A", ha='center', va='center', fontsize=14, transform=ax.transAxes)
-            ax.set_title(title, fontweight='bold')
-            ax.set_axis_off()
-            return
+    def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
+        x = np.arange(len(adapters))
+        ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
+        ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
+               color=colors, edgecolor='black', linewidth=1.5, alpha=0.5)
 
-        bars = ax.bar(adapters, data, color=colors, edgecolor='black', linewidth=1.5)
         ax.set_ylabel(ylabel, fontweight='bold')
-        ax.set_title(title, fontweight='bold')
+        ax.set_title(title, fontweight='bold', fontsize=14)
+        ax.set_xticks(x)
+        ax.set_xticklabels(adapters)
         ax.grid(True, alpha=0.3, axis='y')
-        for bar, v in zip(bars, data):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width() / 2., height,
-                    fmt_str.format(v) if v > 0 else "N/A", ha='center', va='bottom', fontweight='bold')
+        _set_y_limit_with_margin(ax, peak_data)
+        
+        for i, (avg, peak) in enumerate(zip(avg_data, peak_data)):
+            if peak > 0:
+                label = fmt_str.format(avg)
+                if peak > avg * 1.05:
+                    label += f" / {fmt_str.format(peak)}"
+                ax.text(i, peak, label, ha='center', va='bottom', fontweight='bold', fontsize=10)
 
-    plot_bar(ax1, image_sizes, "Image Size", "Image Size (MB)", '{:.0f}', show_if_zero=False)
-    plot_bar(ax2, startup_times, "Startup Time", "Startup Time (seconds)", '{:.2f}s', show_if_zero=False)
+    plot_bar(ax, avg_image_sizes, peak_image_sizes, "Container Image Size", "Image Size (MB)", '{:.0f}')
+
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    ax.legend(handles=metric_handles, loc='upper right')
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def plot_startup_time(runs, out_path: str, get_store_rank=None):
+    """Create a visualization of container startup times with average and peak bars."""
+    adapter_data = {}
+
+    for run in runs:
+        metrics = run.metrics
+        startup = metrics.get("startup_time_s")
+
+        if startup is None or startup <= 0:
+            continue
+
+        if run.adapter not in adapter_data:
+            adapter_data[run.adapter] = []
+
+        adapter_data[run.adapter].append(startup)
+
+    if not adapter_data:
+        return
+
+    adapters_list = list(adapter_data.keys())
+    if get_store_rank:
+        adapters = sorted(adapters_list, key=get_store_rank)
+    else:
+        adapters = sorted(adapters_list)
+
+    avg_startup_times = []
+    peak_startup_times = []
+
+    for a in adapters:
+        s_times = adapter_data[a]
+        avg_startup_times.append(np.mean(s_times))
+        peak_startup_times.append(np.max(s_times))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    colors = [get_adapter_color(adapter) for adapter in adapters]
+
+    def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
+        x = np.arange(len(adapters))
+        ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
+        ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
+               color=colors, edgecolor='black', linewidth=1.5, alpha=0.5)
+
+        ax.set_ylabel(ylabel, fontweight='bold')
+        ax.set_title(title, fontweight='bold', fontsize=14)
+        ax.set_xticks(x)
+        ax.set_xticklabels(adapters)
+        ax.grid(True, alpha=0.3, axis='y')
+        _set_y_limit_with_margin(ax, peak_data)
+        
+        for i, (avg, peak) in enumerate(zip(avg_data, peak_data)):
+            if peak > 0:
+                label = fmt_str.format(avg)
+                if peak > avg * 1.05:
+                    label += f" / {fmt_str.format(peak)}"
+                ax.text(i, peak, label, ha='center', va='bottom', fontweight='bold', fontsize=10)
+
+    plot_bar(ax, avg_startup_times, peak_startup_times, "Container Startup Time", "Startup Time (s)", '{:.2f}')
+
+    metric_handles = [
+        Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
+        Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
+    ]
+    ax.legend(handles=metric_handles, loc='upper right')
 
     plt.tight_layout()
     plt.savefig(out_path, dpi=150, bbox_inches='tight')

@@ -55,6 +55,7 @@ def main():
             continue
 
         workload_summaries = {}
+        all_runs = []
 
         for workload_name, data in workloads.items():
             print(f"  Processing workload: {workload_name}")
@@ -62,6 +63,8 @@ def main():
             runs = data["runs"]
             if not runs:
                 continue
+            
+            all_runs.extend(runs)
 
             workload_dir = published_session_dir / workload_name
             workload_dir.mkdir(parents=True, exist_ok=True)
@@ -157,15 +160,22 @@ def main():
             plotting.plot_benchmark_memory_by_workers(runs, str(workload_dir / "by_workers_benchmark_memory.png"),
                                                   get_store_rank)
 
-            # Generate container stats plots, and main workload HTML
-            plotting.plot_container_stats(runs, str(workload_dir / "container_stats.png"),
-                                            get_store_rank)
+            # Generate main workload HTML
             html.generate_workload_html(published_session_dir, workload_name, runs, worker_groups, workload_config,
                                         get_store_rank)
 
             workload_summaries[workload_name] = {
                 'worker_counts': set(worker_groups.keys())
             }
+
+        # Generate container stats plots for the whole session
+        if all_runs:
+            # We use the store order from the last processed workload, or default if none
+            # In a session, store order should ideally be consistent.
+            plotting.plot_image_size(all_runs, str(published_session_dir / "image_size.png"),
+                                     get_store_rank)
+            plotting.plot_startup_time(all_runs, str(published_session_dir / "startup_time.png"),
+                                       get_store_rank)
 
         # Generate the main index page for the session
         html.generate_session_index(published_session_dir, session_id, workload_summaries, env_info_obj, session_info)

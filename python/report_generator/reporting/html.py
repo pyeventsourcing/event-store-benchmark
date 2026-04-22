@@ -465,14 +465,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
       {benchmark_latency_by_workers_html}
     </div>"""
 
-    container_stats_section = ""
-    if has_container_stats:
-        container_stats_section = f"""
-    <h2>Container Stats</h2>
-    <div class='card' style='max-width: 100%;'>
-        <img src='container_stats.png' style='width: 100%; max-width: 1200px;'>
-    </div>"""
-
     config_section = ""
     if workload_config:
         config_yaml = yaml.dump(workload_config, indent=2)
@@ -503,7 +495,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
   <p><a href="../index.html">← Back to all workloads</a></p>
   {performance_section}
   {benchmark_performance_section}
-  {container_stats_section}
   {worker_slice_sections}
   <h2>Runs</h2>
   <table>
@@ -629,6 +620,26 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
     if session_info and session_info.get('workload_name'):
         session_title += f" — {session_info['workload_name']}"
 
+    container_stats_section = ""
+    has_image_size = (session_out_dir / "image_size.png").exists()
+    has_startup_time = (session_out_dir / "startup_time.png").exists()
+    
+    if has_image_size or has_startup_time:
+        container_stats_section = f"""
+    <div class='workload-section'>
+      <h2>Container Stats</h2>
+      <div class='row'>
+        {f'''<div class='card'>
+          <h3>Image Size</h3>
+          <img src='image_size.png' width='560'>
+        </div>''' if has_image_size else ''}
+        {f'''<div class='card'>
+          <h3>Startup Time</h3>
+          <img src='startup_time.png' width='560'>
+        </div>''' if has_startup_time else ''}
+      </div>
+    </div>"""
+
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -654,7 +665,8 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
   <h1>{session_title}</h1>
   <p><a href="../index.html">← Back to all sessions</a></p>
   {env_section}
-  <h2>Workload Reports</h2>
+  {container_stats_section}
+  <h2 style='margin-bottom: 0;'>Workload Reports</h2>
   {workload_sections}
 </body>
 </html>
