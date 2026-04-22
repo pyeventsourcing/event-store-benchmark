@@ -138,25 +138,43 @@ Event stores are adapted using common Rust traits:
 
 ```rust
 trait StoreManager {
+    /// Use docker service (need to start and stop)
+    fn use_docker(&self) -> bool;
+
     /// Start the container and return success status
     async fn start(&mut self) -> anyhow::Result<()>;
+
+    /// Pull the container image (if applicable)
+    async fn pull(&mut self) -> anyhow::Result<()>;
 
     /// Stop and cleanup the container
     async fn stop(&mut self) -> anyhow::Result<()>;
 
     /// Get the container ID for stats collection (if applicable)
     fn container_id(&self) -> Option<String>;
-    
+
+    /// Set memory limit for the container in MB
+    fn set_memory_limit(&mut self, limit_mb: Option<u64>);
+
+    /// Set Docker platform for the container (e.g., "linux/amd64")
+    fn set_docker_platform(&mut self, platform: Option<String>);
+
     /// Store name (adapter name)
     fn name(&self) -> &'static str;
 
     /// Create a new adapter instance (client)
-    fn create_adapter(&self) -> anyhow::Result<Arc<dyn EventStoreAdapter>>;
+    async fn create_adapter(&self) -> anyhow::Result<Arc<dyn EventStoreAdapter>>;
+
+    /// Get logs from the container
+    async fn logs(&self) -> anyhow::Result<String>;
 }
 
 trait EventStoreAdapter {
-    /// Append an event
-    async fn append(&self, events: Vec<EventData>) -> anyhow::Result<()>;
+    /// Upcast to Any
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Append events
+    async fn append(&self, events: &[EventData]) -> anyhow::Result<()>;
 
     /// Read events
     async fn read(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
