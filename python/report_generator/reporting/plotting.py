@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -405,7 +406,7 @@ def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_stor
 
 def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak throughput vs worker count using overlaid bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -476,7 +477,7 @@ def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -549,7 +550,7 @@ def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -629,7 +630,7 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak CPU usage vs worker count using overlaid bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -655,7 +656,7 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
-    all_cpu = []
+    all_cpu: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -690,7 +691,7 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak benchmark CPU usage vs worker count using overlaid bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -717,7 +718,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
-    all_cpu = []
+    all_cpu: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -752,7 +753,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak memory usage vs worker count using overlaid bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -781,7 +782,7 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
-    all_mem = []
+    all_mem: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -816,7 +817,7 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
 
 def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
-    data = defaultdict(lambda: defaultdict(dict))
+    data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
@@ -843,7 +844,7 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
-    all_mem = []
+    all_mem: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
@@ -958,7 +959,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
 
 def plot_image_size(runs, out_path: str, get_store_rank=None):
     """Create a visualization of container image sizes with average and peak bars."""
-    adapter_data = {}
+    adapter_data: Dict[str, List[float]] = {}
 
     for run in runs:
         metrics = run.metrics
@@ -1027,7 +1028,7 @@ def plot_image_size(runs, out_path: str, get_store_rank=None):
 
 def plot_startup_time(runs, out_path: str, get_store_rank=None):
     """Create a visualization of container startup times with average and peak bars."""
-    adapter_data = {}
+    adapter_data: Dict[str, List[float]] = {}
 
     for run in runs:
         metrics = run.metrics

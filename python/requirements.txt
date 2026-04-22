@@ -2,4 +2,7 @@ pandas>=2.0
 matplotlib>=3.8
 PyYAML>=6.0
 kurrentdbclient
-pydantic>=2.46.3
+pydantic>=2.13.3
+mypy>=1.20.2
+pandas-stubs
+types-PyYAML
