@@ -4,49 +4,24 @@ from typing import Optional
 
 import yaml
 
+from .models import EnvironmentInfo, RunData, RunResults
 from .workloads.performance import PerformanceWorkloadResult
-from .environment_info import EnvironmentInfo, OsInfo, CpuInfo, MemoryInfo, FsyncStats, DiskInfo, ContainerRuntimeInfo
 
 
 def _load_environment_info(env_data: dict) -> Optional[EnvironmentInfo]:
-    """Loads environment info from a dictionary into the EnvironmentInfo dataclass."""
+    """Loads environment info from a dictionary into the EnvironmentInfo pydantic model."""
     if not env_data:
         return None
 
     try:
-        os_info = OsInfo(**env_data.get("os", {}))
-        cpu_info = CpuInfo(**env_data.get("cpu", {}))
-        memory_info = MemoryInfo(**env_data.get("memory", {}))
-
-        fsync_stats_data = env_data.get("disk", {}).get("fsync_latency")
-        fsync_stats = FsyncStats(**fsync_stats_data) if fsync_stats_data else None
-        disk_info = DiskInfo(
-            disk_type=env_data.get("disk", {}).get("type", "unknown"),
-            filesystem=env_data.get("disk", {}).get("filesystem", "unknown"),
-            fsync_latency=fsync_stats,
-        )
-
-        container_runtime_info = ContainerRuntimeInfo(
-            runtime_type=env_data.get("container_runtime", {}).get("type", "unknown"),
-            version=env_data.get("container_runtime", {}).get("version", "unknown"),
-            ncpu=env_data.get("container_runtime", {}).get("ncpu", 0),
-            mem_total=env_data.get("container_runtime", {}).get("mem_total", 0),
-        )
-
-        return EnvironmentInfo(
-            os=os_info,
-            cpu=cpu_info,
-            memory=memory_info,
-            disk=disk_info,
-            container_runtime=container_runtime_info,
-        )
+        return EnvironmentInfo.model_validate(env_data)
     except Exception as e:
         print(f"Warning: Failed to parse environment info: {e}")
         return None
 
 
-def load_raw_run_data(run_dir: Path) -> dict | None:
-    """Loads all raw data files for a single run into a dictionary."""
+def load_raw_run_data(run_dir: Path) -> RunData | None:
+    """Loads all raw data files for a single run into a RunData model."""
     config_file = run_dir / "config.yaml"
     throughput_file = run_dir / "throughput.json"
     latency_file = run_dir / "latency.json"
@@ -109,12 +84,12 @@ def load_raw_run_data(run_dir: Path) -> dict | None:
             with open(logs_file, "r", errors="replace") as f:
                 container_logs = f.read()
 
-        return {
-            "config": config_data,
-            "results": results_data,
-            "metrics": metrics_data,
-            "logs": container_logs,
-        }
+        return RunData(
+            config=config_data,
+            results=RunResults.model_validate(results_data),
+            metrics=metrics_data,
+            logs=container_logs,
+        )
     except Exception as e:
         print(f"Warning: Failed to load run data at {run_dir}: {e}")
         return None

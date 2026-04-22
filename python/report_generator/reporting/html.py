@@ -3,7 +3,7 @@ from typing import Optional
 
 import yaml
 
-from ..environment_info import EnvironmentInfo
+from ..models import EnvironmentInfo
 from ..data_loader import load_session_metadata
 
 
@@ -25,7 +25,10 @@ def _get_env_summary(env_info: Optional[EnvironmentInfo]) -> str:
     os_name = env_info.os.name
     cpu_model = env_info.cpu.model
     container_runtime = env_info.container_runtime
-    container_str = f"{container_runtime.runtime_type} {container_runtime.ncpu} CPU {_format_bytes(container_runtime.mem_total)}"
+    if container_runtime:
+        container_str = f"{container_runtime.runtime_type} {container_runtime.ncpu} CPU {_format_bytes(container_runtime.mem_total)}"
+    else:
+        container_str = "No Container Info"
 
     return f"{os_name} {cpu_model}, {container_str}"
 
@@ -45,6 +48,11 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
             <li><b>p99:</b> {fsync.p99_us:.2f} µs</li>
         </ul>
         """
+
+    container_runtime_html = "N/A"
+    if env_info.container_runtime:
+        cr = env_info.container_runtime
+        container_runtime_html = f"{cr.runtime_type} {cr.version} ({cr.ncpu} vCPUs, {_format_bytes(cr.mem_total)} Memory)"
 
     return f"""
     <div class='workload-section'>
@@ -77,7 +85,7 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
                 </tr>
                 <tr>
                     <th>Container Runtime</th>
-                    <td>{env_info.container_runtime.runtime_type} {env_info.container_runtime.version} ({env_info.container_runtime.ncpu} vCPUs, {_format_bytes(env_info.container_runtime.mem_total)} Memory)</td>
+                    <td>{container_runtime_html}</td>
                 </tr>
             </table>
         </div>

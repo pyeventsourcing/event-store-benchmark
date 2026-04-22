@@ -1,17 +1,19 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from ..models import RunData
+
 
 class BaseWorkloadResult(ABC):
     """Abstract base class for a single workload run result."""
 
-    def __init__(self, raw_data: dict, run_path: Path):
+    def __init__(self, raw_data: RunData, run_path: Path):
         self.raw_data = raw_data
         self.run_path = run_path
-        self.config = raw_data.get('config', {})
-        self.metrics = raw_data.get('metrics', {})
-        self.results = raw_data.get('results', {})
-        self.logs = raw_data.get('logs', "")
+        self.config = raw_data.config
+        self.metrics = raw_data.metrics
+        self.results = raw_data.results
+        self.logs = raw_data.logs
 
     @property
     @abstractmethod

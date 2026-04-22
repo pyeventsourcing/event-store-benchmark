@@ -2,3 +2,4 @@ pandas>=2.0
 matplotlib>=3.8
 PyYAML>=6.0
 kurrentdbclient
+pydantic>=2.46.3

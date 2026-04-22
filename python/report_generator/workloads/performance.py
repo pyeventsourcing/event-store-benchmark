@@ -3,12 +3,13 @@ import numpy as np
 from pathlib import Path
 
 from .base import BaseWorkloadResult
+from ..models import RunData
 
 
 class PerformanceWorkloadResult(BaseWorkloadResult):
     """Represents and analyzes the results of a single performance workload run."""
 
-    def __init__(self, raw_data: dict, run_path: Path):
+    def __init__(self, raw_data: RunData, run_path: Path):
         super().__init__(raw_data, run_path)
         self._parse_config()
         self._process_results()
@@ -50,13 +51,13 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
 
     def _process_results(self):
         """Processes raw result data into structured formats and summary metrics."""
-        self.throughput_df = pd.DataFrame(self.results.get("throughput_samples", []))
-        self.latency_percentiles = self.results.get("latency_percentiles", [])
-        self.benchmark_latency_percentiles = self.results.get("benchmark_latency_percentiles", [])
-        self.cpu_df = pd.DataFrame(self.results.get("cpu_samples", []))
-        self.memory_df = pd.DataFrame(self.results.get("memory_samples", []))
-        self.benchmark_cpu_df = pd.DataFrame(self.results.get("benchmark_cpu_samples", []))
-        self.benchmark_memory_df = pd.DataFrame(self.results.get("benchmark_memory_samples", []))
+        self.throughput_df = pd.DataFrame([s.model_dump() for s in self.results.throughput_samples])
+        self.latency_percentiles = self.results.latency_percentiles
+        self.benchmark_latency_percentiles = self.results.benchmark_latency_percentiles
+        self.cpu_df = pd.DataFrame([s.model_dump() for s in self.results.cpu_samples])
+        self.memory_df = pd.DataFrame([s.model_dump() for s in self.results.memory_samples])
+        self.benchmark_cpu_df = pd.DataFrame([s.model_dump() for s in self.results.benchmark_cpu_samples])
+        self.benchmark_memory_df = pd.DataFrame([s.model_dump() for s in self.results.benchmark_memory_samples])
 
         # Calculate summary metrics from samples
         if not self.cpu_df.empty:
@@ -101,31 +102,31 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
     def get_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific latency percentile (in ms) from the results."""
         for p in self.latency_percentiles:
-            if p["percentile"] == percentile:
-                return p["latency_ns"] / 1000000.0
+            if p.percentile == percentile:
+                return p.latency_ns / 1000000.0
         return 0.0
 
     def get_benchmark_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific benchmark latency percentile (in ms) from the results."""
         for p in self.benchmark_latency_percentiles:
-            if p["percentile"] == percentile:
-                return p["latency_ns"] / 1000000.0
+            if p.percentile == percentile:
+                return p.latency_ns / 1000000.0
         return 0.0
 
     def get_latency_cdf_data(self):
         """Returns data needed for a latency CDF plot."""
         if not self.latency_percentiles:
             return None, None
-        percentiles = [p["percentile"] for p in self.latency_percentiles]
-        latencies_ms = [p["latency_ns"] / 1000000.0 for p in self.latency_percentiles]
+        percentiles = [p.percentile for p in self.latency_percentiles]
+        latencies_ms = [p.latency_ns / 1000000.0 for p in self.latency_percentiles]
         return latencies_ms, percentiles
 
     def get_benchmark_latency_cdf_data(self):
         """Returns data needed for a benchmark latency CDF plot."""
         if not self.benchmark_latency_percentiles:
             return None, None
-        percentiles = [p["percentile"] for p in self.benchmark_latency_percentiles]
-        latencies_ms = [p["latency_ns"] / 1000000.0 for p in self.benchmark_latency_percentiles]
+        percentiles = [p.percentile for p in self.benchmark_latency_percentiles]
+        latencies_ms = [p.latency_ns / 1000000.0 for p in self.benchmark_latency_percentiles]
         return latencies_ms, percentiles
 
     def get_throughput_timeseries(self) -> dict | None:
