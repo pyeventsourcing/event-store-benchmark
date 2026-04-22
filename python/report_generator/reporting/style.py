@@ -1,5 +1,6 @@
 # Consistent color scheme for all adapters across all plots
 # Using standard data visualization colors for better clarity
+from typing import Any
 from matplotlib.pyplot import get_cmap
 
 # Standardize dimensions for all plots
@@ -35,6 +36,6 @@ ADAPTER_COLORS = {
 }
 
 
-def get_adapter_color(adapter_name):
+def get_adapter_color(adapter_name: str) -> Any:
     """Get consistent color for an adapter."""
     return ADAPTER_COLORS.get(adapter_name, '#cccccc')

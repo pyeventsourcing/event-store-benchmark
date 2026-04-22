@@ -6,7 +6,7 @@ from .data_loader import load_session_workloads, load_session_metadata
 from .reporting import plotting, html
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Generate ES-BENCH benchmark report from raw results")
     parser.add_argument("--raw", type=str, default="results/raw", help="Path to raw results dir")
     parser.add_argument("--out", type=str, default="results/published", help="Output reports dir")

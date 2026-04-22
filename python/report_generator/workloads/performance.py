@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from .base import BaseWorkloadResult
 from ..models import RunData
@@ -9,12 +10,12 @@ from ..models import RunData
 class PerformanceWorkloadResult(BaseWorkloadResult):
     """Represents and analyzes the results of a single performance workload run."""
 
-    def __init__(self, raw_data: RunData, run_path: Path):
+    def __init__(self, raw_data: RunData, run_path: Path) -> None:
         super().__init__(raw_data, run_path)
         self._parse_config()
         self._process_results()
 
-    def _parse_config(self):
+    def _parse_config(self) -> None:
         """Extracts key parameters from the run's configuration data."""
         stores = self.config.get("stores")
         # This logic handles various ways 'stores' can be defined in YAML
@@ -49,7 +50,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         self.worker_count = self.writers if self.writers > 0 else self.readers
         self.is_read_workload = self.readers > 0 and self.writers == 0
 
-    def _process_results(self):
+    def _process_results(self) -> None:
         """Processes raw result data into structured formats and summary metrics."""
         self.throughput_df = pd.DataFrame([s.model_dump() for s in self.results.throughput_samples])
         self.latency_percentiles = self.results.latency_percentiles
@@ -93,11 +94,12 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
 
     @property
     def name(self) -> str:
-        return self.config.get("name", "unknown")
+        name = self.config.get("name", "unknown")
+        return str(name)
 
     @property
     def adapter(self) -> str:
-        return self.adapter_name
+        return str(self.adapter_name)
 
     def get_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific latency percentile (in ms) from the results."""
@@ -113,7 +115,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
                 return p.latency_ns / 1000000.0
         return 0.0
 
-    def get_latency_cdf_data(self):
+    def get_latency_cdf_data(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
         """Returns data needed for a latency CDF plot."""
         if not self.latency_percentiles:
             return None, None
@@ -121,7 +123,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         latencies_ms = [p.latency_ns / 1000000.0 for p in self.latency_percentiles]
         return latencies_ms, percentiles
 
-    def get_benchmark_latency_cdf_data(self):
+    def get_benchmark_latency_cdf_data(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
         """Returns data needed for a benchmark latency CDF plot."""
         if not self.benchmark_latency_percentiles:
             return None, None
@@ -129,7 +131,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         latencies_ms = [p.latency_ns / 1000000.0 for p in self.benchmark_latency_percentiles]
         return latencies_ms, percentiles
 
-    def get_throughput_timeseries(self) -> dict | None:
+    def get_throughput_timeseries(self) -> Optional[Dict[str, Any]]:
         """
         Computes throughput time series from interval samples.
         """
@@ -165,7 +167,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "throughput_eps_smooth": extended_eps_smooth,
         }
 
-    def get_cpu_timeseries(self) -> dict | None:
+    def get_cpu_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns CPU usage time series."""
         if self.cpu_df.empty:
             return None
@@ -183,7 +185,7 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "cpu_percent": extended_cpu,
         }
 
-    def get_benchmark_cpu_timeseries(self) -> dict | None:
+    def get_benchmark_cpu_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns benchmark process CPU usage time series."""
         if self.benchmark_cpu_df.empty:
             return None
@@ -201,36 +203,41 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "cpu_percent": extended_cpu,
         }
 
-    def get_memory_timeseries(self) -> dict | None:
+    def get_memory_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns memory usage time series."""
         if self.memory_df.empty:
             return None
         df = self.memory_df.sort_values("elapsed_s")
         
         times = df["elapsed_s"].values
-        memory_mb = df["memory_bytes"].values / (1024 * 1024)
+        # Explicitly cast to float array using numpy to satisfy mypy
+        memory_bytes = np.array(df["memory_bytes"].values, dtype=float)
+        memory_mb = memory_bytes / (1024 * 1024)
         
         # Prepend t=0 value for steps-pre plotting
         extended_times = np.concatenate([[0.0], times])
-        extended_memory = np.concatenate([[memory_mb[0]], memory_mb])
+        extended_memory = np.concatenate([[float(memory_mb[0])], memory_mb])
         
         return {
             "time_s": extended_times,
             "memory_mb": extended_memory,
         }
 
-    def get_benchmark_memory_timeseries(self) -> dict | None:
+    def get_benchmark_memory_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns benchmark process memory usage time series."""
         if self.benchmark_memory_df.empty:
             return None
         df = self.benchmark_memory_df.sort_values("elapsed_s")
         
         times = df["elapsed_s"].values
-        memory_mb = df["memory_bytes"].values / (1024 * 1024)
+        raw_mem = df["benchmark_memory_bytes"].values if "benchmark_memory_bytes" in df.columns else df["memory_bytes"].values
+        # Explicitly cast to float array using numpy to satisfy mypy
+        memory_bytes = np.array(raw_mem, dtype=float)
+        memory_mb = memory_bytes / (1024 * 1024)
         
         # Prepend t=0 value for steps-pre plotting
         extended_times = np.concatenate([[0.0], times])
-        extended_memory = np.concatenate([[memory_mb[0]], memory_mb])
+        extended_memory = np.concatenate([[float(memory_mb[0])], memory_mb])
         
         return {
             "time_s": extended_times,

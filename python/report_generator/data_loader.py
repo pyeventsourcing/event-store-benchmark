@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import yaml
 
@@ -8,7 +8,7 @@ from .models import EnvironmentInfo, RunData, RunResults
 from .workloads.performance import PerformanceWorkloadResult
 
 
-def _load_environment_info(env_data: dict) -> Optional[EnvironmentInfo]:
+def _load_environment_info(env_data: Dict[str, Any]) -> Optional[EnvironmentInfo]:
     """Loads environment info from a dictionary into the EnvironmentInfo pydantic model."""
     if not env_data:
         return None
@@ -95,7 +95,7 @@ def load_raw_run_data(run_dir: Path) -> RunData | None:
         return None
 
 
-def load_session_workloads(session_dir: Path):
+def load_session_workloads(session_dir: Path) -> Dict[str, Any]:
     """
     Loads all runs from a session, groups them by workload, and returns
     a dictionary of workload-specific result objects.
@@ -129,7 +129,7 @@ def load_session_workloads(session_dir: Path):
     return workloads
 
 
-def load_session_metadata(session_dir: Path) -> dict:
+def load_session_metadata(session_dir: Path) -> Dict[str, Any]:
     """Loads session.json, environment.json, and config.yaml for a given session."""
     session_info = {}
     env_info_obj = None

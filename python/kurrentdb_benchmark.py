@@ -2,10 +2,11 @@ import time
 import argparse
 import statistics
 from uuid import uuid4
+from typing import Any, Dict, List, Optional
 
 from kurrentdbclient import KurrentDBClient, NewEvent, StreamState
 
-def run_benchmark(connection_string, stream_name, num_events, payload_size):
+def run_benchmark(connection_string: str, stream_name: str, num_events: int, payload_size: int) -> None:
     client = KurrentDBClient(connection_string)
     
     print(f"Starting benchmark: {num_events} events, {payload_size} bytes each")

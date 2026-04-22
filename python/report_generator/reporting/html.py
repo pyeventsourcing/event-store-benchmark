@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional, Callable
 
 import yaml
 
@@ -7,7 +7,7 @@ from ..models import EnvironmentInfo
 from ..data_loader import load_session_metadata
 
 
-def _format_bytes(byte_count):
+def _format_bytes(byte_count: Optional[float]) -> str:
     if byte_count is None: return "N/A"
     power = 1024
     n = 0
@@ -93,7 +93,7 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
     """
 
 
-def generate_run_html(report_dir: Path, run):
+def generate_run_html(report_dir: Path, run: Any) -> None:
     """Generates an HTML report for a single run."""
     workload_name = run.name
     latency_img = "latency_cdf.png"
@@ -268,11 +268,12 @@ def generate_run_html(report_dir: Path, run):
         f.write(html)
 
 
-def generate_workload_html(out_base: Path, workload_name: str, runs, worker_groups, workload_config=None,
-                           get_store_rank=None):
+def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], worker_groups: Dict[int, List[Any]],
+                           workload_config: Optional[Dict[str, Any]] = None,
+                           get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Generate a consolidated report for a specific workload."""
 
-    def row_key(r):
+    def row_key(r: Any) -> Any:
         rank = get_store_rank(r.adapter) if get_store_rank else 0
         return r.worker_count, rank, r.adapter
 
@@ -519,7 +520,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         f.write(html)
 
 
-def generate_top_level_index(raw_base: Path, published_base: Path):
+def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
     """Generate top-level index.html that links to individual session reports."""
     sessions_summaries = {}
     published_session_ids = sorted([d.name for d in published_base.iterdir() if d.is_dir()])
@@ -599,8 +600,8 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
         f.write(html)
 
 
-def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries, env_info: Optional[EnvironmentInfo] = None,
-                           session_info=None):
+def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries: Dict[str, Any], env_info: Optional[EnvironmentInfo] = None,
+                           session_info: Optional[Dict[str, Any]] = None) -> None:
     """Generate index.html for a specific session."""
     env_section = _render_environment_info(env_info)
 

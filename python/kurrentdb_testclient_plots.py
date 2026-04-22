@@ -2,10 +2,11 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from typing import Any, Dict, List, Optional
 from matplotlib.lines import Line2D
 from matplotlib.ticker import LogLocator, NullFormatter, FormatStrFormatter, ScalarFormatter
 
-def parse_log_file(file_path):
+def parse_log_file(file_path: str) -> Optional[Dict[str, Any]]:
     """
     Parses the KurrentDB.TestClient output log.
     Extracts number of clients, throughput (reqs per sec), and latency percentiles.
@@ -94,7 +95,7 @@ def parse_log_file(file_path):
         'p999': p999
     }
 
-def generate_plots(results, output_dir):
+def generate_plots(results: List[Dict[str, Any]], output_dir: str) -> None:
     if not results:
         print("No results to plot.")
         return

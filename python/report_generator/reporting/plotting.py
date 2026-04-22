@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, List
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,7 +24,7 @@ plt.rcParams.update({
 })
 
 
-def _format_tick(x, pos):
+def _format_tick(x: float, pos: Any) -> str:
     """Format tick label to show decimal fractions only when necessary, avoiding scientific notation."""
     if x == 0:
         return "0"
@@ -32,7 +32,7 @@ def _format_tick(x, pos):
     return np.format_float_positional(x, trim='-', precision=6, fractional=True)
 
 
-def _set_y_limit_with_margin(ax, values, margin=0.05):
+def _set_y_limit_with_margin(ax: Any, values: Any, margin: float = 0.05) -> None:
     """Set the y-axis limit to a few percent greater than the max plotted value."""
     if values is None or len(values) == 0:
         return
@@ -43,7 +43,7 @@ def _set_y_limit_with_margin(ax, values, margin=0.05):
         ax.set_ylim(bottom=0, top=1)
 
 
-def plot_latency_cdf(run, out_path: str):
+def plot_latency_cdf(run: Any, out_path: str) -> None:
     """Plot latency CDF from a single run object."""
     latencies_ms, percentiles = run.get_latency_cdf_data()
     if latencies_ms is None:
@@ -69,7 +69,7 @@ def plot_latency_cdf(run, out_path: str):
     plt.close()
 
 
-def plot_benchmark_latency_cdf(run, out_path: str):
+def plot_benchmark_latency_cdf(run: Any, out_path: str) -> None:
     """Plot benchmark process latency CDF from a single run object."""
     latencies_ms, percentiles = run.get_benchmark_latency_cdf_data()
     if latencies_ms is None:
@@ -94,7 +94,7 @@ def plot_benchmark_latency_cdf(run, out_path: str):
     plt.close()
 
 
-def plot_throughput_timeseries(run, out_path: str):
+def plot_throughput_timeseries(run: Any, out_path: str) -> None:
     """Plot throughput over time for a single run object."""
     timeseries = run.get_throughput_timeseries()
     if timeseries is None:
@@ -113,7 +113,7 @@ def plot_throughput_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_cpu_timeseries(run, out_path: str):
+def plot_cpu_timeseries(run: Any, out_path: str) -> None:
     """Plot CPU usage over time for a single run object."""
     ts = run.get_cpu_timeseries()
     if ts is None:
@@ -133,7 +133,7 @@ def plot_cpu_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_benchmark_cpu_timeseries(run, out_path: str):
+def plot_benchmark_cpu_timeseries(run: Any, out_path: str) -> None:
     """Plot benchmark process CPU usage over time for a single run object."""
     ts = run.get_benchmark_cpu_timeseries()
     if ts is None:
@@ -153,7 +153,7 @@ def plot_benchmark_cpu_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_memory_timeseries(run, out_path: str):
+def plot_memory_timeseries(run: Any, out_path: str) -> None:
     """Plot memory usage over time for a single run object."""
     ts = run.get_memory_timeseries()
     if ts is None:
@@ -173,7 +173,7 @@ def plot_memory_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_benchmark_memory_timeseries(run, out_path: str):
+def plot_benchmark_memory_timeseries(run: Any, out_path: str) -> None:
     """Plot benchmark process memory usage over time for a single run object."""
     ts = run.get_benchmark_memory_timeseries()
     if ts is None:
@@ -193,7 +193,7 @@ def plot_benchmark_memory_timeseries(run, out_path: str):
     plt.close()
 
 
-def plot_worker_slice_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_latency_cdf(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot latency CDF comparing multiple runs."""
     plt.figure()
 
@@ -228,7 +228,7 @@ def plot_worker_slice_latency_cdf(runs, title: str, out_path: str, get_store_ran
     plt.close()
 
 
-def plot_worker_slice_benchmark_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_latency_cdf(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark latency CDF comparing multiple runs."""
     plt.figure()
 
@@ -262,7 +262,7 @@ def plot_worker_slice_benchmark_latency_cdf(runs, title: str, out_path: str, get
     plt.close()
 
 
-def plot_worker_slice_throughput(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_throughput(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot throughput over time comparing multiple runs."""
     plt.figure()
 
@@ -288,7 +288,7 @@ def plot_worker_slice_throughput(runs, title: str, out_path: str, get_store_rank
     plt.close()
 
 
-def plot_worker_slice_cpu(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_cpu(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot CPU usage over time comparing multiple runs."""
     plt.figure()
 
@@ -317,7 +317,7 @@ def plot_worker_slice_cpu(runs, title: str, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_worker_slice_benchmark_cpu(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_cpu(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark CPU usage over time comparing multiple runs."""
     plt.figure()
 
@@ -346,7 +346,7 @@ def plot_worker_slice_benchmark_cpu(runs, title: str, out_path: str, get_store_r
     plt.close()
 
 
-def plot_worker_slice_memory(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_memory(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot memory usage over time comparing multiple runs."""
     plt.figure()
 
@@ -375,7 +375,7 @@ def plot_worker_slice_memory(runs, title: str, out_path: str, get_store_rank=Non
     plt.close()
 
 
-def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_store_rank=None):
+def plot_worker_slice_benchmark_memory(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark memory usage over time comparing multiple runs."""
     plt.figure()
 
@@ -404,7 +404,7 @@ def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_stor
     plt.close()
 
 
-def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_throughput_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak throughput vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -475,7 +475,7 @@ def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_latency_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -548,7 +548,7 @@ def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_latency_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -628,7 +628,7 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak CPU usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -689,7 +689,7 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak benchmark CPU usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -751,7 +751,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak memory usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -815,7 +815,7 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
+def plot_benchmark_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
@@ -877,7 +877,7 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_process_metrics(runs, out_path: str, get_store_rank=None):
+def plot_process_metrics(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Create a visualization of resource usage (CPU/Memory)."""
     adapter_data = {}
 
@@ -912,7 +912,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
     if get_store_rank:
         adapters = sorted(adapters_list, key=get_store_rank)
     else:
-        def normalize(values):
+        def normalize(values: Sequence[float]) -> List[float]:
             max_val = max(values) if values else 1
             return [v / max_val if max_val > 0 else 0 for v in values]
 
@@ -938,7 +938,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
 
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
-    def plot_bar(ax, data, title, ylabel, fmt_str):
+    def plot_bar(ax: Any, data: Sequence[float], title: str, ylabel: str, fmt_str: str) -> None:
         bars = ax.bar(adapters, data, color=colors, edgecolor='black', linewidth=1.5)
         ax.set_ylabel(ylabel, fontweight='bold')
         ax.set_title(title, fontweight='bold')
@@ -957,7 +957,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_image_size(runs, out_path: str, get_store_rank=None):
+def plot_image_size(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Create a visualization of container image sizes with average and peak bars."""
     adapter_data: Dict[str, List[float]] = {}
 
@@ -982,18 +982,18 @@ def plot_image_size(runs, out_path: str, get_store_rank=None):
     else:
         adapters = sorted(adapters_list)
 
-    avg_image_sizes = []
-    peak_image_sizes = []
+    avg_image_sizes: List[float] = []
+    peak_image_sizes: List[float] = []
 
     for a in adapters:
         img_sizes = adapter_data[a]
-        avg_image_sizes.append(np.mean(img_sizes))
-        peak_image_sizes.append(np.max(img_sizes))
+        avg_image_sizes.append(float(np.mean(img_sizes)))
+        peak_image_sizes.append(float(np.max(img_sizes)))
 
     fig, ax = plt.subplots()
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
-    def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
+    def plot_bar(ax: Any, avg_data: Sequence[float], peak_data: Sequence[float], title: str, ylabel: str, fmt_str: str) -> None:
         x = np.arange(len(adapters))
         ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
         ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
@@ -1026,7 +1026,7 @@ def plot_image_size(runs, out_path: str, get_store_rank=None):
     plt.close()
 
 
-def plot_startup_time(runs, out_path: str, get_store_rank=None):
+def plot_startup_time(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Create a visualization of container startup times with average and peak bars."""
     adapter_data: Dict[str, List[float]] = {}
 
@@ -1051,18 +1051,18 @@ def plot_startup_time(runs, out_path: str, get_store_rank=None):
     else:
         adapters = sorted(adapters_list)
 
-    avg_startup_times = []
-    peak_startup_times = []
+    avg_startup_times: List[float] = []
+    peak_startup_times: List[float] = []
 
     for a in adapters:
         s_times = adapter_data[a]
-        avg_startup_times.append(np.mean(s_times))
-        peak_startup_times.append(np.max(s_times))
+        avg_startup_times.append(float(np.mean(s_times)))
+        peak_startup_times.append(float(np.max(s_times)))
 
     fig, ax = plt.subplots()
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
-    def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
+    def plot_bar(ax: Any, avg_data: Sequence[float], peak_data: Sequence[float], title: str, ylabel: str, fmt_str: str) -> None:
         x = np.arange(len(adapters))
         ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
         ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
