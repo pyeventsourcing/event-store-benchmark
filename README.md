@@ -231,59 +231,69 @@ Testing operational characteristics:
 
 ### Named Workload Configurations
 
-Each workload is defined by a named YAML file. The `name` field identifies the workload, and `workload_type` specifies which implementation to use.
+Each workload is defined by a named YAML file. The top-level key (e.g., `performance:`) specifies the workload type, and all configuration is nested within it.
 
 ### Example: Smoke Test
 
 ```yaml
 # configs/smoke-test.yaml
-name: smoke-test
-workload_type: performance
-mode: write
-duration_seconds: 10
-concurrency:
-  writers: [1, 4]
-operations:
-  write:
-    event_size_bytes: 256
-stores: [umadb, dummy]
+performance:
+  name: smoke-test
+  mode: write
+  duration_seconds: 10
+  concurrency:
+    writers: [1, 4]
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - umadb
+    - dummy
 ```
 
 ### Example: Scaling Writers
 
 ```yaml
 # configs/scaling/writers.yaml
-name: scaling-writers
-workload_type: performance
-mode: write
-duration_seconds: 120
-concurrency:
-  writers: [1, 2, 4, 8, 16, 32]
-operations:
-  write:
-    event_size_bytes: 256
-stores: [umadb, kurrentdb, axonserver, eventsourcingdb]
+performance:
+  name: scaling-writers
+  mode: write
+  duration_seconds: 120
+  concurrency:
+    writers: [1, 2, 4, 8, 16, 32]
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+    - eventsourcingdb
 ```
 
 ### Example: Read Workload
 
 ```yaml
-# configs/concurrent_readers.yaml
-name: scaling-readers
-workload_type: performance
-mode: read
-duration_seconds: 6
-concurrency:
-  readers: [1, 2, 4, 8, 16, 32]
-operations:
-  write:
-    event_size_bytes: 256
-  read:
-    batch_size: 100
-setup:
-  prepopulate_events: 50000
-  prepopulate_streams: 5000
-stores: [umadb, kurrentdb, axonserver, eventsourcingdb]
+# configs/scaling/readers.yaml
+performance:
+  name: scaling-readers
+  mode: read
+  duration_seconds: 6
+  concurrency:
+    readers: [1, 2, 4, 8, 16, 32]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 100
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+    - eventsourcingdb
 ```
 
 ## Python Layer — Analysis & Visualization
