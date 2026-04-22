@@ -5,7 +5,22 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.ticker import LogLocator, NullFormatter, FuncFormatter
 
-from .style import get_adapter_color
+from .style import (
+    get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
+    FONT_SIZE_TITLE, FONT_SIZE_LABEL, FONT_SIZE_TICK, FONT_SIZE_LEGEND
+)
+
+# Apply global matplotlib styles for consistency
+plt.rcParams.update({
+    'figure.figsize': (PLOT_WIDTH, PLOT_HEIGHT),
+    'figure.dpi': PLOT_DPI,
+    'axes.titlesize': FONT_SIZE_TITLE,
+    'axes.labelsize': FONT_SIZE_LABEL,
+    'xtick.labelsize': FONT_SIZE_TICK,
+    'ytick.labelsize': FONT_SIZE_TICK,
+    'legend.fontsize': FONT_SIZE_LEGEND,
+    'figure.titlesize': FONT_SIZE_TITLE + 2,
+})
 
 
 def _format_tick(x, pos):
@@ -33,7 +48,7 @@ def plot_latency_cdf(run, out_path: str):
     if latencies_ms is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
     plt.xscale("log")
     
@@ -49,7 +64,7 @@ def plot_latency_cdf(run, out_path: str):
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -59,7 +74,7 @@ def plot_benchmark_latency_cdf(run, out_path: str):
     if latencies_ms is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(latencies_ms, percentiles, label="benchmark latency CDF", linewidth=2, color='#ff7f0e')
     plt.xscale("log")
     
@@ -74,7 +89,7 @@ def plot_benchmark_latency_cdf(run, out_path: str):
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -84,7 +99,7 @@ def plot_throughput_timeseries(run, out_path: str):
     if timeseries is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(timeseries["time_s"], timeseries["throughput_eps"],
              linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
              drawstyle='steps-pre')
@@ -93,7 +108,7 @@ def plot_throughput_timeseries(run, out_path: str):
     plt.title("Throughput over Time")
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -103,7 +118,7 @@ def plot_cpu_timeseries(run, out_path: str):
     if ts is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(ts["time_s"], ts["cpu_percent"],
              linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
              drawstyle='steps-pre')
@@ -113,7 +128,7 @@ def plot_cpu_timeseries(run, out_path: str):
     _set_y_limit_with_margin(plt.gca(), ts["cpu_percent"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -123,7 +138,7 @@ def plot_benchmark_cpu_timeseries(run, out_path: str):
     if ts is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(ts["time_s"], ts["cpu_percent"],
              linewidth=2.0, alpha=0.9, color='#ff7f0e', marker=None,
              drawstyle='steps-pre')
@@ -133,7 +148,7 @@ def plot_benchmark_cpu_timeseries(run, out_path: str):
     _set_y_limit_with_margin(plt.gca(), ts["cpu_percent"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -143,7 +158,7 @@ def plot_memory_timeseries(run, out_path: str):
     if ts is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(ts["time_s"], ts["memory_mb"],
              linewidth=2.0, alpha=0.9, color='#1f77b4', marker=None,
              drawstyle='steps-pre')
@@ -153,7 +168,7 @@ def plot_memory_timeseries(run, out_path: str):
     _set_y_limit_with_margin(plt.gca(), ts["memory_mb"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -163,7 +178,7 @@ def plot_benchmark_memory_timeseries(run, out_path: str):
     if ts is None:
         return
 
-    plt.figure(figsize=(6, 4))
+    plt.figure()
     plt.plot(ts["time_s"], ts["memory_mb"],
              linewidth=2.0, alpha=0.9, color='#ff7f0e', marker=None,
              drawstyle='steps-pre')
@@ -173,13 +188,13 @@ def plot_benchmark_memory_timeseries(run, out_path: str):
     _set_y_limit_with_margin(plt.gca(), ts["memory_mb"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
     """Plot latency CDF comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -208,13 +223,13 @@ def plot_worker_slice_latency_cdf(runs, title: str, out_path: str, get_store_ran
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_benchmark_latency_cdf(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark latency CDF comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -242,13 +257,13 @@ def plot_worker_slice_benchmark_latency_cdf(runs, title: str, out_path: str, get
     plt.legend()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_throughput(runs, title: str, out_path: str, get_store_rank=None):
     """Plot throughput over time comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -268,13 +283,13 @@ def plot_worker_slice_throughput(runs, title: str, out_path: str, get_store_rank
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_cpu(runs, title: str, out_path: str, get_store_rank=None):
     """Plot CPU usage over time comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -297,13 +312,13 @@ def plot_worker_slice_cpu(runs, title: str, out_path: str, get_store_rank=None):
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_benchmark_cpu(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark CPU usage over time comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -326,13 +341,13 @@ def plot_worker_slice_benchmark_cpu(runs, title: str, out_path: str, get_store_r
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_memory(runs, title: str, out_path: str, get_store_rank=None):
     """Plot memory usage over time comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -355,13 +370,13 @@ def plot_worker_slice_memory(runs, title: str, out_path: str, get_store_rank=Non
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
 def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_store_rank=None):
     """Plot benchmark memory usage over time comparing multiple runs."""
-    plt.figure(figsize=(8, 5))
+    plt.figure()
 
     sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
 
@@ -384,7 +399,7 @@ def plot_worker_slice_benchmark_memory(runs, title: str, out_path: str, get_stor
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -413,7 +428,7 @@ def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Throughput by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -455,7 +470,7 @@ def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -485,7 +500,7 @@ def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Latency by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(12, 7))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -528,7 +543,7 @@ def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     plt.legend(handles=adapter_handles + percentile_handles, ncol=2)
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -565,7 +580,7 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool Latency by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(12, 7))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -608,7 +623,7 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -636,7 +651,7 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"CPU Usage by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -669,7 +684,7 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -698,7 +713,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool CPU Usage by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -731,7 +746,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -762,7 +777,7 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Memory Usage by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -795,7 +810,7 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -824,7 +839,7 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool Memory Usage by {xlabel[:-1]} Count"
 
-    plt.figure(figsize=(10, 6))
+    plt.figure()
     x = np.arange(len(worker_counts))
     width = 0.8 / len(adapters)
 
@@ -857,7 +872,7 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path)
     plt.close()
 
 
@@ -917,8 +932,8 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
     peak_cpus = [adapter_data[a]["peak_cpu"] for a in adapters]
     peak_mems = [adapter_data[a]["peak_mem"] for a in adapters]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle("Process Resource Usage Comparison", fontsize=16, fontweight='bold')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(PLOT_WIDTH * 2, PLOT_HEIGHT))
+    fig.suptitle("Process Resource Usage Comparison", fontweight='bold')
 
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
@@ -937,7 +952,7 @@ def plot_process_metrics(runs, out_path: str, get_store_rank=None):
     plot_bar(ax2, peak_mems, "Peak Memory Usage", "Peak Memory (MB)", '{:.0f}')
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, bbox_inches='tight')
     plt.close()
 
 
@@ -974,7 +989,7 @@ def plot_image_size(runs, out_path: str, get_store_rank=None):
         avg_image_sizes.append(np.mean(img_sizes))
         peak_image_sizes.append(np.max(img_sizes))
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots()
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
     def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
@@ -1006,7 +1021,7 @@ def plot_image_size(runs, out_path: str, get_store_rank=None):
     ax.legend(handles=metric_handles, loc='upper right')
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, bbox_inches='tight')
     plt.close()
 
 
@@ -1043,7 +1058,7 @@ def plot_startup_time(runs, out_path: str, get_store_rank=None):
         avg_startup_times.append(np.mean(s_times))
         peak_startup_times.append(np.max(s_times))
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots()
     colors = [get_adapter_color(adapter) for adapter in adapters]
 
     def plot_bar(ax, avg_data, peak_data, title, ylabel, fmt_str):
@@ -1075,5 +1090,5 @@ def plot_startup_time(runs, out_path: str, get_store_rank=None):
     ax.legend(handles=metric_handles, loc='upper right')
 
     plt.tight_layout()
-    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.savefig(out_path, bbox_inches='tight')
     plt.close()

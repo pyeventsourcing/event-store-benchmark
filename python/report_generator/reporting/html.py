@@ -178,7 +178,7 @@ def generate_run_html(report_dir: Path, run):
         cpu_plot_html = f"""
     <div class='card'>
       <h2>CPU</h2>
-      <img src='{cpu_img}' width='560'>
+      <img src='{cpu_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>"""
 
     memory_plot_html = ""
@@ -186,7 +186,7 @@ def generate_run_html(report_dir: Path, run):
         memory_plot_html = f"""
     <div class='card'>
       <h2>Memory</h2>
-      <img src='{memory_img}' width='560'>
+      <img src='{memory_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>"""
 
     benchmark_plots_html = ""
@@ -200,19 +200,19 @@ def generate_run_html(report_dir: Path, run):
             plots.append(f"""
     <div class='card'>
       <h2>Tool CPU</h2>
-      <img src='{benchmark_cpu_img}' width='560'>
+      <img src='{benchmark_cpu_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
         if has_b_mem:
             plots.append(f"""
     <div class='card'>
       <h2>Tool Memory</h2>
-      <img src='{benchmark_memory_img}' width='560'>
+      <img src='{benchmark_memory_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
         if has_b_latency:
             plots.append(f"""
     <div class='card'>
       <h2>Tool Latency</h2>
-      <img src='{benchmark_latency_img}' width='560'>
+      <img src='{benchmark_latency_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
 
         benchmark_plots_html = f"<div class='row'>{''.join(plots)}</div>"
@@ -237,11 +237,11 @@ def generate_run_html(report_dir: Path, run):
   <div class='row'>
     <div class='card'>
       <h2>Throughput</h2>
-      <img src='{throughput_img}' width='560'>
+      <img src='{throughput_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>
     <div class='card'>
       <h2>Latency</h2>
-      <img src='{latency_img}' width='560'>
+      <img src='{latency_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>
   </div>
   <div class='row'>
@@ -333,7 +333,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             cpu_slice_html = f"""
       <div class='card'>
         <h3>CPU</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_cpu_timeseries.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_cpu_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>"""
 
         mem_slice_html = ""
@@ -341,7 +341,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             mem_slice_html = f"""
       <div class='card'>
         <h3>Memory</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_memory_timeseries.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>"""
 
         has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
@@ -353,19 +353,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
             benchmark_latency_slice_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_benchmark_latency else ""
 
             benchmark_cpu_slice_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_benchmark_cpu else ""
 
             benchmark_mem_slice_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_benchmark_mem else ""
 
             benchmark_slice_html = f"""
@@ -382,11 +382,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       <div class='card'>
         <h3>Throughput</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_throughput.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_throughput.png' width='600' style='max-width: 100%; height: auto;'>
       </div>
       <div class='card'>
         <h3>Latency</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_latency_cdf.png' width='560'>
+        <img src='worker_slice_{worker_suffix}{wc}_latency_cdf.png' width='600' style='max-width: 100%; height: auto;'>
       </div>
     </div>
     <div class='row'>
@@ -401,14 +401,14 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     cpu_by_workers_html = f"""
       <div class='card'>
         <h3>CPU</h3>
-        <img src='by_workers_cpu.png' width='560'>
+        <img src='by_workers_cpu.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_any_cpu else ""
 
 
     mem_by_workers_html = f"""
       <div class='card'>
         <h3>Memory</h3>
-        <img src='by_workers_memory.png' width='560'>
+        <img src='by_workers_memory.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_any_mem else ""
 
     resource_usage_html = f"""
@@ -423,11 +423,11 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     <div class='row'>
       <div class='card'>
         <h3>Throughput</h3>
-        <img src='by_workers_throughput.png' width='560'>
+        <img src='by_workers_throughput.png' width='600' style='max-width: 100%; height: auto;'>
       </div>
       <div class='card'>
         <h3>Latency</h3>
-        <img src='by_workers_latency.png' width='560'>
+        <img src='by_workers_latency.png' width='600' style='max-width: 100%; height: auto;'>
       </div>
     </div>
     {resource_usage_html}"""
@@ -441,19 +441,19 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         benchmark_latency_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='by_workers_benchmark_latency.png' width='560'>
+        <img src='by_workers_benchmark_latency.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_any_benchmark_latency else ""
 
         benchmark_cpu_by_workers_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='by_workers_benchmark_cpu.png' width='560'>
+        <img src='by_workers_benchmark_cpu.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_any_benchmark_cpu else ""
 
         benchmark_mem_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='by_workers_benchmark_memory.png' width='560'>
+        <img src='by_workers_benchmark_memory.png' width='600' style='max-width: 100%; height: auto;'>
       </div>""" if has_any_benchmark_mem else ""
 
         benchmark_performance_section = f"""
@@ -602,11 +602,11 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
-          <img src='{workload_name}/by_workers_throughput.png' width='560'>
+          <img src='{workload_name}/by_workers_throughput.png' width='600' style='max-width: 100%; height: auto;'>
         </div>
         <div class='card'>
           <h3>Latency</h3>
-          <img src='{workload_name}/by_workers_latency.png' width='560'>
+          <img src='{workload_name}/by_workers_latency.png' width='600' style='max-width: 100%; height: auto;'>
         </div>
       </div>"""
 
@@ -631,11 +631,11 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       <div class='row'>
         {f'''<div class='card'>
           <h3>Image Size</h3>
-          <img src='image_size.png' width='560'>
+          <img src='image_size.png' width='600' style='max-width: 100%; height: auto;'>
         </div>''' if has_image_size else ''}
         {f'''<div class='card'>
           <h3>Startup Time</h3>
-          <img src='startup_time.png' width='560'>
+          <img src='startup_time.png' width='600' style='max-width: 100%; height: auto;'>
         </div>''' if has_startup_time else ''}
       </div>
     </div>"""

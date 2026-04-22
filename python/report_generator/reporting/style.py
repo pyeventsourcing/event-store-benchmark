@@ -2,6 +2,19 @@
 # Using standard data visualization colors for better clarity
 from matplotlib.pyplot import get_cmap
 
+# Standardize dimensions for all plots
+# At 100 DPI, 8x5 is 800x500 pixels.
+# This fits well in reports while remaining legible.
+PLOT_WIDTH = 8
+PLOT_HEIGHT = 5
+PLOT_DPI = 100
+
+# Font sizes for consistency
+FONT_SIZE_TITLE = 14
+FONT_SIZE_LABEL = 12
+FONT_SIZE_TICK = 10
+FONT_SIZE_LEGEND = 10
+
 adapters = [
     'umadb',
     'kurrentdb',
