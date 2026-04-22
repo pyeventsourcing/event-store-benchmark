@@ -44,6 +44,7 @@ def plot_latency_cdf(run, out_path: str):
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
+    plt.title("Latency CDF")
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -562,7 +563,7 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
 
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Benchmark Latency by {xlabel[:-1]} Count"
+    title = f"Benchmark Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(12, 7))
     x = np.arange(len(worker_counts))
@@ -695,7 +696,7 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
 
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Benchmark CPU Usage by {xlabel[:-1]} Count"
+    title = f"Benchmark Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
     x = np.arange(len(worker_counts))
@@ -821,7 +822,7 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
 
     first_run = runs[0]
     xlabel = "Readers" if first_run.is_read_workload else "Writers"
-    title = f"Benchmark Memory Usage by {xlabel[:-1]} Count"
+    title = f"Benchmark Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
     x = np.arange(len(worker_counts))

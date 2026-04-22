@@ -177,7 +177,7 @@ def generate_run_html(report_dir: Path, run):
     if not run.cpu_df.empty:
         cpu_plot_html = f"""
     <div class='card'>
-      <h2>CPU Usage over time</h2>
+      <h2>CPU</h2>
       <img src='{cpu_img}' width='560'>
     </div>"""
 
@@ -185,7 +185,7 @@ def generate_run_html(report_dir: Path, run):
     if not run.memory_df.empty:
         memory_plot_html = f"""
     <div class='card'>
-      <h2>Memory Usage over time</h2>
+      <h2>Memory</h2>
       <img src='{memory_img}' width='560'>
     </div>"""
 
@@ -196,25 +196,25 @@ def generate_run_html(report_dir: Path, run):
 
     if has_b_latency or has_b_cpu or has_b_mem:
         plots = []
-        if has_b_latency:
-            plots.append(f"""
-    <div class='card'>
-      <h2>Benchmark Latency CDF</h2>
-      <img src='{benchmark_latency_img}' width='560'>
-    </div>""")
         if has_b_cpu:
             plots.append(f"""
     <div class='card'>
-      <h2>Benchmark CPU Usage</h2>
+      <h2>Tool CPU</h2>
       <img src='{benchmark_cpu_img}' width='560'>
     </div>""")
         if has_b_mem:
             plots.append(f"""
     <div class='card'>
-      <h2>Benchmark Memory Usage</h2>
+      <h2>Tool Memory</h2>
       <img src='{benchmark_memory_img}' width='560'>
     </div>""")
-        
+        if has_b_latency:
+            plots.append(f"""
+    <div class='card'>
+      <h2>Tool Latency</h2>
+      <img src='{benchmark_latency_img}' width='560'>
+    </div>""")
+
         benchmark_plots_html = f"<div class='row'>{''.join(plots)}</div>"
 
     html = f"""
@@ -222,7 +222,7 @@ def generate_run_html(report_dir: Path, run):
 <html>
 <head>
   <meta charset='utf-8'>
-  <title>Workload Report — {run.adapter} / {workload_name}</title>
+  <title>Run Report — {run.adapter} / {workload_name}</title>
   <style>
     body {{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }}
     h1, h2 {{ margin-top: 1.2rem; }}
@@ -231,16 +231,16 @@ def generate_run_html(report_dir: Path, run):
   </style>
 </head>
 <body>
-  <h1>Benchmark Report</h1>
+  <h1>Run Report</h1>
   <p><b>Adapter:</b> {run.adapter} &nbsp; | &nbsp; <b>Workload:</b> {workload_name}</p>
   <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps</p>
   <div class='row'>
     <div class='card'>
-      <h2>Throughput over time</h2>
+      <h2>Throughput</h2>
       <img src='{throughput_img}' width='560'>
     </div>
     <div class='card'>
-      <h2>Latency CDF</h2>
+      <h2>Latency</h2>
       <img src='{latency_img}' width='560'>
     </div>
   </div>
@@ -270,7 +270,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
     first_run = runs[0] if runs else None
     is_readers = first_run.is_read_workload if first_run else False
-    worker_label = "Readers" if is_readers else "Writers"
+    worker_label = "Reader" if is_readers else "Writer"
     worker_suffix = "r" if is_readers else "w"
 
     summary_rows = ""
@@ -332,16 +332,16 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         if has_cpu:
             cpu_slice_html = f"""
       <div class='card'>
-        <h3>CPU Usage over time</h3>
-        <img src='{worker_suffix}{wc}_cpu_timeseries.png' width='560'>
+        <h3>CPU</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_cpu_timeseries.png' width='560'>
       </div>"""
 
         mem_slice_html = ""
         if has_mem:
             mem_slice_html = f"""
       <div class='card'>
-        <h3>Memory Usage over time</h3>
-        <img src='{worker_suffix}{wc}_memory_timeseries.png' width='560'>
+        <h3>Memory</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_memory_timeseries.png' width='560'>
       </div>"""
 
         has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
@@ -352,42 +352,41 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
         if has_benchmark_latency or has_benchmark_cpu or has_benchmark_mem:
             benchmark_latency_slice_html = f"""
       <div class='card'>
-        <h3>Benchmark Latency CDF</h3>
-        <img src='{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
+        <h3>Tool Latency</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='560'>
       </div>""" if has_benchmark_latency else ""
 
             benchmark_cpu_slice_html = f"""
       <div class='card'>
-        <h3>Benchmark CPU Usage over time</h3>
-        <img src='{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='560'>
+        <h3>Tool CPU</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='560'>
       </div>""" if has_benchmark_cpu else ""
 
             benchmark_mem_slice_html = f"""
       <div class='card'>
-        <h3>Benchmark Memory Usage over time</h3>
-        <img src='{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='560'>
+        <h3>Tool Memory</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='560'>
       </div>""" if has_benchmark_mem else ""
 
             benchmark_slice_html = f"""
-    <h3>Benchmark Process Comparison</h3>
-    <div class='row'>
-      {benchmark_latency_slice_html}
-    </div>
     <div class='row'>
       {benchmark_cpu_slice_html}
       {benchmark_mem_slice_html}
+    </div>
+    <div class='row'>
+      {benchmark_latency_slice_html}
     </div>"""
 
         worker_slice_sections += f"""
     <h2>{worker_label} = {wc}</h2>
     <div class='row'>
       <div class='card'>
-        <h3>Throughput over time</h3>
-        <img src='{worker_suffix}{wc}_throughput_timeseries.png' width='560'>
+        <h3>Throughput</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Latency CDF</h3>
-        <img src='{worker_suffix}{wc}_latency_cdf.png' width='560'>
+        <h3>Latency</h3>
+        <img src='worker_slice_{worker_suffix}{wc}_latency_cdf.png' width='560'>
       </div>
     </div>
     <div class='row'>
@@ -401,15 +400,15 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
     cpu_by_workers_html = f"""
       <div class='card'>
-        <h3>CPU Usage vs {worker_label}</h3>
-        <img src='scaling_cpu.png' width='560'>
+        <h3>CPU</h3>
+        <img src='by_workers_cpu.png' width='560'>
       </div>""" if has_any_cpu else ""
 
 
     mem_by_workers_html = f"""
       <div class='card'>
-        <h3>Memory Usage vs {worker_label}</h3>
-        <img src='scaling_memory.png' width='560'>
+        <h3>Memory</h3>
+        <img src='by_workers_memory.png' width='560'>
       </div>""" if has_any_mem else ""
 
     resource_usage_html = f"""
@@ -420,15 +419,15 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
 
 
     performance_section = f"""
-    <h2>Performance</h2>
+    <h2>Performance by {worker_label}s</h2>
     <div class='row'>
       <div class='card'>
-        <h3>Throughput vs {worker_label}</h3>
-        <img src='scaling_throughput.png' width='560'>
+        <h3>Throughput</h3>
+        <img src='by_workers_throughput.png' width='560'>
       </div>
       <div class='card'>
-        <h3>Latency vs {worker_label}</h3>
-        <img src='scaling_latency.png' width='560'>
+        <h3>Latency</h3>
+        <img src='by_workers_latency.png' width='560'>
       </div>
     </div>
     {resource_usage_html}"""
@@ -441,30 +440,29 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     if has_any_benchmark_latency or has_any_benchmark_cpu or has_any_benchmark_mem:
         benchmark_latency_by_workers_html = f"""
       <div class='card'>
-        <h3>Benchmark Latency vs {worker_label}</h3>
-        <img src='scaling_benchmark_latency.png' width='560'>
+        <h3>Tool Latency</h3>
+        <img src='by_workers_benchmark_latency.png' width='560'>
       </div>""" if has_any_benchmark_latency else ""
 
         benchmark_cpu_by_workers_html = f"""
       <div class='card'>
-        <h3>Benchmark CPU Usage vs {worker_label}</h3>
-        <img src='scaling_benchmark_cpu.png' width='560'>
+        <h3>Tool CPU</h3>
+        <img src='by_workers_benchmark_cpu.png' width='560'>
       </div>""" if has_any_benchmark_cpu else ""
 
         benchmark_mem_by_workers_html = f"""
       <div class='card'>
-        <h3>Benchmark Memory Usage vs {worker_label}</h3>
-        <img src='scaling_benchmark_memory.png' width='560'>
+        <h3>Tool Memory</h3>
+        <img src='by_workers_benchmark_memory.png' width='560'>
       </div>""" if has_any_benchmark_mem else ""
 
         benchmark_performance_section = f"""
-    <h2>Benchmark Process Performance</h2>
-    <div class='row'>
-      {benchmark_latency_by_workers_html}
-    </div>
     <div class='row'>
       {benchmark_cpu_by_workers_html}
       {benchmark_mem_by_workers_html}
+    </div>
+    <div class='row'>
+      {benchmark_latency_by_workers_html}
     </div>"""
 
     container_stats_section = ""
@@ -479,7 +477,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     if workload_config:
         config_yaml = yaml.dump(workload_config, indent=2)
         config_section = f"""
-    <h2>Workload Configuration</h2>
+    <h2>Configuration</h2>
     <div class='card'>
       <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{config_yaml}</pre>
     </div>"""
@@ -507,9 +505,9 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
   {benchmark_performance_section}
   {container_stats_section}
   {worker_slice_sections}
-  <h2>Summary</h2>
+  <h2>Runs</h2>
   <table>
-    <tr><th>Adapter</th><th>{worker_label}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
+    <tr><th>Adapter</th><th>{worker_label}s</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
     {summary_rows}
   </table>
   {config_section}
@@ -589,7 +587,7 @@ def generate_top_level_index(raw_base: Path, published_base: Path):
   </style>
 </head>
 <body>
-  <h1>Event Store Benchmark Suite</h1>
+  <h1>Store Benchmark Suite</h1>
   <h2>Benchmark Sessions</h2>
   <table>
     <tr><th>Session ID</th><th>Workload</th><th>Stores</th><th>Environment</th><th>Version</th></tr>
@@ -609,22 +607,22 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
 
     workload_sections = ""
     for workload_name, summary in sorted(workload_summaries.items()):
-        scaling_plots = f"""
+        by_workers_plots = f"""
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
-          <img src='{workload_name}/scaling_throughput.png' width='560'>
+          <img src='{workload_name}/by_workers_throughput.png' width='560'>
         </div>
         <div class='card'>
           <h3>Latency</h3>
-          <img src='{workload_name}/scaling_latency.png' width='560'>
+          <img src='{workload_name}/by_workers_latency.png' width='560'>
         </div>
       </div>"""
 
         workload_sections += f"""
     <div class='workload-section'>
       <h2><a href='{workload_name}/index.html'>{workload_name}</a></h2>
-      {scaling_plots}
+      {by_workers_plots}
     </div>"""
 
     session_title = f"Benchmark Session: {session_id}"
