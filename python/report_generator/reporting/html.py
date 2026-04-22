@@ -378,7 +378,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs, worker_grou
     </div>"""
 
         worker_slice_sections += f"""
-    <h2>{worker_label} = {wc}</h2>
+    <h2>{worker_label}s = {wc}</h2>
     <div class='row'>
       <div class='card'>
         <h3>Throughput</h3>

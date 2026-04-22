@@ -409,8 +409,8 @@ def plot_throughput_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Throughput by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
@@ -481,8 +481,8 @@ def plot_latency_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Latency by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(12, 7))
@@ -561,8 +561,8 @@ def plot_benchmark_latency_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(12, 7))
@@ -632,8 +632,8 @@ def plot_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
@@ -694,8 +694,8 @@ def plot_benchmark_cpu_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
@@ -758,8 +758,8 @@ def plot_memory_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))
@@ -820,8 +820,8 @@ def plot_benchmark_memory_by_workers(runs, out_path: str, get_store_rank=None):
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0]
-    xlabel = "Readers" if first_run.is_read_workload else "Writers"
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
     title = f"Benchmark Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure(figsize=(10, 6))

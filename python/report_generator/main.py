@@ -96,42 +96,48 @@ def main():
 
             # Generate comparison plots for each worker count
             first_run = runs[0]
+            # Base label for pluralization in scaling plots
             worker_label = "Readers" if first_run.is_read_workload else "Writers"
             worker_suffix = "r" if first_run.is_read_workload else "w"
 
             for wc, group_runs in sorted(worker_groups.items()):
+                # Pluralize based on worker count
+                curr_label = "Reader" if first_run.is_read_workload else "Writer"
+                if wc != 1:
+                    curr_label += "s"
+
                 plotting.plot_worker_slice_latency_cdf(
-                    group_runs, f"Latency CDF — {wc} {worker_label}(s)",
+                    group_runs, f"Latency CDF — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_latency_cdf.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_throughput(
-                    group_runs, f"Throughput — {wc} {worker_label}(s)",
+                    group_runs, f"Throughput — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_throughput.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_cpu(
-                    group_runs, f"CPU Usage — {wc} {worker_label}(s)",
+                    group_runs, f"CPU Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_cpu_timeseries.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_memory(
-                    group_runs, f"Memory Usage — {wc} {worker_label}(s)",
+                    group_runs, f"Memory Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_memory_timeseries.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_benchmark_latency_cdf(
-                    group_runs, f"Benchmark Tool Latency CDF — {wc} {worker_label}(s)",
+                    group_runs, f"Benchmark Tool Latency CDF — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_benchmark_cpu(
-                    group_runs, f"Benchmark Tool CPU Usage — {wc} {worker_label}(s)",
+                    group_runs, f"Benchmark Tool CPU Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_benchmark_memory(
-                    group_runs, f"Benchmark Tool Memory Usage — {wc} {worker_label}(s)",
+                    group_runs, f"Benchmark Tool Memory Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png"),
                     get_store_rank)
 
