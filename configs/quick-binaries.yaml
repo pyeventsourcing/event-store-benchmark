@@ -3,7 +3,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 10
+  duration_seconds: 3
   samples_per_second: 2
 #  duration_seconds: 120
 #  samples_per_second: 1
@@ -11,28 +11,30 @@ performance:
     readers: 0
 #    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 #    writers: [1, 4, 16, 64, 256, 1024]
-    writers: [1, 4, 16]
+#    writers: [1, 4, 16]
+    writers: [1, 4]
   operations:
     write:
       event_size_bytes: 256
   stores:
     - umadb
-    - kurrentdb
-    - axonserver
+#    - kurrentdb
+#    - axonserver
 ---
 performance:
   name: reader-scaling
   mode: read
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 10
+  duration_seconds: 3
   samples_per_second: 2
 #  duration_seconds: 120
 #  samples_per_second: 1
   concurrency:
 #    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 #    readers: [1, 4, 16, 64, 256, 1024]
-    readers: [1, 4, 16]
+#    readers: [1, 4, 16]
+    readers: [1, 4]
     writers: 0
   operations:
     write:
@@ -44,5 +46,5 @@ performance:
     prepopulate_streams: 5000
   stores:
     - umadb
-    - kurrentdb
-    - axonserver
+#    - kurrentdb
+#    - axonserver
