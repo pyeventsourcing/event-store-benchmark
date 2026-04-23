@@ -252,7 +252,7 @@ impl PerformanceWorkload {
         &self,
         store: &dyn StoreManager,
         cancel_token: CancellationToken,
-        benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
+        tool_tx: watch::Sender<Option<SamplingConfigDecision>>,
         sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
     ) -> Result<PerformanceWorkloadResults> {
         // Run preparation (prepopulation) if configured
@@ -333,18 +333,18 @@ impl PerformanceWorkload {
             samples_per_second,
             duration_seconds,
         };
-        let _ = benchmark_tx.send(Some(msg));
+        let _ = tool_tx.send(Some(msg));
 
         // Collect results
-        let mut store_latencies = LatencyRecorder::new();
-        let mut benchmark_latencies = LatencyRecorder::new();
+        let mut store_latencies = LatencyRecorder::new_for_store_latencies();
+        let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
         let num_intervals = (duration_seconds * samples_per_second) as usize;
         let mut combined_counts = vec![0u64; num_intervals];
 
         while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput, worker_benchmark_latencies))) = worker_result {
+            if let Ok(Some((worker_latencies, worker_throughput, worker_tool_latencies))) = worker_result {
                 store_latencies.hist.add(&worker_latencies.hist).unwrap();
-                benchmark_latencies.hist.add(&worker_benchmark_latencies.hist).unwrap();
+                tool_latencies.hist.add(&worker_tool_latencies.hist).unwrap();
                 for (i, count) in worker_throughput.counts.iter().enumerate() {
                     if i < combined_counts.len() {
                         combined_counts[i] += count;
@@ -363,13 +363,13 @@ impl PerformanceWorkload {
         }
 
         let store_latency_percentiles = store_latencies.to_percentiles();
-        let benchmark_latency_percentiles = benchmark_latencies.to_percentiles();
+        let tool_latency_percentiles = tool_latencies.to_percentiles();
 
         Ok(PerformanceWorkloadResults::new(
             serde_json::to_value(&self.config)?,
             throughput_samples,
             store_latency_percentiles,
-            benchmark_latency_percentiles,
+            tool_latency_percentiles,
         ))
     }
 
@@ -474,8 +474,8 @@ impl PerformanceWorkload {
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut store_latencies = LatencyRecorder::new();
-            let mut benchmark_latencies = LatencyRecorder::new();
+            let mut store_latencies = LatencyRecorder::new_for_store_latencies();
+            let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
@@ -537,7 +537,7 @@ impl PerformanceWorkload {
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
                 if operation_duration.is_some() {
-                    benchmark_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
+                    tool_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
                 }
                 if activate_metrics {
                     loop_started = Instant::now();
@@ -545,7 +545,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, benchmark_latencies))
+                Some((store_latencies, throughput_recorder, tool_latencies))
             } else {
                 None
             }
@@ -592,8 +592,8 @@ impl PerformanceWorkload {
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
             let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut store_latencies = LatencyRecorder::new();
-            let mut benchmark_latencies = LatencyRecorder::new();
+            let mut store_latencies = LatencyRecorder::new_for_store_latencies();
+            let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
             let mut operation_started: Option<Instant> = None;
             let mut operation_completed: Instant;
@@ -637,14 +637,14 @@ impl PerformanceWorkload {
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
                 if operation_duration.is_some() {
-                    benchmark_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
+                    tool_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
                 }
                 if activate_metrics {
                     loop_started = Instant::now();
                 }
             }
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, benchmark_latencies))
+                Some((store_latencies, throughput_recorder, tool_latencies))
             } else {
                 None
             }

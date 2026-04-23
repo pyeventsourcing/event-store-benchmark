@@ -53,7 +53,7 @@ pub struct PerformanceWorkloadResults {
     pub workload_config: serde_json::Value,
     pub throughput_samples: Vec<ThroughputSample>,
     pub store_latency_percentiles: Vec<LatencyPercentile>,
-    pub benchmark_latency_percentiles: Vec<LatencyPercentile>,
+    pub tool_latency_percentiles: Vec<LatencyPercentile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,13 +94,13 @@ impl PerformanceWorkloadResults {
         workload_config: serde_json::Value,
         throughput_samples: Vec<ThroughputSample>,
         store_latency_percentiles: Vec<LatencyPercentile>,
-        benchmark_latency_percentiles: Vec<LatencyPercentile>,
+        tool_latency_percentiles: Vec<LatencyPercentile>,
     ) -> Self {
         Self {
             workload_config,
             throughput_samples,
             store_latency_percentiles,
-            benchmark_latency_percentiles,
+            tool_latency_percentiles: tool_latency_percentiles,
         }
     }
 }
@@ -127,8 +127,8 @@ impl WorkloadResults {
                     serde_json::to_string_pretty(&results.store_latency_percentiles)?,
                 )?;
                 fs::write(
-                    path.join("benchmark_latency.json"),
-                    serde_json::to_string_pretty(&results.benchmark_latency_percentiles)?,
+                    path.join("tool_latency.json"),
+                    serde_json::to_string_pretty(&results.tool_latency_percentiles)?,
                 )?;
             }
             WorkloadResults::Durability => {}
@@ -160,14 +160,14 @@ impl RunResults {
 
         if let Some(cpu_samples) = &self.tool_cpu_samples {
             fs::write(
-                path.join("benchmark_cpu.json"),
+                path.join("tool_cpu.json"),
                 serde_json::to_string_pretty(cpu_samples)?,
             )?;
         }
 
         if let Some(memory_samples) = &self.tool_memory_samples {
             fs::write(
-                path.join("benchmark_memory.json"),
+                path.join("tool_memory.json"),
                 serde_json::to_string_pretty(memory_samples)?,
             )?;
         }
@@ -242,11 +242,18 @@ pub struct LatencyRecorder {
 }
 
 impl LatencyRecorder {
-    pub fn new() -> Self {
+    pub fn new_for_store_latencies() -> Self {
         Self {
-            hist: Histogram::new_with_bounds(10, 10_000_000_000, 3).expect("hist"),
+            hist: Histogram::new_with_bounds(1000, 10_000_000_000, 3).expect("hist"),
         }
     }
+
+    pub fn new_for_tool_latencies() -> Self {
+        Self {
+            hist: Histogram::new_with_bounds(1, 10_000_000, 3).expect("hist"),
+        }
+    }
+
     pub fn record(&mut self, dur: Duration) {
         let ns = dur.as_nanos() as u64;
         self.hist.saturating_record(ns.max(1));
@@ -284,7 +291,7 @@ impl LatencyRecorder {
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionMetadata {
     pub session_id: String,
-    pub benchmark_version: String,
+    pub tool_version: String,
     pub config_file: String,
     pub seed: u64,
 }

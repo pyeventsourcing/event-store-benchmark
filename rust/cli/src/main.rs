@@ -222,10 +222,10 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     println!("Total runs to execute: {}", all_workload_runs.len());
 
     // 2. Write session metadata and environment info (once per session)
-    let benchmark_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
+    let tool_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
     let session_metadata = SessionMetadata {
         session_id: session_id.clone(),
-        benchmark_version,
+        tool_version,
         config_file: session_config_path.to_string_lossy().to_string(),
         seed: actual_seed,
     };

@@ -5,6 +5,7 @@ import yaml
 
 from ..models import EnvironmentInfo
 from ..data_loader import load_session_metadata
+from ..workloads.performance import PerformanceWorkloadResult
 
 
 def _format_bytes(byte_count: Optional[float]) -> str:
@@ -93,16 +94,16 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
     """
 
 
-def generate_run_html(report_dir: Path, run: Any) -> None:
+def generate_run_html(report_dir: Path, run: PerformanceWorkloadResult) -> None:
     """Generates an HTML report for a single run."""
     workload_name = run.name
     latency_img = "latency_cdf.png"
     throughput_img = "throughput_timeseries.png"
     cpu_img = "cpu_timeseries.png"
     memory_img = "memory_timeseries.png"
-    benchmark_latency_img = "benchmark_latency_cdf.png"
-    benchmark_cpu_img = "benchmark_cpu_timeseries.png"
-    benchmark_memory_img = "benchmark_memory_timeseries.png"
+    tool_latency_img = "tool_latency_cdf.png"
+    tool_cpu_img = "tool_cpu_timeseries.png"
+    tool_memory_img = "tool_memory_timeseries.png"
 
     metrics = run.metrics
     has_container_stats = bool(metrics.get('startup_time_s') or metrics.get("image_size_bytes"))
@@ -148,21 +149,21 @@ def generate_run_html(report_dir: Path, run: Any) -> None:
   </div>"""
 
     # Benchmark Resource Metrics
-    b_avg_cpu = metrics.get("benchmark_avg_cpu_percent")
-    b_peak_cpu = metrics.get("benchmark_peak_cpu_percent")
+    b_avg_cpu = metrics.get("tool_avg_cpu_percent")
+    b_peak_cpu = metrics.get("tool_peak_cpu_percent")
     b_cpu_display = "N/A"
     if b_avg_cpu is not None and b_peak_cpu is not None:
         b_cpu_display = f"{b_avg_cpu:.1f}% / {b_peak_cpu:.1f}%"
     
-    b_avg_mem = metrics.get("benchmark_avg_memory_bytes")
-    b_peak_mem = metrics.get("benchmark_peak_memory_bytes")
+    b_avg_mem = metrics.get("tool_avg_memory_bytes")
+    b_peak_mem = metrics.get("tool_peak_memory_bytes")
     b_mem_display = "N/A"
     if b_avg_mem is not None and b_peak_mem is not None:
         b_mem_display = f"{b_avg_mem / 1024 / 1024:.0f} / {b_peak_mem / 1024 / 1024:.0f} MB"
 
-    benchmark_resource_metrics_html = ""
+    tool_resource_metrics_html = ""
     if b_avg_cpu is not None or b_avg_mem is not None:
-        benchmark_resource_metrics_html = f"""
+        tool_resource_metrics_html = f"""
   <div class='row'>
     <div class='card'>
       <h2>Benchmark Process Resource Metrics</h2>
@@ -197,10 +198,10 @@ def generate_run_html(report_dir: Path, run: Any) -> None:
       <img src='{memory_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>"""
 
-    benchmark_plots_html = ""
-    has_b_latency = not run.benchmark_latency_percentiles == []
-    has_b_cpu = not run.benchmark_cpu_df.empty
-    has_b_mem = not run.benchmark_memory_df.empty
+    tool_plots_html = ""
+    has_b_latency = not run.tool_latency_percentiles == []
+    has_b_cpu = not run.tool_cpu_df.empty
+    has_b_mem = not run.tool_memory_df.empty
 
     if has_b_latency or has_b_cpu or has_b_mem:
         plots = []
@@ -208,22 +209,22 @@ def generate_run_html(report_dir: Path, run: Any) -> None:
             plots.append(f"""
     <div class='card'>
       <h2>Tool CPU</h2>
-      <img src='{benchmark_cpu_img}' width='600' style='max-width: 100%; height: auto;'>
+      <img src='{tool_cpu_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
         if has_b_mem:
             plots.append(f"""
     <div class='card'>
       <h2>Tool Memory</h2>
-      <img src='{benchmark_memory_img}' width='600' style='max-width: 100%; height: auto;'>
+      <img src='{tool_memory_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
         if has_b_latency:
             plots.append(f"""
     <div class='card'>
       <h2>Tool Latency</h2>
-      <img src='{benchmark_latency_img}' width='600' style='max-width: 100%; height: auto;'>
+      <img src='{tool_latency_img}' width='600' style='max-width: 100%; height: auto;'>
     </div>""")
 
-        benchmark_plots_html = f"<div class='row'>{''.join(plots)}</div>"
+        tool_plots_html = f"<div class='row'>{''.join(plots)}</div>"
 
     html = f"""
 <!DOCTYPE html>
@@ -256,9 +257,9 @@ def generate_run_html(report_dir: Path, run: Any) -> None:
     {cpu_plot_html}
     {memory_plot_html}
   </div>
-  {benchmark_plots_html}
+  {tool_plots_html}
   {resource_metrics_html}
-  {benchmark_resource_metrics_html}
+  {tool_resource_metrics_html}
   {container_stats_html}
   {logs_html}
 </body>
@@ -353,37 +354,37 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
         <img src='worker_slice_{worker_suffix}{wc}_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>"""
 
-        has_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in group_runs)
-        has_benchmark_cpu = any(not r.benchmark_cpu_df.empty for r in group_runs)
-        has_benchmark_mem = any(not r.benchmark_memory_df.empty for r in group_runs)
+        has_tool_latency = any(not r.tool_latency_percentiles == [] for r in group_runs)
+        has_tool_cpu = any(not r.tool_cpu_df.empty for r in group_runs)
+        has_tool_mem = any(not r.tool_memory_df.empty for r in group_runs)
 
-        benchmark_slice_html = ""
-        if has_benchmark_latency or has_benchmark_cpu or has_benchmark_mem:
-            benchmark_latency_slice_html = f"""
+        tool_slice_html = ""
+        if has_tool_latency or has_tool_cpu or has_tool_mem:
+            tool_latency_slice_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_benchmark_latency else ""
+        <img src='worker_slice_{worker_suffix}{wc}_tool_latency_cdf.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_tool_latency else ""
 
-            benchmark_cpu_slice_html = f"""
+            tool_cpu_slice_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_benchmark_cpu else ""
+        <img src='worker_slice_{worker_suffix}{wc}_tool_cpu_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_tool_cpu else ""
 
-            benchmark_mem_slice_html = f"""
+            tool_mem_slice_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_benchmark_mem else ""
+        <img src='worker_slice_{worker_suffix}{wc}_tool_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_tool_mem else ""
 
-            benchmark_slice_html = f"""
+            tool_slice_html = f"""
     <div class='row'>
-      {benchmark_cpu_slice_html}
-      {benchmark_mem_slice_html}
+      {tool_cpu_slice_html}
+      {tool_mem_slice_html}
     </div>
     <div class='row'>
-      {benchmark_latency_slice_html}
+      {tool_latency_slice_html}
     </div>"""
 
         worker_slice_sections += f"""
@@ -402,7 +403,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
       {cpu_slice_html}
       {mem_slice_html}
     </div>
-    {benchmark_slice_html}"""
+    {tool_slice_html}"""
 
     has_any_cpu = any(not r.cpu_df.empty for r in runs)
     has_any_mem = any(not r.memory_df.empty for r in runs)
@@ -441,37 +442,37 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
     </div>
     {resource_usage_html}"""
 
-    has_any_benchmark_latency = any(not r.benchmark_latency_percentiles == [] for r in runs)
-    has_any_benchmark_cpu = any(not r.benchmark_cpu_df.empty for r in runs)
-    has_any_benchmark_mem = any(not r.benchmark_memory_df.empty for r in runs)
+    has_any_tool_latency = any(not r.tool_latency_percentiles == [] for r in runs)
+    has_any_tool_cpu = any(not r.tool_cpu_df.empty for r in runs)
+    has_any_tool_mem = any(not r.tool_memory_df.empty for r in runs)
 
-    benchmark_performance_section = ""
-    if has_any_benchmark_latency or has_any_benchmark_cpu or has_any_benchmark_mem:
-        benchmark_latency_by_workers_html = f"""
+    tool_performance_section = ""
+    if has_any_tool_latency or has_any_tool_cpu or has_any_tool_mem:
+        tool_latency_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='by_workers_benchmark_latency.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_benchmark_latency else ""
+        <img src='by_workers_tool_latency.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_any_tool_latency else ""
 
-        benchmark_cpu_by_workers_html = f"""
+        tool_cpu_by_workers_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='by_workers_benchmark_cpu.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_benchmark_cpu else ""
+        <img src='by_workers_tool_cpu.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_any_tool_cpu else ""
 
-        benchmark_mem_by_workers_html = f"""
+        tool_mem_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='by_workers_benchmark_memory.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_benchmark_mem else ""
+        <img src='by_workers_tool_memory.png' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if has_any_tool_mem else ""
 
-        benchmark_performance_section = f"""
+        tool_performance_section = f"""
     <div class='row'>
-      {benchmark_cpu_by_workers_html}
-      {benchmark_mem_by_workers_html}
+      {tool_cpu_by_workers_html}
+      {tool_mem_by_workers_html}
     </div>
     <div class='row'>
-      {benchmark_latency_by_workers_html}
+      {tool_latency_by_workers_html}
     </div>"""
 
     config_section = ""
@@ -503,7 +504,7 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
   <h1>Workload Report — {workload_name}</h1>
   <p><a href="../index.html">← Back to all workloads</a></p>
   {performance_section}
-  {benchmark_performance_section}
+  {tool_performance_section}
   {worker_slice_sections}
   <h2>Runs</h2>
   <table>
@@ -551,7 +552,7 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
 
             sessions_summaries[session_id] = {
                 'workload_name': workload_name,
-                'benchmark_version': session_info.get('benchmark_version', 'N/A'),
+                'tool_version': session_info.get('tool_version', 'N/A'),
                 'stores': list(all_stores),
                 'env_summary': _get_env_summary(env_info),
             }
@@ -567,7 +568,7 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
         <td>{summary.get('workload_name', 'N/A')}</td>
         <td>{stores}</td>
         <td>{summary.get('env_summary', 'N/A')}</td>
-        <td>{summary.get('benchmark_version', 'N/A')}</td>
+        <td>{summary.get('tool_version', 'N/A')}</td>
       </tr>"""
 
     html = f"""

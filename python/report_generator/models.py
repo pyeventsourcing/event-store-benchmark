@@ -83,9 +83,9 @@ class RunResults(BaseModel):
     latency_percentiles: List[LatencySample] = Field(default_factory=list)
     cpu_samples: List[CpuSample] = Field(default_factory=list)
     memory_samples: List[MemorySample] = Field(default_factory=list)
-    benchmark_latency_percentiles: List[LatencySample] = Field(default_factory=list)
-    benchmark_cpu_samples: List[CpuSample] = Field(default_factory=list)
-    benchmark_memory_samples: List[MemorySample] = Field(default_factory=list)
+    tool_latency_percentiles: List[LatencySample] = Field(default_factory=list)
+    tool_cpu_samples: List[CpuSample] = Field(default_factory=list)
+    tool_memory_samples: List[MemorySample] = Field(default_factory=list)
 
 
 class RunData(BaseModel):

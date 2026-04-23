@@ -10,6 +10,7 @@ from .style import (
     get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
     FONT_SIZE_TITLE, FONT_SIZE_LABEL, FONT_SIZE_TICK, FONT_SIZE_LEGEND
 )
+from ..workloads.performance import PerformanceWorkloadResult
 
 # Apply global matplotlib styles for consistency
 plt.rcParams.update({
@@ -69,9 +70,9 @@ def plot_latency_cdf(run: Any, out_path: str) -> None:
     plt.close()
 
 
-def plot_benchmark_latency_cdf(run: Any, out_path: str) -> None:
+def plot_tool_latency_cdf(run: Any, out_path: str) -> None:
     """Plot benchmark process latency CDF from a single run object."""
-    latencies_ms, percentiles = run.get_benchmark_latency_cdf_data()
+    latencies_ms, percentiles = run.get_tool_latency_cdf_data()
     if latencies_ms is None:
         return
 
@@ -133,9 +134,9 @@ def plot_cpu_timeseries(run: Any, out_path: str) -> None:
     plt.close()
 
 
-def plot_benchmark_cpu_timeseries(run: Any, out_path: str) -> None:
+def plot_tool_cpu_timeseries(run: Any, out_path: str) -> None:
     """Plot benchmark process CPU usage over time for a single run object."""
-    ts = run.get_benchmark_cpu_timeseries()
+    ts = run.get_tool_cpu_timeseries()
     if ts is None:
         return
 
@@ -173,9 +174,9 @@ def plot_memory_timeseries(run: Any, out_path: str) -> None:
     plt.close()
 
 
-def plot_benchmark_memory_timeseries(run: Any, out_path: str) -> None:
+def plot_tool_memory_timeseries(run: Any, out_path: str) -> None:
     """Plot benchmark process memory usage over time for a single run object."""
-    ts = run.get_benchmark_memory_timeseries()
+    ts = run.get_tool_memory_timeseries()
     if ts is None:
         return
 
@@ -228,7 +229,7 @@ def plot_worker_slice_latency_cdf(runs: List[Any], title: str, out_path: str, ge
     plt.close()
 
 
-def plot_worker_slice_benchmark_latency_cdf(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_worker_slice_tool_latency_cdf(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark latency CDF comparing multiple runs."""
     plt.figure()
 
@@ -236,7 +237,7 @@ def plot_worker_slice_benchmark_latency_cdf(runs: List[Any], title: str, out_pat
 
     all_latencies = []
     for run in sorted_runs:
-        latencies_ms, percentiles = run.get_benchmark_latency_cdf_data()
+        latencies_ms, percentiles = run.get_tool_latency_cdf_data()
         if latencies_ms is None:
             continue
 
@@ -317,7 +318,7 @@ def plot_worker_slice_cpu(runs: List[Any], title: str, out_path: str, get_store_
     plt.close()
 
 
-def plot_worker_slice_benchmark_cpu(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_worker_slice_tool_cpu(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark CPU usage over time comparing multiple runs."""
     plt.figure()
 
@@ -325,7 +326,7 @@ def plot_worker_slice_benchmark_cpu(runs: List[Any], title: str, out_path: str, 
 
     all_cpu = []
     for run in sorted_runs:
-        ts = run.get_benchmark_cpu_timeseries()
+        ts = run.get_tool_cpu_timeseries()
         if ts is None:
             continue
 
@@ -375,7 +376,7 @@ def plot_worker_slice_memory(runs: List[Any], title: str, out_path: str, get_sto
     plt.close()
 
 
-def plot_worker_slice_benchmark_memory(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_worker_slice_tool_memory(runs: List[Any], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark memory usage over time comparing multiple runs."""
     plt.figure()
 
@@ -383,7 +384,7 @@ def plot_worker_slice_benchmark_memory(runs: List[Any], title: str, out_path: st
 
     all_mem = []
     for run in sorted_runs:
-        ts = run.get_benchmark_memory_timeseries()
+        ts = run.get_tool_memory_timeseries()
         if ts is None:
             continue
 
@@ -548,24 +549,17 @@ def plot_latency_by_workers(runs: List[Any], out_path: str, get_store_rank: Opti
     plt.close()
 
 
-def plot_benchmark_latency_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadResult], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
-        p50 = run.get_benchmark_latency_percentile(50.0) if hasattr(run, 'get_benchmark_latency_percentile') else 0
-        p99 = run.get_benchmark_latency_percentile(99.0) if hasattr(run, 'get_benchmark_latency_percentile') else 0
-        p999 = run.get_benchmark_latency_percentile(99.9) if hasattr(run, 'get_benchmark_latency_percentile') else 0
+        p50 = run.get_tool_latency_percentile(50.0)
+        p99 = run.get_tool_latency_percentile(99.0)
+        p999 = run.get_tool_latency_percentile(99.9)
         
-        # Fallback if get_benchmark_latency_percentile is not available (though it should be)
-        if p50 == 0 and hasattr(run, 'benchmark_latency_percentiles'):
-            for p in run.benchmark_latency_percentiles:
-                if p["percentile"] == 50.0: p50 = p["latency_ns"] / 1000000.0
-                if p["percentile"] == 99.0: p99 = p["latency_ns"] / 1000000.0
-                if p["percentile"] == 99.9: p999 = p["latency_ns"] / 1000000.0
-
         if p50 > 0 or p99 > 0 or p999 > 0:
             data[run.worker_count][run.adapter] = {"p50": p50, "p99": p99, "p999": p999}
             all_adapters.add(run.adapter)
@@ -689,15 +683,15 @@ def plot_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional
     plt.close()
 
 
-def plot_benchmark_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_tool_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak benchmark CPU usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
-        avg_cpu = run.metrics.get("benchmark_avg_cpu_percent", 0)
-        peak_cpu = run.metrics.get("benchmark_peak_cpu_percent", 0)
+        avg_cpu = run.metrics.get("tool_avg_cpu_percent", 0)
+        peak_cpu = run.metrics.get("tool_peak_cpu_percent", 0)
 
         if avg_cpu > 0 or peak_cpu > 0:
             data[run.worker_count][run.adapter] = {"avg": avg_cpu, "peak": peak_cpu}
@@ -815,15 +809,15 @@ def plot_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: Optio
     plt.close()
 
 
-def plot_benchmark_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_tool_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()
     all_worker_counts = set()
 
     for run in runs:
-        avg_mem = run.metrics.get("benchmark_avg_memory_bytes", 0) / 1024 / 1024
-        peak_mem = run.metrics.get("benchmark_peak_memory_bytes", 0) / 1024 / 1024
+        avg_mem = run.metrics.get("tool_avg_memory_bytes", 0) / 1024 / 1024
+        peak_mem = run.metrics.get("tool_peak_memory_bytes", 0) / 1024 / 1024
 
         if avg_mem > 0 or peak_mem > 0:
             data[run.worker_count][run.adapter] = {"avg": avg_mem, "peak": peak_mem}

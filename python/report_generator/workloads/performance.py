@@ -54,11 +54,11 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         """Processes raw result data into structured formats and summary metrics."""
         self.throughput_df = pd.DataFrame([s.model_dump() for s in self.results.throughput_samples])
         self.latency_percentiles = self.results.latency_percentiles
-        self.benchmark_latency_percentiles = self.results.benchmark_latency_percentiles
+        self.tool_latency_percentiles = self.results.tool_latency_percentiles
         self.cpu_df = pd.DataFrame([s.model_dump() for s in self.results.cpu_samples])
         self.memory_df = pd.DataFrame([s.model_dump() for s in self.results.memory_samples])
-        self.benchmark_cpu_df = pd.DataFrame([s.model_dump() for s in self.results.benchmark_cpu_samples])
-        self.benchmark_memory_df = pd.DataFrame([s.model_dump() for s in self.results.benchmark_memory_samples])
+        self.tool_cpu_df = pd.DataFrame([s.model_dump() for s in self.results.tool_cpu_samples])
+        self.tool_memory_df = pd.DataFrame([s.model_dump() for s in self.results.tool_memory_samples])
 
         # Calculate summary metrics from samples
         if not self.cpu_df.empty:
@@ -69,13 +69,13 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             self.metrics["avg_memory_bytes"] = self.memory_df["memory_bytes"].mean()
             self.metrics["peak_memory_bytes"] = self.memory_df["memory_bytes"].max()
 
-        if not self.benchmark_cpu_df.empty:
-            self.metrics["benchmark_avg_cpu_percent"] = self.benchmark_cpu_df["cpu_percent"].mean()
-            self.metrics["benchmark_peak_cpu_percent"] = self.benchmark_cpu_df["cpu_percent"].max()
+        if not self.tool_cpu_df.empty:
+            self.metrics["tool_avg_cpu_percent"] = self.tool_cpu_df["cpu_percent"].mean()
+            self.metrics["tool_peak_cpu_percent"] = self.tool_cpu_df["cpu_percent"].max()
 
-        if not self.benchmark_memory_df.empty:
-            self.metrics["benchmark_avg_memory_bytes"] = self.benchmark_memory_df["memory_bytes"].mean()
-            self.metrics["benchmark_peak_memory_bytes"] = self.benchmark_memory_df["memory_bytes"].max()
+        if not self.tool_memory_df.empty:
+            self.metrics["tool_avg_memory_bytes"] = self.tool_memory_df["memory_bytes"].mean()
+            self.metrics["tool_peak_memory_bytes"] = self.tool_memory_df["memory_bytes"].max()
 
         # Calculate throughput metrics
         self.duration_s = 0
@@ -108,9 +108,9 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
                 return p.latency_ns / 1000000.0
         return 0.0
 
-    def get_benchmark_latency_percentile(self, percentile: float) -> float:
+    def get_tool_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific benchmark latency percentile (in ms) from the results."""
-        for p in self.benchmark_latency_percentiles:
+        for p in self.tool_latency_percentiles:
             if p.percentile == percentile:
                 return p.latency_ns / 1000000.0
         return 0.0
@@ -123,12 +123,12 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
         latencies_ms = [p.latency_ns / 1000000.0 for p in self.latency_percentiles]
         return latencies_ms, percentiles
 
-    def get_benchmark_latency_cdf_data(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    def get_tool_latency_cdf_data(self) -> Tuple[Optional[List[float]], Optional[List[float]]]:
         """Returns data needed for a benchmark latency CDF plot."""
-        if not self.benchmark_latency_percentiles:
+        if not self.tool_latency_percentiles:
             return None, None
-        percentiles = [p.percentile for p in self.benchmark_latency_percentiles]
-        latencies_ms = [p.latency_ns / 1000000.0 for p in self.benchmark_latency_percentiles]
+        percentiles = [p.percentile for p in self.tool_latency_percentiles]
+        latencies_ms = [p.latency_ns / 1000000.0 for p in self.tool_latency_percentiles]
         return latencies_ms, percentiles
 
     def get_throughput_timeseries(self) -> Optional[Dict[str, Any]]:
@@ -185,11 +185,11 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "cpu_percent": extended_cpu,
         }
 
-    def get_benchmark_cpu_timeseries(self) -> Optional[Dict[str, Any]]:
+    def get_tool_cpu_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns benchmark process CPU usage time series."""
-        if self.benchmark_cpu_df.empty:
+        if self.tool_cpu_df.empty:
             return None
-        df = self.benchmark_cpu_df.sort_values("elapsed_s")
+        df = self.tool_cpu_df.sort_values("elapsed_s")
         
         times = df["elapsed_s"].values
         cpu_percent = df["cpu_percent"].values
@@ -223,14 +223,14 @@ class PerformanceWorkloadResult(BaseWorkloadResult):
             "memory_mb": extended_memory,
         }
 
-    def get_benchmark_memory_timeseries(self) -> Optional[Dict[str, Any]]:
+    def get_tool_memory_timeseries(self) -> Optional[Dict[str, Any]]:
         """Returns benchmark process memory usage time series."""
-        if self.benchmark_memory_df.empty:
+        if self.tool_memory_df.empty:
             return None
-        df = self.benchmark_memory_df.sort_values("elapsed_s")
+        df = self.tool_memory_df.sort_values("elapsed_s")
         
         times = df["elapsed_s"].values
-        raw_mem = df["benchmark_memory_bytes"].values if "benchmark_memory_bytes" in df.columns else df["memory_bytes"].values
+        raw_mem = df["tool_memory_bytes"].values if "tool_memory_bytes" in df.columns else df["memory_bytes"].values
         # Explicitly cast to float array using numpy to satisfy mypy
         memory_bytes = np.array(raw_mem, dtype=float)
         memory_mb = memory_bytes / (1024 * 1024)

@@ -83,9 +83,9 @@ def main() -> None:
                 plotting.plot_throughput_timeseries(run, str(report_dir / "throughput_timeseries.png"))
                 plotting.plot_cpu_timeseries(run, str(report_dir / "cpu_timeseries.png"))
                 plotting.plot_memory_timeseries(run, str(report_dir / "memory_timeseries.png"))
-                plotting.plot_benchmark_latency_cdf(run, str(report_dir / "benchmark_latency_cdf.png"))
-                plotting.plot_benchmark_cpu_timeseries(run, str(report_dir / "benchmark_cpu_timeseries.png"))
-                plotting.plot_benchmark_memory_timeseries(run, str(report_dir / "benchmark_memory_timeseries.png"))
+                plotting.plot_tool_latency_cdf(run, str(report_dir / "tool_latency_cdf.png"))
+                plotting.plot_tool_cpu_timeseries(run, str(report_dir / "tool_cpu_timeseries.png"))
+                plotting.plot_tool_memory_timeseries(run, str(report_dir / "tool_memory_timeseries.png"))
                 html.generate_run_html(report_dir, run)
 
             # --- Generate consolidated workload reports ---
@@ -129,19 +129,19 @@ def main() -> None:
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_memory_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_worker_slice_benchmark_latency_cdf(
+                plotting.plot_worker_slice_tool_latency_cdf(
                     group_runs, f"Benchmark Tool Latency CDF — {wc} {curr_label}",
-                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_latency_cdf.png"),
+                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_latency_cdf.png"),
                     get_store_rank)
 
-                plotting.plot_worker_slice_benchmark_cpu(
+                plotting.plot_worker_slice_tool_cpu(
                     group_runs, f"Benchmark Tool CPU Usage — {wc} {curr_label}",
-                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_cpu_timeseries.png"),
+                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_cpu_timeseries.png"),
                     get_store_rank)
 
-                plotting.plot_worker_slice_benchmark_memory(
+                plotting.plot_worker_slice_tool_memory(
                     group_runs, f"Benchmark Tool Memory Usage — {wc} {curr_label}",
-                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_benchmark_memory_timeseries.png"),
+                    str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_memory_timeseries.png"),
                     get_store_rank)
 
             # Always generate scaling plots
@@ -153,11 +153,11 @@ def main() -> None:
                                       get_store_rank)
             plotting.plot_memory_by_workers(runs, str(workload_dir / "by_workers_memory.png"),
                                          get_store_rank)
-            plotting.plot_benchmark_latency_by_workers(runs, str(workload_dir / "by_workers_benchmark_latency.png"),
+            plotting.plot_tool_latency_by_workers(runs, str(workload_dir / "by_workers_tool_latency.png"),
                                                    get_store_rank)
-            plotting.plot_benchmark_cpu_by_workers(runs, str(workload_dir / "by_workers_benchmark_cpu.png"),
+            plotting.plot_tool_cpu_by_workers(runs, str(workload_dir / "by_workers_tool_cpu.png"),
                                                get_store_rank)
-            plotting.plot_benchmark_memory_by_workers(runs, str(workload_dir / "by_workers_benchmark_memory.png"),
+            plotting.plot_tool_memory_by_workers(runs, str(workload_dir / "by_workers_tool_memory.png"),
                                                   get_store_rank)
 
             # Generate main workload HTML
