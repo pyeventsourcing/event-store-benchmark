@@ -108,7 +108,7 @@ jobs:
           tar -xzf umadb.tar.gz
           chmod +x umadb
           sudo mv umadb /usr/local/bin/umadb
-          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 nohup umadb &
+          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=1000 nohup umadb &
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
