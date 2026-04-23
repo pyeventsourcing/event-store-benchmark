@@ -86,7 +86,7 @@ def plot_tool_latency_cdf(run: Any, out_path: str) -> None:
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
-    plt.title("Benchmark Process Latency CDF")
+    plt.title("Tool Process Latency CDF")
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -146,7 +146,7 @@ def plot_tool_cpu_timeseries(run: Any, out_path: str) -> None:
              drawstyle='steps-pre')
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("CPU Usage (%)")
-    plt.title("Benchmark CPU Usage over Time")
+    plt.title("Tool CPU Usage over Time")
     _set_y_limit_with_margin(plt.gca(), ts["cpu_percent"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -186,7 +186,7 @@ def plot_tool_memory_timeseries(run: Any, out_path: str) -> None:
              drawstyle='steps-pre')
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Memory Usage (MB)")
-    plt.title("Benchmark Memory Usage over Time")
+    plt.title("Tool Memory Usage over Time")
     _set_y_limit_with_margin(plt.gca(), ts["memory_mb"])
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
@@ -573,7 +573,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadResult], out_path
 
     first_run = runs[0] if runs else None
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
-    title = f"Benchmark Tool Latency by {xlabel[:-1]} Count"
+    title = f"Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure()
     x = np.arange(len(worker_counts))
@@ -706,7 +706,7 @@ def plot_tool_cpu_by_workers(runs: List[Any], out_path: str, get_store_rank: Opt
 
     first_run = runs[0] if runs else None
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
-    title = f"Benchmark Tool CPU Usage by {xlabel[:-1]} Count"
+    title = f"Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
     x = np.arange(len(worker_counts))
@@ -832,7 +832,7 @@ def plot_tool_memory_by_workers(runs: List[Any], out_path: str, get_store_rank: 
 
     first_run = runs[0] if runs else None
     xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
-    title = f"Benchmark Tool Memory Usage by {xlabel[:-1]} Count"
+    title = f"Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
     x = np.arange(len(worker_counts))

@@ -130,17 +130,17 @@ def main() -> None:
                     get_store_rank)
 
                 plotting.plot_worker_slice_tool_latency_cdf(
-                    group_runs, f"Benchmark Tool Latency CDF — {wc} {curr_label}",
+                    group_runs, f"Tool Latency CDF — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_latency_cdf.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_tool_cpu(
-                    group_runs, f"Benchmark Tool CPU Usage — {wc} {curr_label}",
+                    group_runs, f"Tool CPU Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_cpu_timeseries.png"),
                     get_store_rank)
 
                 plotting.plot_worker_slice_tool_memory(
-                    group_runs, f"Benchmark Tool Memory Usage — {wc} {curr_label}",
+                    group_runs, f"Tool Memory Usage — {wc} {curr_label}",
                     str(workload_dir / f"worker_slice_{worker_suffix}{wc}_tool_memory_timeseries.png"),
                     get_store_rank)
 
