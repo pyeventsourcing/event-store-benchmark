@@ -101,19 +101,14 @@ jobs:
         if: ${{ matrix.store == 'py-eventsourcing' }}
         run: ./target/release/es-bench create-py-eventsourcing-tables
 
-      - name: Set up Rust
-        if: ${{ matrix.store == 'umadb' }}
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install protobuf compiler
-        if: ${{ matrix.store == 'umadb' }}
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install and start umadb
+      - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
         run: |
-          cargo install umadb@=0.5.3
-          uUMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 nohup madb &
+          curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.5.3/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+          tar -xzf umadb.tar.gz
+          chmod +x umadb
+          sudo mv umadb /usr/local/bin/umadb
+          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 nohup umadb &
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |

@@ -106,18 +106,13 @@ jobs:
           echo "KurrentDB failed to start after 60 seconds"
           exit 1
 
-      - name: Set up Rust
-        if: ${{ matrix.store == 'umadb' }}
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install protobuf compiler
-        if: ${{ matrix.store == 'umadb' }}
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install and start umadb
+      - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
         run: |
-          cargo install umadb@=0.5.3
+          curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.5.3/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+          tar -xzf umadb.tar.gz
+          chmod +x umadb
+          sudo mv umadb /usr/local/bin/umadb
           UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 taskset -c 0,1,2 nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/umadb.pid
           for i in {1..60}; do
