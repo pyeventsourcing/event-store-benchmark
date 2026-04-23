@@ -44,6 +44,36 @@ def _set_y_limit_with_margin(ax: Any, values: Any, margin: float = 0.05) -> None
         ax.set_ylim(bottom=0, top=1)
 
 
+def _filter_cdf_to_percentile(latencies_ms: Sequence[float], percentiles: Sequence[float], cap: float = 99.9) -> tuple[list[float], list[float]]:
+    filtered = [(latency, percentile) for latency, percentile in zip(latencies_ms, percentiles) if percentile <= cap]
+    if not filtered:
+        return [], []
+    filtered_latencies, filtered_percentiles = zip(*filtered)
+    return list(filtered_latencies), list(filtered_percentiles)
+
+
+def _plot_cdf_line_with_end_markers(
+    latencies_ms: Sequence[float],
+    percentiles: Sequence[float],
+    label: str,
+    linewidth: float = 2,
+    color: Optional[str] = None,
+) -> tuple[list[float], list[float]]:
+    filtered_latencies, filtered_percentiles = _filter_cdf_to_percentile(latencies_ms, percentiles)
+    if not filtered_latencies:
+        return [], []
+
+    plt.plot(filtered_latencies, filtered_percentiles, label=label, linewidth=linewidth, color=color)
+    plt.scatter(
+        [filtered_latencies[0], filtered_latencies[-1]],
+        [filtered_percentiles[0], filtered_percentiles[-1]],
+        color=color,
+        s=20,
+        zorder=3,
+    )
+    return filtered_latencies, filtered_percentiles
+
+
 def plot_latency_cdf(run: Any, out_path: str) -> None:
     """Plot latency CDF from a single run object."""
     latencies_ms, percentiles = run.get_latency_cdf_data()
@@ -51,17 +81,21 @@ def plot_latency_cdf(run: Any, out_path: str) -> None:
         return
 
     plt.figure()
-    plt.plot(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
+    filtered_latencies, _ = _plot_cdf_line_with_end_markers(latencies_ms, percentiles, label="append latency CDF", linewidth=2)
+    if not filtered_latencies:
+        plt.close()
+        return
     plt.xscale("log")
     
     # Ensure x-axis min value is half of the lowest plotted value (excluding zero)
-    valid_latencies = [l for l in latencies_ms if l > 0]
+    valid_latencies = [l for l in filtered_latencies if l > 0]
     if valid_latencies:
         plt.xlim(left=min(valid_latencies) / 2)
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
     plt.title("Latency CDF")
+    plt.gca().xaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -77,16 +111,26 @@ def plot_tool_latency_cdf(run: Any, out_path: str) -> None:
         return
 
     plt.figure()
-    plt.plot(latencies_ms, percentiles, label="benchmark latency CDF", linewidth=2, color='#ff7f0e')
+    filtered_latencies, _ = _plot_cdf_line_with_end_markers(
+        latencies_ms,
+        percentiles,
+        label="benchmark latency CDF",
+        linewidth=2,
+        color='#ff7f0e',
+    )
+    if not filtered_latencies:
+        plt.close()
+        return
     plt.xscale("log")
     
-    valid_latencies = [l for l in latencies_ms if l > 0]
+    valid_latencies = [l for l in filtered_latencies if l > 0]
     if valid_latencies:
         plt.xlim(left=min(valid_latencies) / 2)
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
     plt.title("Tool Process Latency CDF")
+    plt.gca().xaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.grid(True, which="both", ls=":", alpha=0.6)
@@ -207,8 +251,8 @@ def plot_worker_slice_latency_cdf(runs: List[Any], title: str, out_path: str, ge
             continue
 
         color = get_adapter_color(run.adapter)
-        plt.plot(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
-        all_latencies.extend([l for l in latencies_ms if l > 0])
+        filtered_latencies, _ = _plot_cdf_line_with_end_markers(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
+        all_latencies.extend([l for l in filtered_latencies if l > 0])
 
     plt.xscale("log")
     
@@ -218,6 +262,7 @@ def plot_worker_slice_latency_cdf(runs: List[Any], title: str, out_path: str, ge
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
+    plt.gca().xaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
@@ -242,8 +287,8 @@ def plot_worker_slice_tool_latency_cdf(runs: List[Any], title: str, out_path: st
             continue
 
         color = get_adapter_color(run.adapter)
-        plt.plot(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
-        all_latencies.extend([l for l in latencies_ms if l > 0])
+        filtered_latencies, _ = _plot_cdf_line_with_end_markers(latencies_ms, percentiles, label=run.adapter, color=color, linewidth=2)
+        all_latencies.extend([l for l in filtered_latencies if l > 0])
 
     plt.xscale("log")
     
@@ -252,6 +297,7 @@ def plot_worker_slice_tool_latency_cdf(runs: List[Any], title: str, out_path: st
 
     plt.xlabel("Latency (ms) [log]")
     plt.ylabel("Percentile (%)")
+    plt.gca().xaxis.set_major_locator(LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     plt.gca().xaxis.set_major_formatter(FuncFormatter(_format_tick))
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
