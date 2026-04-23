@@ -1,6 +1,6 @@
 use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
-use crate::metrics::{LatencyPercentile, LatencyRecorder, ThroughputRecorder, ThroughputSample, WorkloadResults, RecordingStatus, SamplingConfigDecision};
+use crate::metrics::{LatencyRecorder, PerformanceWorkloadResults, ThroughputRecorder, ThroughputSample, RecordingStatus, SamplingConfigDecision};
 use anyhow::Result;
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -254,7 +254,7 @@ impl PerformanceWorkload {
         cancel_token: CancellationToken,
         benchmark_tx: watch::Sender<Option<SamplingConfigDecision>>,
         sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
-    ) -> Result<(WorkloadResults, Vec<ThroughputSample>, Vec<LatencyPercentile>, Vec<LatencyPercentile>)> {
+    ) -> Result<PerformanceWorkloadResults> {
         // Run preparation (prepopulation) if configured
         self.prepare(store).await?;
 
@@ -365,11 +365,8 @@ impl PerformanceWorkload {
         let store_latency_percentiles = store_latencies.to_percentiles();
         let benchmark_latency_percentiles = benchmark_latencies.to_percentiles();
 
-        Ok((
-            WorkloadResults::new(
-                serde_json::to_value(&self.config)?,
-                store.name().to_string(),
-            ),
+        Ok(PerformanceWorkloadResults::new(
+            serde_json::to_value(&self.config)?,
             throughput_samples,
             store_latency_percentiles,
             benchmark_latency_percentiles,

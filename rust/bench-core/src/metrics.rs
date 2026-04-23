@@ -68,90 +68,138 @@ pub struct RunMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkloadResults {
+pub struct PerformanceWorkloadResults {
     pub workload_config: serde_json::Value,
-    pub store_name: String,
+    pub throughput_samples: Vec<ThroughputSample>,
+    pub store_latency_percentiles: Vec<LatencyPercentile>,
+    pub benchmark_latency_percentiles: Vec<LatencyPercentile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WorkloadResults {
+    Performance(PerformanceWorkloadResults),
+    Durability,
+    Consistency,
+    Operational,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunResults {
+    pub run_metrics: RunMetrics,
+    pub workload: WorkloadResults,
+    pub cpu_samples: Option<Vec<CpuSample>>,
+    pub memory_samples: Option<Vec<MemorySample>>,
+    pub benchmark_cpu_samples: Option<Vec<CpuSample>>,
+    pub benchmark_memory_samples: Option<Vec<MemorySample>>,
+    pub logs: String,
 }
 
 impl WorkloadResults {
-    pub(crate) fn print_summary(&self, throughput_samples: &[ThroughputSample]) {
-        if !throughput_samples.is_empty() {
-            let total_count: u64 = throughput_samples.iter().map(|s| s.count).sum();
-            let last_sample = throughput_samples.last().unwrap();
-            let duration = last_sample.elapsed_s;
-            let throughput = (total_count as f64) / duration.max(0.001);
-            println!("Throughput: {:.2} eps", throughput);
+    pub(crate) fn print_summary(&self) {
+        if let WorkloadResults::Performance(results) = self {
+            if !results.throughput_samples.is_empty() {
+                let total_count: u64 = results.throughput_samples.iter().map(|s| s.count).sum();
+                let last_sample = results.throughput_samples.last().unwrap();
+                let duration = last_sample.elapsed_s;
+                let throughput = (total_count as f64) / duration.max(0.001);
+                println!("Throughput: {:.2} eps", throughput);
+            }
         }
     }
 }
 
-impl WorkloadResults {
+impl PerformanceWorkloadResults {
     pub fn new(
         workload_config: serde_json::Value,
-        store_name: String,
+        throughput_samples: Vec<ThroughputSample>,
+        store_latency_percentiles: Vec<LatencyPercentile>,
+        benchmark_latency_percentiles: Vec<LatencyPercentile>,
     ) -> Self {
         Self {
             workload_config,
-            store_name,
+            throughput_samples,
+            store_latency_percentiles,
+            benchmark_latency_percentiles,
         }
     }
+}
 
+impl WorkloadResults {
     pub fn write_to_dir(
         &self,
         path: &Path,
-        throughput_samples: &[ThroughputSample],
-        store_latency_percentiles: &[LatencyPercentile],
-        benchmark_latency_percentiles: &[LatencyPercentile],
-        cpu_samples: Option<&[CpuSample]>,
-        memory_samples: Option<&[MemorySample]>,
-        benchmark_cpu_samples: Option<&[CpuSample]>,
-        benchmark_memory_samples: Option<&[MemorySample]>,
     ) -> Result<()> {
-        fs::write(
-            path.join("config.yaml"),
-            serde_yaml::to_string(&self.workload_config)?,
-        )?;
+        match self {
+            WorkloadResults::Performance(results) => {
+                fs::write(
+                    path.join("config.yaml"),
+                    serde_yaml::to_string(&results.workload_config)?,
+                )?;
 
-        fs::write(
-            path.join("throughput.json"),
-            serde_json::to_string_pretty(throughput_samples)?,
-        )?;
+                fs::write(
+                    path.join("throughput.json"),
+                    serde_json::to_string_pretty(&results.throughput_samples)?,
+                )?;
 
-        fs::write(
-            path.join("latency.json"),
-            serde_json::to_string_pretty(store_latency_percentiles)?,
-        )?;
-        fs::write(
-            path.join("benchmark_latency.json"),
-            serde_json::to_string_pretty(benchmark_latency_percentiles)?,
-        )?;
+                fs::write(
+                    path.join("latency.json"),
+                    serde_json::to_string_pretty(&results.store_latency_percentiles)?,
+                )?;
+                fs::write(
+                    path.join("benchmark_latency.json"),
+                    serde_json::to_string_pretty(&results.benchmark_latency_percentiles)?,
+                )?;
+            }
+            WorkloadResults::Durability => {}
+            WorkloadResults::Consistency => {}
+            WorkloadResults::Operational => {}
+        }
 
-        if let Some(cpu_samples) = cpu_samples {
+        Ok(())
+    }
+}
+
+impl RunResults {
+    pub fn write_to_dir(&self, path: &Path) -> Result<()> {
+        self.workload.write_to_dir(path)?;
+
+        if let Some(cpu_samples) = &self.cpu_samples {
             fs::write(
                 path.join("cpu.json"),
                 serde_json::to_string_pretty(cpu_samples)?,
             )?;
         }
 
-        if let Some(memory_samples) = memory_samples {
+        if let Some(memory_samples) = &self.memory_samples {
             fs::write(
                 path.join("memory.json"),
                 serde_json::to_string_pretty(memory_samples)?,
             )?;
         }
 
-        if let Some(cpu_samples) = benchmark_cpu_samples {
+        if let Some(cpu_samples) = &self.benchmark_cpu_samples {
             fs::write(
                 path.join("benchmark_cpu.json"),
                 serde_json::to_string_pretty(cpu_samples)?,
             )?;
         }
 
-        if let Some(memory_samples) = benchmark_memory_samples {
+        if let Some(memory_samples) = &self.benchmark_memory_samples {
             fs::write(
                 path.join("benchmark_memory.json"),
                 serde_json::to_string_pretty(memory_samples)?,
             )?;
+        }
+
+        if let Some(container) = &self.run_metrics.container {
+            fs::write(
+                path.join("container_stats.json"),
+                serde_json::to_string_pretty(container)?,
+            )?;
+        }
+
+        if !self.logs.is_empty() {
+            fs::write(path.join("logs.txt"), &self.logs)?;
         }
 
         Ok(())
