@@ -252,7 +252,7 @@ impl WorkloadRunner {
                 eprintln!("{}", msg);
                 msg
             });
-            println!("Got container logs: {}", server_logs.clone());
+            // println!("Got container logs: {}", server_logs.clone());
             store.stop().await?;
 
         } else {
