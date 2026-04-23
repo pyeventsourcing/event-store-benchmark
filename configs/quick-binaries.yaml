@@ -3,7 +3,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 3
+  duration_seconds: 30
   samples_per_second: 2
 #  duration_seconds: 120
 #  samples_per_second: 1
