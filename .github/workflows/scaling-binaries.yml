@@ -76,13 +76,14 @@ jobs:
           echo $! > $GITHUB_WORKSPACE/axonserver.pid
           for i in {1..60}; do
             if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
+              cat $GITHUB_WORKSPACE/axonserver.log
               echo "Axon Server is ready after $((i-1)) seconds"
               exit 0
             fi
             sleep 1
           done
-          echo "Axon Server failed to start after 60 seconds"
           cat $GITHUB_WORKSPACE/axonserver.log
+          echo "Axon Server failed to start after 60 seconds"
           exit 1
 
       - name: Install and start kurrentdb
@@ -94,14 +95,15 @@ jobs:
           sudo taskset -c 0,1,2 /usr/bin/kurrentd --insecure > $GITHUB_WORKSPACE/kurrentdb.log 2>&1 &
           for i in {1..60}; do
             if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
+              cat $GITHUB_WORKSPACE/kurrentdb.log
               echo "KurrentDB is ready after $((i-1)) seconds"
               pgrep -x kurrentd > $GITHUB_WORKSPACE/kurrentdb.pid
               exit 0
             fi
             sleep 1
           done
-          echo "KurrentDB failed to start after 60 seconds"
           cat $GITHUB_WORKSPACE/kurrentdb.log
+          echo "KurrentDB failed to start after 60 seconds"
           exit 1
 
       - name: Set up Rust
@@ -120,13 +122,14 @@ jobs:
           echo $! > $GITHUB_WORKSPACE/umadb.pid
           for i in {1..60}; do
             if nc -z 127.0.0.1 50051; then
+              cat $GITHUB_WORKSPACE/umadb.log
               echo "UmaDB is ready after $((i-1)) seconds"
               exit 0
             fi
             sleep 1
           done
-          echo "UmaDB failed to start after 60 seconds"
           cat $GITHUB_WORKSPACE/umadb.log
+          echo "UmaDB failed to start after 60 seconds"
           exit 1
 
       - name: Download benchmark tool
