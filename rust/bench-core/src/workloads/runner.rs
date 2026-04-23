@@ -1,5 +1,6 @@
 use std::time::Instant;
 use anyhow::Result;
+use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use tokio::sync::watch;
@@ -261,6 +262,14 @@ impl WorkloadRunner {
                 }
                 _ => (),
             };
+
+            let log_file = format!("{}.log", store_name);
+            if let Ok(log_content) = fs::read_to_string(&log_file).await {
+                server_logs = log_content;
+                if let Err(e) = fs::write(&log_file, "").await {
+                    eprintln!("Failed to truncate server log file {}: {}", log_file, e);
+                }
+            }
         }
 
 
