@@ -112,8 +112,8 @@ jobs:
       - name: Install and start umadb
         if: ${{ matrix.store == 'umadb' }}
         run: |
-          cargo install umadb
-          umadb &
+          cargo install umadb@=0.5.3
+          uUMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 nohup madb &
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
