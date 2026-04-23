@@ -188,11 +188,6 @@ impl RunResults {
 }
 
 #[derive(Clone, Debug)]
-pub struct LatencyRecorder {
-    pub hist: Histogram<u64>,
-}
-
-#[derive(Clone, Debug)]
 pub struct ThroughputRecorder {
     pub counts: Vec<u64>,
     pub samples_per_second: u64,
@@ -241,10 +236,15 @@ impl ThroughputRecorder {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct LatencyRecorder {
+    pub hist: Histogram<u64>,
+}
+
 impl LatencyRecorder {
     pub fn new() -> Self {
         Self {
-            hist: Histogram::new_with_bounds(1, 60_000_000_000, 3).expect("hist"),
+            hist: Histogram::new_with_bounds(10, 10_000_000_000, 3).expect("hist"),
         }
     }
     pub fn record(&mut self, dur: Duration) {
