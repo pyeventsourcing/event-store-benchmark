@@ -118,6 +118,12 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn logs(&self) -> Result<String> {
+        if self.container.is_some() {
+            println!("Store has a container")
+        } else {
+            println!("Store does not have a container")
+        }
+
         if let Some(container) = &self.container {
             let stdout = container.stdout_to_vec().await?;
             let stderr = container.stderr_to_vec().await?;
@@ -128,7 +134,7 @@ impl StoreManager for UmaDbStoreManager {
             }
             Ok(logs)
         } else {
-            Ok(String::new())
+            Ok("No logs".to_string())
         }
     }
 }

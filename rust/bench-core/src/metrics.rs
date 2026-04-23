@@ -41,30 +41,11 @@ pub struct MemorySample {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProcessMetrics {
-    /// Average CPU usage percentage during run
-    pub avg_cpu_percent: Option<f64>,
-    /// Peak CPU usage percentage during run
-    pub peak_cpu_percent: Option<f64>,
-    /// Average memory usage in bytes during run
-    pub avg_memory_bytes: Option<u64>,
-    /// Peak memory usage in bytes during run
-    pub peak_memory_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContainerStats {
     /// Time to start the container in seconds
     pub startup_time_s: f64,
     /// Image size in bytes
     pub image_size_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct RunMetrics {
-    pub resources: ProcessMetrics,
-    pub benchmark_resources: Option<ProcessMetrics>,
-    pub container: Option<ContainerStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,13 +66,13 @@ pub enum WorkloadResults {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunResults {
-    pub run_metrics: RunMetrics,
-    pub workload: WorkloadResults,
+    pub container_stats: Option<ContainerStats>,
+    pub workload_results: WorkloadResults,
     pub cpu_samples: Option<Vec<CpuSample>>,
     pub memory_samples: Option<Vec<MemorySample>>,
-    pub benchmark_cpu_samples: Option<Vec<CpuSample>>,
-    pub benchmark_memory_samples: Option<Vec<MemorySample>>,
-    pub logs: String,
+    pub tool_cpu_samples: Option<Vec<CpuSample>>,
+    pub tool_memory_samples: Option<Vec<MemorySample>>,
+    pub server_logs: String,
 }
 
 impl WorkloadResults {
@@ -161,7 +142,7 @@ impl WorkloadResults {
 
 impl RunResults {
     pub fn write_to_dir(&self, path: &Path) -> Result<()> {
-        self.workload.write_to_dir(path)?;
+        self.workload_results.write_to_dir(path)?;
 
         if let Some(cpu_samples) = &self.cpu_samples {
             fs::write(
@@ -177,29 +158,29 @@ impl RunResults {
             )?;
         }
 
-        if let Some(cpu_samples) = &self.benchmark_cpu_samples {
+        if let Some(cpu_samples) = &self.tool_cpu_samples {
             fs::write(
                 path.join("benchmark_cpu.json"),
                 serde_json::to_string_pretty(cpu_samples)?,
             )?;
         }
 
-        if let Some(memory_samples) = &self.benchmark_memory_samples {
+        if let Some(memory_samples) = &self.tool_memory_samples {
             fs::write(
                 path.join("benchmark_memory.json"),
                 serde_json::to_string_pretty(memory_samples)?,
             )?;
         }
 
-        if let Some(container) = &self.run_metrics.container {
+        if let Some(container) = &self.container_stats {
             fs::write(
                 path.join("container_stats.json"),
                 serde_json::to_string_pretty(container)?,
             )?;
         }
 
-        if !self.logs.is_empty() {
-            fs::write(path.join("logs.txt"), &self.logs)?;
+        if !self.server_logs.is_empty() {
+            fs::write(path.join("logs.txt"), &self.server_logs)?;
         }
 
         Ok(())

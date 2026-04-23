@@ -6,7 +6,7 @@ use tokio::sync::watch;
 
 use crate::adapter::StoreManager;
 use crate::container_stats::ContainerMonitor;
-use crate::metrics::{ContainerStats, ProcessMetrics, RunMetrics, RunResults, SamplingConfigDecision, WorkloadResults};
+use crate::metrics::{ContainerStats, CpuSample, MemorySample, RunResults, SamplingConfigDecision, WorkloadResults};
 use crate::process_stats::ProcessMonitor;
 use super::performance::{PerformanceConfig, PerformanceWorkload};
 use super::durability::DurabilityWorkload;
@@ -106,24 +106,22 @@ impl WorkloadRunner {
             println!("Starting {} container...", store.name());
             let setup_start = Instant::now();
 
-            let start_res = tokio::select! {
-            res = store.start() => res,
-            _ = cancel_token.cancelled() => {
-                println!("Interrupted while starting container.");
-                store.stop().await.ok();
-                anyhow::bail!("Interrupted");
-            }
-        };
-
-            if let Err(e) = start_res {
+            if let Err(e) = tokio::select! {
+                start_res = store.start() => start_res,
+                _ = cancel_token.cancelled() => {
+                    println!("Interrupted while starting container.");
+                    store.stop().await.ok();
+                    anyhow::bail!("Interrupted");
+                }
+            } {
                 eprintln!("Failed to start {} container: {}", store.name(), e);
                 match store.logs().await {
                     Ok(logs) => {
+                        eprintln!("--- {} container logs ---", store.name());
                         if !logs.is_empty() {
-                            eprintln!("--- {} container logs ---", store.name());
                             eprintln!("{}", logs);
-                            eprintln!("--- end of logs ---");
                         }
+                        eprintln!("--- end of logs ---");
                     }
                     Err(log_err) => {
                         eprintln!("Failed to fetch container logs: {}", log_err);
@@ -175,9 +173,9 @@ impl WorkloadRunner {
         // Prepare synchronization primitives
         let (tx, rx) = watch::channel(None::<SamplingConfigDecision>);
 
-        // Start benchmark process monitor
-        let mut benchmark_monitor = ProcessMonitor::new(std::process::id());
-        benchmark_monitor.start(rx.clone()).await;
+        // Start tool process monitor
+        let mut tool_monitor = ProcessMonitor::new(std::process::id());
+        tool_monitor.start(rx.clone()).await;
 
         // Start monitor if it exists
         if let Some(m) = &mut monitor {
@@ -225,82 +223,57 @@ impl WorkloadRunner {
 
         workload_results.print_summary();
 
-        // Get container logs before stopping
-        let (run_metrics, cpu_samples, memory_samples, b_cpu_samples, b_memory_samples, logs) = if store.use_docker() {
-            let (resources, cpu_samples, memory_samples, container) = match monitor {
+        let mut container_stats: Option<ContainerStats> = None;
+        let mut cpu_samples: Option<Vec<CpuSample>> = None;
+        let mut memory_samples: Option<Vec<MemorySample>> = None;
+        let mut server_logs = "".to_string();
+
+        let (tool_cpu_samples, tool_memory_samples) = tool_monitor.stop().await;
+
+        if store.use_docker() {
+            match monitor {
                 Some(Monitor::Container(m)) => {
-                    let image_size_bytes = m.get_image_size().await.ok();
-                    let (resources, cpu, mem) = m.stop().await;
-                    let container = Some(ContainerStats {
+                    container_stats = Some(ContainerStats {
                         startup_time_s: startup_time_s.unwrap_or(0.0),
-                        image_size_bytes,
+                        image_size_bytes: m.get_image_size().await.ok(),
                     });
-                    (resources, Some(cpu), Some(mem), container)
+                    (cpu_samples, memory_samples) = m.stop().await;
                 }
-                _ => (ProcessMetrics::default(), None, None, Some(ContainerStats {
-                    startup_time_s: startup_time_s.unwrap_or(0.0),
-                    image_size_bytes: None,
-                })),
+                _ => {
+                    container_stats = Some(ContainerStats {
+                        startup_time_s: startup_time_s.unwrap_or(0.0),
+                        image_size_bytes: None,
+                    });
+                }
             };
-
-            let (b_resources, b_cpu, b_mem) = benchmark_monitor.stop().await;
-
-            // Ensure container is stopped on error/interruption
-            store.stop().await?;
-            let logs = store.logs().await.unwrap_or_else(|e| {
+            server_logs = store.logs().await.unwrap_or_else(|e| {
                 let msg = format!("Failed to capture container logs: {}", e);
                 eprintln!("{}", msg);
                 msg
             });
+            println!("Got container logs: {}", server_logs.clone());
+            store.stop().await?;
 
-            (RunMetrics { resources, benchmark_resources: Some(b_resources), container }, cpu_samples, memory_samples, Some(b_cpu), Some(b_mem), logs)
         } else {
-            let (resources, cpu_samples, memory_samples) = match monitor {
+            match monitor {
                 Some(Monitor::Process(m)) => {
-                    let (res, cpu, mem) = m.stop().await;
-                    (res, Some(cpu), Some(mem))
+                    (cpu_samples, memory_samples) = m.stop().await;
                 }
-                _ => (ProcessMetrics::default(), None, None),
+                _ => (),
             };
+        }
 
-            let (b_resources, b_cpu, b_mem) = benchmark_monitor.stop().await;
-
-            (RunMetrics { resources, benchmark_resources: Some(b_resources), container: None }, cpu_samples, memory_samples, Some(b_cpu), Some(b_mem), String::new())
-        };
 
         Ok(RunResults {
-            run_metrics,
-            workload: workload_results,
+            container_stats,
+            workload_results,
             cpu_samples,
             memory_samples,
-            benchmark_cpu_samples: b_cpu_samples,
-            benchmark_memory_samples: b_memory_samples,
-            logs,
+            tool_cpu_samples,
+            tool_memory_samples,
+            server_logs,
         })
     }
-
-    // pub async fn execute(
-    //     &self,
-    //     store: &dyn StoreManager,
-    //     cancel_token: CancellationToken,
-    //     tx: watch::Sender<Option<SamplingConfigDecision>>,
-    //     rx: watch::Receiver<Option<SamplingConfigDecision>>,
-    // ) -> Result<WorkloadResults> {
-    //     match self {
-    //         WorkloadRun::Performance(w) => Ok(WorkloadResults::Performance(
-    //             w.execute(store, cancel_token, tx, rx).await?,
-    //         )),
-    //         WorkloadRun::Durability(w) => {
-    //             anyhow::bail!("Durability workloads not yet implemented: {}", w.name());
-    //         }
-    //         WorkloadRun::Consistency(w) => {
-    //             anyhow::bail!("Consistency workloads not yet implemented: {}", w.name());
-    //         }
-    //         WorkloadRun::Operational(w) => {
-    //             anyhow::bail!("Operational workloads not yet implemented: {}", w.name());
-    //         }
-    //     }
-    // }
 
     pub fn performance_config(&self) -> Result<PerformanceConfig> {
         match self {

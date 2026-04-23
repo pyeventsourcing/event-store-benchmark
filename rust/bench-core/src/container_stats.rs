@@ -5,7 +5,7 @@ use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use crate::metrics::{ProcessMetrics, CpuSample, MemorySample, SamplingConfigDecision};
+use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
 
 pub struct ContainerMonitor {
     docker: Docker,
@@ -119,7 +119,7 @@ impl ContainerMonitor {
         self.monitor_task = Some(monitor_task);
     }
 
-    pub async fn stop(mut self) -> (ProcessMetrics, Vec<CpuSample>, Vec<MemorySample>) {
+    pub async fn stop(mut self) -> (Option<Vec<CpuSample>>, Option<Vec<MemorySample>>) {
         if let Some(stop_tx) = self.stop_tx.take() {
             let _ = stop_tx.send(());
         }
@@ -129,32 +129,7 @@ impl ContainerMonitor {
 
         let guard = self.stats.lock().await;
 
-        let avg_cpu = if !guard.cpu_samples.is_empty() {
-            Some(guard.cpu_samples.iter().map(|s| s.cpu_percent).sum::<f64>() / guard.cpu_samples.len() as f64)
-        } else {
-            None
-        };
-
-        let peak_cpu = guard.cpu_samples.iter().map(|s| s.cpu_percent).fold(None, |acc: Option<f64>, x| {
-            Some(acc.map_or(x, |curr| if x > curr { x } else { curr }))
-        });
-
-        let avg_mem = if !guard.memory_samples.is_empty() {
-            Some(guard.memory_samples.iter().map(|s| s.memory_bytes).sum::<u64>() / guard.memory_samples.len() as u64)
-        } else {
-            None
-        };
-
-        let peak_mem = guard.memory_samples.iter().map(|s| s.memory_bytes).max();
-
-        let metrics = ProcessMetrics {
-            avg_cpu_percent: avg_cpu,
-            peak_cpu_percent: peak_cpu,
-            avg_memory_bytes: avg_mem,
-            peak_memory_bytes: peak_mem,
-        };
-
-        (metrics, guard.cpu_samples.clone(), guard.memory_samples.clone())
+        (Some(guard.cpu_samples.clone()), Some(guard.memory_samples.clone()))
     }
 
     pub async fn get_image_size(&self) -> Result<u64> {
