@@ -1,0 +1,189 @@
+name: Write Flood Binaries
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      session_id: ${{ steps.session.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate Session ID
+        id: session
+        run: echo "session_id=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Upload benchmark tool
+        uses: actions/upload-artifact@v6
+        with:
+          name: es-bench
+          path: target/release/es-bench
+          retention-days: 1
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v6
+        with:
+          name: configs
+          path: configs/
+          retention-days: 1
+
+      - name: Upload Makefile
+        uses: actions/upload-artifact@v6
+        with:
+          name: Makefile
+          path: Makefile
+          retention-days: 1
+
+  run-writeflood:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        store: [umadb, kurrentdb, axonserver]
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+      ESB_GIT_VERSION: ${{ github.sha }}
+    steps:
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Install and start axonserver
+        if: ${{ matrix.store == 'axonserver' }}
+        run: |
+          curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip
+          unzip axonserver.zip
+          cd AxonServer-2025.2.7
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true taskset -c 0,1,2 nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/axonserver.pid
+          for i in {1..60}; do
+            if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
+              cat $GITHUB_WORKSPACE/axonserver.log
+              echo "Axon Server is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/axonserver.log
+          echo "Axon Server failed to start after 60 seconds"
+          exit 1
+
+      - name: Install and start kurrentdb
+        if: ${{ matrix.store == 'kurrentdb' }}
+        run: |
+          curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash
+          sudo apt-get install kurrentdb=26.0.2
+          sudo cat /etc/kurrentdb/kurrentdb.conf
+          sudo taskset -c 0,1,2 /usr/bin/kurrentd --insecure > $GITHUB_WORKSPACE/kurrentdb.log 2>&1 &
+          for i in {1..60}; do
+            if curl -si http://127.0.0.1:2113/health/live | grep -q 'HTTP/1.1 204'; then
+              cat $GITHUB_WORKSPACE/kurrentdb.log
+              echo "KurrentDB is ready after $((i-1)) seconds"
+              pgrep -x kurrentd > $GITHUB_WORKSPACE/kurrentdb.pid
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/kurrentdb.log
+          echo "KurrentDB failed to start after 60 seconds"
+          exit 1
+
+      - name: Install and start UmaDB
+        if: ${{ matrix.store == 'umadb' }}
+        run: |
+          curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.5.3/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+          tar -xzf umadb.tar.gz
+          chmod +x umadb
+          sudo mv umadb /usr/local/bin/umadb
+          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=1000 taskset -c 0,1,2 nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/umadb.pid
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 50051; then
+              cat $GITHUB_WORKSPACE/umadb.log
+              echo "UmaDB is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/umadb.log
+          echo "UmaDB failed to start after 60 seconds"
+          exit 1
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Run writeflood workload  # sudo otherwise Axon Server files can't be deleted
+        run: |
+          taskset -c 3 make run-writeflood
+
+      - name: Upload writeflood results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-writeflood-${{ matrix.store }}
+          path: |
+            results/raw/
+          retention-days: 1
+
+  report:
+    needs: [setup, run-writeflood]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python/requirements.txt'
+
+      - name: Create Python virtual environment for reporting
+        run: make venv
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: results/raw/
+          merge-multiple: true
+
+      - name: Generate report
+        run: make report
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: results/published

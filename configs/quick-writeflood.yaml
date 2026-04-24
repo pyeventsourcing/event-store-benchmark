@@ -1,0 +1,17 @@
+performance:
+  name: scaling-writeflood
+  mode: writeflood
+#  duration_seconds: 120
+  duration_seconds: 10
+  concurrency:
+    writers: [1]
+#    writers: [1, 2, 4, 8, 16, 32]
+  operations:
+    write:
+      event_size_bytes: 256
+      in_flight_limit: 2000
+  stores:
+    - umadb
+#    - kurrentdb
+#    - axonserver
+#    - eventsourcingdb

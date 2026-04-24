@@ -2,6 +2,7 @@ use crate::adapter::{EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
 use crate::metrics::{LatencyRecorder, PerformanceWorkloadResults, ThroughputRecorder, ThroughputSample, RecordingStatus, SamplingConfigDecision};
 use anyhow::Result;
+use futures::stream::{FuturesUnordered, StreamExt};
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -83,6 +84,7 @@ impl PerformanceConfig {
 #[serde(rename_all = "lowercase")]
 pub enum PerformanceMode {
     Write,
+    Writeflood,
     Read,
 }
 
@@ -186,6 +188,12 @@ pub struct OperationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WriteOpConfig {
     pub event_size_bytes: usize,
+    #[serde(default = "default_in_flight_limit")]
+    pub in_flight_limit: usize,
+}
+
+fn default_in_flight_limit() -> usize {
+    2000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -218,6 +226,23 @@ impl PerformanceWorkload {
                 if config.concurrency.readers.len() != 1 {
                     return Err(anyhow::anyhow!(
                         "Write mode requires exactly one readers value"
+                    ));
+                }
+            }
+            PerformanceMode::Writeflood => {
+                if config.concurrency.writers.first() == 0 {
+                    return Err(anyhow::anyhow!(
+                        "Writeflood mode requires writers > 0 in concurrency config"
+                    ));
+                }
+                if config.concurrency.readers.len() != 1 {
+                    return Err(anyhow::anyhow!(
+                        "Writeflood mode requires exactly one readers value"
+                    ));
+                }
+                if config.operations.write.in_flight_limit == 0 {
+                    return Err(anyhow::anyhow!(
+                        "Writeflood mode requires write.in_flight_limit > 0"
                     ));
                 }
             }
@@ -288,16 +313,28 @@ impl PerformanceWorkload {
 
         // Spawn writer tasks
         for adapter in writer_adapters.into_iter() {
-            let activate_metrics = matches!(self.config.mode, PerformanceMode::Write);
-            Self::spawn_writer_task(
-                &mut worker_tasks,
-                adapter,
-                self.config.operations.write.clone(),
-                cancel_token.clone(),
-                activate_metrics,
-                ready_barrier.clone(),
-                sampling_config_rx.clone(),
-            );
+            let activate_metrics = matches!(self.config.mode, PerformanceMode::Write | PerformanceMode::Writeflood);
+            match self.config.mode {
+                PerformanceMode::Write => Self::spawn_writer_task(
+                    &mut worker_tasks,
+                    adapter,
+                    self.config.operations.write.clone(),
+                    cancel_token.clone(),
+                    activate_metrics,
+                    ready_barrier.clone(),
+                    sampling_config_rx.clone(),
+                ),
+                PerformanceMode::Writeflood => Self::spawn_writer_flood_task(
+                    &mut worker_tasks,
+                    adapter,
+                    self.config.operations.write.clone(),
+                    cancel_token.clone(),
+                    activate_metrics,
+                    ready_barrier.clone(),
+                    sampling_config_rx.clone(),
+                ),
+                PerformanceMode::Read => {}
+            }
         }
 
         // Spawn reader tasks
@@ -650,5 +687,177 @@ impl PerformanceWorkload {
             }
         });
     }
+
+    fn spawn_writer_flood_task(
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        adapter: Arc<dyn EventStoreAdapter>,
+        write_cfg: WriteOpConfig,
+        cancel_token: CancellationToken,
+        activate_metrics: bool,
+        ready_barrier: Arc<Barrier>,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+    ) {
+        worker_tasks.spawn(async move {
+            ready_barrier.wait().await;
+
+            loop {
+                if sampling_config_rx.borrow().is_some() {
+                    break;
+                }
+                if sampling_config_rx.changed().await.is_err() {
+                    return None;
+                }
+            }
+
+            let msg = sampling_config_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+            let benchmark_end = start_time + Duration::from_secs(duration_seconds + 1);
+
+            let size = write_cfg.event_size_bytes;
+            let in_flight_limit = write_cfg.in_flight_limit;
+            let payload: Arc<[u8]> = Arc::from(vec![0u8; size]);
+
+            let num_intervals = (duration_seconds * samples_per_second) as usize;
+            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut store_latencies = LatencyRecorder::new_for_store_latencies();
+            let tool_latencies = LatencyRecorder::new_for_tool_latencies();
+
+            let mut stream_name = format!("stream-{}-", Uuid::new_v4());
+            let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
+            let stream_len = 10;
+            let mut stream_position = 0;
+
+            let event_type_prefix = "test";
+            let mut event_types: Vec<Arc<str>> = Vec::with_capacity(stream_len);
+            for i in 0..stream_len {
+                event_types.push(Arc::from(format!("{}-{}", event_type_prefix, i).as_str()));
+            }
+
+            let mut pending = FuturesUnordered::new();
+
+            let mut handle_completion = |completed_at: Instant, operation_duration: Option<Duration>| {
+                if let Some(duration) = operation_duration {
+                    if activate_metrics {
+                        let status = throughput_recorder.record(completed_at, 1);
+                        if status == RecordingStatus::During {
+                            store_latencies.record(duration);
+                        }
+                    }
+                }
+            };
+
+            while !cancel_token.is_cancelled() && Instant::now() < benchmark_end {
+                if pending.len() >= in_flight_limit {
+                    if let Some((completed_at, operation_duration)) = pending.next().await {
+                        handle_completion(completed_at, operation_duration);
+                    }
+                    continue;
+                }
+
+                let evt = EventData {
+                    payload: payload.clone(),
+                    event_type: event_types[stream_position].clone(),
+                    tags: tags.clone(),
+                };
+
+                let adapter_clone = adapter.clone();
+                pending.push(async move {
+                    let operation_started = Instant::now();
+                    match adapter_clone.append(&[evt]).await {
+                        Ok(_) => {
+                            let completed_at = Instant::now();
+                            (completed_at, Some(completed_at - operation_started))
+                        }
+                        Err(e) => {
+                            eprintln!("Operation failed: {}", e);
+                            sleep(Duration::from_secs(1)).await;
+                            (Instant::now(), None)
+                        }
+                    }
+                });
+
+                stream_position += 1;
+                if stream_position == stream_len {
+                    stream_name = format!("stream-{}-", Uuid::new_v4());
+                    tags = Arc::from([Arc::from(stream_name.as_str())]);
+                    stream_position = 0;
+                }
+
+                while let std::task::Poll::Ready(Some((completed_at, operation_duration))) = futures::poll!(pending.next()) {
+                    handle_completion(completed_at, operation_duration);
+                }
+            }
+
+            while let Some((completed_at, operation_duration)) = pending.next().await {
+                handle_completion(completed_at, operation_duration);
+            }
+
+            if activate_metrics {
+                Some((store_latencies, throughput_recorder, tool_latencies))
+            } else {
+                None
+            }
+        });
+    }
     
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_writeflood_mode_and_default_in_flight_limit() {
+        let yaml = r#"
+performance:
+  name: test
+  mode: writeflood
+  duration_seconds: 1
+  concurrency:
+    writers: 1
+    readers: 0
+  operations:
+    write:
+      event_size_bytes: 256
+  stores: umadb
+"#;
+
+        let cfg: WorkloadConfig = serde_yaml::from_str(yaml).unwrap();
+        let perf = cfg.performance.unwrap();
+
+        assert!(matches!(perf.mode, PerformanceMode::Writeflood));
+        assert_eq!(perf.operations.write.in_flight_limit, default_in_flight_limit());
+    }
+
+    #[test]
+    fn validates_writeflood_requires_positive_in_flight_limit() {
+        let config = PerformanceConfig {
+            name: "writeflood-test".to_string(),
+            mode: PerformanceMode::Writeflood,
+            warmup_seconds: 0,
+            duration_seconds: 1,
+            samples_per_second: 1,
+            concurrency: ConcurrencyConfig {
+                writers: ConcurrencyValue::Single(1),
+                readers: ConcurrencyValue::Single(0),
+            },
+            operations: OperationConfig {
+                write: WriteOpConfig {
+                    event_size_bytes: 256,
+                    in_flight_limit: 0,
+                },
+                read: ReadOpConfig::default(),
+            },
+            use_docker: false,
+            docker_memory_limit_mb: None,
+            docker_platform: None,
+            setup: SetupConfig::default(),
+            stores: StoreValue::Single("umadb".to_string()),
+        };
+
+        let err = PerformanceWorkload::from_config(config, 42).err().unwrap().to_string();
+        assert!(err.contains("in_flight_limit"));
+    }
 }

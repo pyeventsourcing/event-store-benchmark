@@ -15,6 +15,7 @@ endif
 .PHONY: run-smoke-test
 .PHONY: run-scaling-in-docker
 .PHONY: run-scaling-binaries
+.PHONY: run-writeflood
 .PHONY: run-scaling-postgres
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
@@ -66,6 +67,10 @@ run-scaling-in-docker:
 # Run the scaling-binaries workload
 run-scaling-binaries:
 	@make ./configs/scaling-binaries.yaml
+
+# Run the writeflood workload
+run-writeflood:
+	@make ./configs/writeflood.yaml
 
 # Run the scaling-postgres workload
 run-scaling-postgres:

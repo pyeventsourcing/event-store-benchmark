@@ -228,6 +228,7 @@ The benchmark supports four workload categories:
 #### 1. Performance Workloads
 Generic event store usage patterns with configurable concurrency and operations:
 - **Write mode**: Concurrent writers appending events
+- **Writeflood mode**: Concurrent writers with bounded in-flight append pipelining (`write.in_flight_limit` per writer)
 - **Read mode**: Concurrent readers consuming events
 
 #### 2. Durability Workloads *(stub)*
@@ -283,6 +284,27 @@ performance:
   operations:
     write:
       event_size_bytes: 256
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+    - eventsourcingdb
+```
+
+### Example: Write Flood Workload
+
+```yaml
+# configs/scaling/writeflood.yaml
+performance:
+  name: scaling-writeflood
+  mode: writeflood
+  duration_seconds: 120
+  concurrency:
+    writers: [1, 2, 4, 8, 16, 32]
+  operations:
+    write:
+      event_size_bytes: 256
+      in_flight_limit: 2000
   stores:
     - umadb
     - kurrentdb
