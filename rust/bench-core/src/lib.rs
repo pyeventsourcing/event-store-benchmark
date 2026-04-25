@@ -11,7 +11,7 @@ pub use adapter::{EventStoreAdapter, StoreDataDir, StoreManager, StoreManagerFac
 pub use retry::wait_for_ready;
 pub use common::{is_image_pulled, mark_image_pulled, SetupConfig};
 pub use metrics::{ThroughputSample};
-pub use metrics::{SessionMetadata, EnvironmentInfo, RunManifest};
+pub use metrics::{SessionInfo, EnvironmentInfo, RunManifest};
 pub use metrics::{OsInfo, CpuInfo, MemoryInfo, DiskInfo, ContainerRuntimeInfo};
 pub use system_info::{collect_environment_info, get_git_commit_hash};
 pub use workloads::{WorkloadRunner, PerformanceWorkload, PerformanceConfig};

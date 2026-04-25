@@ -10,7 +10,7 @@ from .style import (
     get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
     FONT_SIZE_TITLE, FONT_SIZE_LABEL, FONT_SIZE_TICK, FONT_SIZE_LEGEND
 )
-from ..workloads.performance import PerformanceWorkloadResult
+from ..workloads.performance import PerformanceWorkloadRun
 
 # Apply global matplotlib styles for consistency
 plt.rcParams.update({
@@ -595,7 +595,7 @@ def plot_latency_by_workers(runs: List[Any], out_path: str, get_store_rank: Opti
     plt.close()
 
 
-def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadResult], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot benchmark p50, p99, and p99.9 latency vs worker count using grouped bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
     all_adapters = set()

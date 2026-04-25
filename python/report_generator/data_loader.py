@@ -1,26 +1,14 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NamedTuple
 
 import yaml
 
-from .models import EnvironmentInfo, RunData, RunResults
-from .workloads.performance import PerformanceWorkloadResult
+from .models import EnvironmentInfo, RawPerformanceWorkloadRunResults, PerformanceWorkflowSamples, SessionInfo
+from .workloads.performance import PerformanceWorkloadRun
 
 
-def _load_environment_info(env_data: Dict[str, Any]) -> Optional[EnvironmentInfo]:
-    """Loads environment info from a dictionary into the EnvironmentInfo pydantic model."""
-    if not env_data:
-        return None
-
-    try:
-        return EnvironmentInfo.model_validate(env_data)
-    except Exception as e:
-        print(f"Warning: Failed to parse environment info: {e}")
-        return None
-
-
-def load_raw_run_data(run_dir: Path) -> RunData | None:
+def load_raw_performance_workload_run_results(run_dir: Path) -> RawPerformanceWorkloadRunResults | None:
     """Loads all raw data files for a single run into a RunData model."""
     config_file = run_dir / "config.yaml"
     throughput_file = run_dir / "throughput.json"
@@ -84,9 +72,9 @@ def load_raw_run_data(run_dir: Path) -> RunData | None:
             with open(logs_file, "r", errors="replace") as f:
                 container_logs = f.read()
 
-        return RunData(
+        return RawPerformanceWorkloadRunResults(
             config=config_data,
-            results=RunResults.model_validate(results_data),
+            results=PerformanceWorkflowSamples.model_validate(results_data),
             metrics=metrics_data,
             logs=container_logs,
         )
@@ -95,64 +83,53 @@ def load_raw_run_data(run_dir: Path) -> RunData | None:
         return None
 
 
-def load_session_workloads(session_dir: Path) -> Dict[str, Any]:
+def load_session_workloads(raw_session_dir: Path) -> Dict[str, Any]:
     """
     Loads all runs from a session, groups them by workload, and returns
     a dictionary of workload-specific result objects.
     """
-    session_config_file = session_dir / "config.yaml"
+    session_config_file = raw_session_dir / "config.yaml"
     if not session_config_file.exists():
-        print(f"Warning: No config.yaml found in session {session_dir}")
+        print(f"Warning: No config.yaml found in session {raw_session_dir}")
         return {}
 
     workloads = {}
     with open(session_config_file, "r") as f:
         session_configs = list(yaml.safe_load_all(f))
 
-    for workload_config_doc in session_configs:
-        if 'performance' in workload_config_doc:
-            perf_cfg = workload_config_doc['performance']
-            workload_name = perf_cfg.get('name')
+    for workload_config in session_configs:
+        if 'performance' in workload_config:
+            performance_workload_config = workload_config['performance']
+            workload_name = performance_workload_config.get('name')
             if not workload_name:
                 continue
 
-            workload_dir = session_dir / workload_name
-            runs = []
-            if workload_dir.exists() and workload_dir.is_dir():
-                for run_dir in workload_dir.iterdir():
-                    if run_dir.is_dir():
-                        raw_data = load_raw_run_data(run_dir)
-                        if raw_data:
-                            runs.append(PerformanceWorkloadResult(raw_data, run_dir))
-            workloads[workload_name] = {"config": perf_cfg, "runs": runs}
+            raw_workload_dir = raw_session_dir / workload_name
+            runs: list[PerformanceWorkloadRun] = []
+            if raw_workload_dir.exists() and raw_workload_dir.is_dir():
+                for raw_run_dir in raw_workload_dir.iterdir():
+                    if raw_run_dir.is_dir():
+                        raw_run_results = load_raw_performance_workload_run_results(raw_run_dir)
+                        if raw_run_results is not None:
+                            runs.append(PerformanceWorkloadRun(raw_run_results, raw_run_dir))
+            workloads[workload_name] = {"config": performance_workload_config, "runs": runs}
 
     return workloads
 
+class SessionMetadata(NamedTuple):
+    session_info: SessionInfo
+    environment_info: EnvironmentInfo | None
+    session_configs: list[Any]
 
-def load_session_metadata(session_dir: Path) -> Dict[str, Any]:
+def load_session_metadata(session_dir: Path) -> SessionMetadata:
     """Loads session.json, environment.json, and config.yaml for a given session."""
-    session_info = {}
-    env_info_obj = None
     session_configs = []
 
     # Load session.json
-    try:
-        with open(session_dir / "session.json", "r") as f:
-            session_info = json.load(f)
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        print(f"Warning: Could not load session.json for {session_dir.name}: {e}")
+    session_info = load_session_info(session_dir)
 
     # Load environment.json
-    try:
-        with open(session_dir / "environment.json", "r") as f:
-            raw_env_info = json.load(f)
-            env_info_obj = _load_environment_info(raw_env_info)
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        print(f"Warning: Could not load environment.json for {session_dir.name}: {e}")
+    environment_info = load_environment_info(session_dir)
 
     # Load config.yaml
     try:
@@ -163,8 +140,34 @@ def load_session_metadata(session_dir: Path) -> Dict[str, Any]:
     except Exception as e:
         print(f"Warning: Could not load config.yaml for {session_dir.name}: {e}")
 
-    return {
-        "session_info": session_info,
-        "env_info": env_info_obj,
-        "session_configs": session_configs,
-    }
+    return SessionMetadata(session_info, environment_info, session_configs)
+
+
+def load_environment_info(session_dir: Path) -> EnvironmentInfo | None:
+    environment_info_path = session_dir / "environment.json"
+    try:
+        with open(environment_info_path, "r") as f:
+            try:
+                return EnvironmentInfo.model_validate(json.load(f))
+            except Exception as e:
+                print(f"Warning: Failed to parse environment info from {environment_info_path}: {e}")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"Warning: Failed to open {environment_info_path}: {e}")
+    return None
+
+
+def load_session_info(session_dir: Path) -> SessionInfo | None:
+    file_path = session_dir / "session.json"
+    try:
+        with open(file_path, "r") as f:
+            try:
+                return SessionInfo.model_validate(json.load(f))
+            except Exception as e:
+                print(f"Warning: Failed to parse session metadata from {file_path}: {e}")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"Warning: Failed to open {file_path}: {e}")
+    return None

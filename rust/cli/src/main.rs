@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bench_core::{collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionMetadata, StoreManagerFactory, WorkloadRunner};
+use bench_core::{collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionInfo, StoreManagerFactory, WorkloadRunner};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use rand::random;
@@ -223,7 +223,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
     // 2. Write session metadata and environment info (once per session)
     let tool_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
-    let session_metadata = SessionMetadata {
+    let session_metadata = SessionInfo {
         session_id: session_id.clone(),
         tool_version,
         config_file: session_config_path.to_string_lossy().to_string(),

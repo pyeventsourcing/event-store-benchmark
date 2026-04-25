@@ -2,6 +2,7 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 
+from python.report_generator.models import SessionInfo, EnvironmentInfo
 from .data_loader import load_session_workloads, load_session_metadata
 from .reporting import plotting, html
 
@@ -43,11 +44,8 @@ def main() -> None:
         published_session_dir = published_base / session_id
         published_session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load all session metadata
-        metadata = load_session_metadata(raw_session_dir)
-        session_info = metadata["session_info"]
-        env_info_obj = metadata["env_info"]
-
+        # Load session metadata
+        session_metadata = load_session_metadata(raw_session_dir)
         # Load all workload runs for the session
         workloads = load_session_workloads(raw_session_dir)
         if not workloads:
@@ -178,7 +176,7 @@ def main() -> None:
                                        get_store_rank)
 
         # Generate the main index page for the session
-        html.generate_session_index(published_session_dir, session_id, workload_summaries, env_info_obj, session_info)
+        html.generate_session_index(published_session_dir, workload_summaries, session_metadata)
 
     # Finally, update the top-level index of all sessions
     html.generate_top_level_index(raw_base, published_base)

@@ -3,15 +3,20 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .base import BaseWorkloadResult
-from ..models import RunData
+from .base import BaseWorkloadRun
+from ..models import RawPerformanceWorkloadRunResults
 
 
-class PerformanceWorkloadResult(BaseWorkloadResult):
+class PerformanceWorkloadRun(BaseWorkloadRun):
     """Represents and analyzes the results of a single performance workload run."""
 
-    def __init__(self, raw_data: RunData, run_path: Path) -> None:
-        super().__init__(raw_data, run_path)
+    def __init__(self, raw_results: RawPerformanceWorkloadRunResults, run_path: Path):
+        super().__init__(run_path)
+        self._raw_results = raw_results
+        self.config = raw_results.config
+        self.metrics = raw_results.metrics
+        self.results = raw_results.results
+        self.logs = raw_results.logs
         self._parse_config()
         self._process_results()
 

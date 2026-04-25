@@ -3,9 +3,9 @@ from typing import Any, Dict, List, Optional, Callable
 
 import yaml
 
-from ..models import EnvironmentInfo
-from ..data_loader import load_session_metadata
-from ..workloads.performance import PerformanceWorkloadResult
+from ..models import EnvironmentInfo, SessionInfo
+from ..data_loader import load_session_metadata, SessionMetadata
+from ..workloads.performance import PerformanceWorkloadRun
 
 
 def _format_bytes(byte_count: Optional[float]) -> str:
@@ -19,7 +19,7 @@ def _format_bytes(byte_count: Optional[float]) -> str:
     return f"{byte_count:.1f}{power_labels[n]}B"
 
 
-def _get_env_summary(env_info: Optional[EnvironmentInfo]) -> str:
+def _get_env_summary(env_info: EnvironmentInfo | None) -> str:
     if not env_info:
         return "N/A"
 
@@ -34,7 +34,7 @@ def _get_env_summary(env_info: Optional[EnvironmentInfo]) -> str:
     return f"{os_name} {cpu_model}, {container_str}"
 
 
-def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
+def _render_environment_info(env_info: EnvironmentInfo | None) -> str:
     """Renders the EnvironmentInfo object into a nice HTML table."""
     if not env_info:
         return ""
@@ -94,7 +94,7 @@ def _render_environment_info(env_info: Optional[EnvironmentInfo]) -> str:
     """
 
 
-def generate_run_html(report_dir: Path, run: PerformanceWorkloadResult) -> None:
+def generate_run_html(report_dir: Path, run: PerformanceWorkloadRun) -> None:
     """Generates an HTML report for a single run."""
     workload_name = run.name
     latency_img = "latency_cdf.png"
@@ -532,16 +532,12 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
             continue
 
         try:
-            metadata = load_session_metadata(raw_session_dir)
-            session_info = metadata["session_info"]
-            env_info = metadata["env_info"]
-            session_configs = metadata["session_configs"]
-
-            config_file = session_info.get('config_file', 'N/A')
+            session_metadata = load_session_metadata(raw_session_dir)
+            config_file = session_metadata.session_info.config_file
             workload_name = Path(config_file).stem if config_file != 'N/A' else 'N/A'
 
             all_stores = set()
-            for cfg in session_configs:
+            for cfg in session_metadata.session_configs:
                 perf_cfg = cfg.get('performance', cfg)
                 if 'stores' in perf_cfg:
                     stores = perf_cfg['stores']
@@ -552,9 +548,9 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
 
             sessions_summaries[session_id] = {
                 'workload_name': workload_name,
-                'tool_version': session_info.get('tool_version', 'N/A'),
+                'tool_version': session_metadata.session_info.tool_version or 'N/A',
                 'stores': list(all_stores),
-                'env_summary': _get_env_summary(env_info),
+                'env_summary': _get_env_summary(session_metadata.environment_info),
             }
         except Exception as e:
             print(f"Warning: Could not collect summary for session {session_id} from raw data: {e}")
@@ -601,10 +597,9 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
         f.write(html)
 
 
-def generate_session_index(session_out_dir: Path, session_id: str, workload_summaries: Dict[str, Any], env_info: Optional[EnvironmentInfo] = None,
-                           session_info: Optional[Dict[str, Any]] = None) -> None:
+def generate_session_index(session_out_dir: Path, workload_summaries: Dict[str, Any], session_metadata: SessionMetadata) -> None:
     """Generate index.html for a specific session."""
-    env_section = _render_environment_info(env_info)
+    env_section = _render_environment_info(session_metadata.environment_info)
 
     workload_sections = ""
     for workload_name, summary in sorted(workload_summaries.items()):
@@ -626,9 +621,7 @@ def generate_session_index(session_out_dir: Path, session_id: str, workload_summ
       {by_workers_plots}
     </div>"""
 
-    session_title = f"Benchmark Session: {session_id}"
-    if session_info and session_info.get('workload_name'):
-        session_title += f" — {session_info['workload_name']}"
+    session_title = f"Benchmark Session: {session_metadata.session_info.session_id}"
 
     container_stats_section = ""
     has_image_size = (session_out_dir / "image_size.png").exists()

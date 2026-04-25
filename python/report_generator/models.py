@@ -47,6 +47,13 @@ class ContainerRuntimeInfo(BaseModel):
         populate_by_name = True
 
 
+class SessionInfo(BaseModel):
+    session_id: str
+    tool_version: str
+    config_file: str
+    seed: int
+
+
 class EnvironmentInfo(BaseModel):
     os: OsInfo
     cpu: CpuInfo
@@ -78,7 +85,7 @@ class MemorySample(BaseModel):
     memory_bytes: int
 
 
-class RunResults(BaseModel):
+class PerformanceWorkflowSamples(BaseModel):
     throughput_samples: List[ThroughputSample] = Field(default_factory=list)
     latency_percentiles: List[LatencySample] = Field(default_factory=list)
     cpu_samples: List[CpuSample] = Field(default_factory=list)
@@ -88,8 +95,8 @@ class RunResults(BaseModel):
     tool_memory_samples: List[MemorySample] = Field(default_factory=list)
 
 
-class RunData(BaseModel):
+class RawPerformanceWorkloadRunResults(BaseModel):
     config: Dict[str, Any]
-    results: RunResults
+    results: PerformanceWorkflowSamples
     metrics: Dict[str, Any] = Field(default_factory=dict)
     logs: str = ""

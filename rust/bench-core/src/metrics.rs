@@ -289,7 +289,7 @@ impl LatencyRecorder {
 // New metadata structures for session-based results
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SessionMetadata {
+pub struct SessionInfo {
     pub session_id: String,
     pub tool_version: String,
     pub config_file: String,
