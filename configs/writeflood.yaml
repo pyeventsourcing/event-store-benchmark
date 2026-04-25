@@ -3,13 +3,13 @@ performance:
   mode: writeflood
   duration_seconds: 120
   concurrency:
-#    writers: [1, 2, 4, 8]
-    writers: [10]
+    writers: [1, 2, 4, 8, 16, 32]
+#    writers: [10]
   operations:
     write:
       event_size_bytes: 256
 #      in_flight_limit: 2000
-      in_flight_limit: 200
+      in_flight_limit: 250
   stores:
     - umadb
     - kurrentdb
