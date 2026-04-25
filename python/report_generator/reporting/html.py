@@ -464,7 +464,7 @@ def generate_workload_html(
       <div class='card'>
         <h3>Tool CPU</h3>
         <img src='{tool_cpu_png}' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if {tool_cpu_png_exists} else ""
+      </div>""" if tool_cpu_png_exists else ""
 
         tool_mem_by_workers_html = f"""
       <div class='card'>
