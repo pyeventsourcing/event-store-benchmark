@@ -22,38 +22,28 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
 
     def _parse_config(self) -> None:
         """Extracts key parameters from the run's configuration data."""
-        stores = self.config.get("stores")
+        stores = self.config.stores
         # This logic handles various ways 'stores' can be defined in YAML
         if isinstance(stores, list) and stores:
             self.adapter_name = stores[0]
         elif isinstance(stores, str):
             self.adapter_name = stores
-        elif isinstance(stores, dict):
-            # Handles the {'Single': 'value'} pattern
-            self.adapter_name = stores.get("Single", "unknown")
         else:
             self.adapter_name = "unknown"
 
-        concurrency = self.config.get("concurrency", {})
-        if isinstance(concurrency, dict):
-            writers_val = concurrency.get("writers")
-            if isinstance(writers_val, dict):
-                self.writers = writers_val.get("Single", 0)
-            else:
-                self.writers = writers_val if writers_val is not None else 0
-
-            readers_val = concurrency.get("readers")
-            if isinstance(readers_val, dict):
-                self.readers = readers_val.get("Single", 0)
-            else:
-                self.readers = readers_val if readers_val is not None else 0
+        writers = self.config.concurrency.writers
+        if isinstance(writers, list):
+            self.writers = writers[0]
         else:
-            # Default to 0 if concurrency is not a dict or not present
-            self.writers = 0
-            self.readers = 0
+            self.writers = writers if writers is not None else 0
+        readers = self.config.concurrency.readers
+        if isinstance(readers, list):
+            self.readers = readers[0]
+        else:
+            self.readers = readers if readers is not None else 0
 
         self.worker_count = self.writers if self.writers > 0 else self.readers
-        self.is_read_workload = self.readers > 0 and self.writers == 0
+        self.is_read_workload = self.config.mode == "read"
 
     def _process_results(self) -> None:
         """Processes raw result data into structured formats and summary metrics."""
@@ -99,12 +89,11 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
 
     @property
     def name(self) -> str:
-        name = self.config.get("name", "unknown")
-        return str(name)
+        return self.config.name or "unknown"
 
     @property
     def adapter(self) -> str:
-        return str(self.adapter_name)
+        return self.adapter_name
 
     def get_latency_percentile(self, percentile: float) -> float:
         """Extracts a specific latency percentile (in ms) from the results."""

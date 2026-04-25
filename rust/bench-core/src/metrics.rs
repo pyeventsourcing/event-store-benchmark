@@ -292,6 +292,7 @@ impl LatencyRecorder {
 pub struct SessionInfo {
     pub session_id: String,
     pub tool_version: String,
+    pub workload_name: String,
     pub config_file: String,
     pub seed: u64,
 }

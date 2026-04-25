@@ -4,7 +4,8 @@ from typing import Any, Dict, NamedTuple
 
 import yaml
 
-from .models import EnvironmentInfo, RawPerformanceWorkloadRunResults, PerformanceWorkflowSamples, SessionInfo
+from .models import EnvironmentInfo, RawPerformanceWorkloadRunResults, PerformanceWorkflowSamples, SessionInfo, \
+    PerformanceWorkloadConfig
 from .workloads.performance import PerformanceWorkloadRun
 
 
@@ -29,7 +30,7 @@ def load_raw_performance_workload_run_results(run_dir: Path) -> RawPerformanceWo
 
     try:
         with open(config_file) as f:
-            config_data = yaml.safe_load(f)
+            config_data = PerformanceWorkloadConfig.model_validate(yaml.safe_load(f))
 
         results_data = {}
         if throughput_file.exists():
@@ -83,64 +84,48 @@ def load_raw_performance_workload_run_results(run_dir: Path) -> RawPerformanceWo
         return None
 
 
-def load_session_workloads(raw_session_dir: Path) -> Dict[str, Any]:
+def load_session_workloads(raw_session_dir: Path) -> list[tuple[str, PerformanceWorkloadConfig, list[PerformanceWorkloadRun]]]:
     """
     Loads all runs from a session, groups them by workload, and returns
     a dictionary of workload-specific result objects.
     """
-    session_config_file = raw_session_dir / "config.yaml"
-    if not session_config_file.exists():
-        print(f"Warning: No config.yaml found in session {raw_session_dir}")
-        return {}
+    workloads: list[tuple[str, PerformanceWorkloadConfig, list[PerformanceWorkloadRun]]] = []
+    for (orig_yaml, performance_workload_config) in load_workload_configs(raw_session_dir):
+        workload_name = performance_workload_config.name
+        if not workload_name:
+            continue
 
-    workloads = {}
-    with open(session_config_file, "r") as f:
-        session_configs = list(yaml.safe_load_all(f))
-
-    for workload_config in session_configs:
-        if 'performance' in workload_config:
-            performance_workload_config = workload_config['performance']
-            workload_name = performance_workload_config.get('name')
-            if not workload_name:
-                continue
-
-            raw_workload_dir = raw_session_dir / workload_name
-            runs: list[PerformanceWorkloadRun] = []
-            if raw_workload_dir.exists() and raw_workload_dir.is_dir():
-                for raw_run_dir in raw_workload_dir.iterdir():
-                    if raw_run_dir.is_dir():
-                        raw_run_results = load_raw_performance_workload_run_results(raw_run_dir)
-                        if raw_run_results is not None:
-                            runs.append(PerformanceWorkloadRun(raw_run_results, raw_run_dir))
-            workloads[workload_name] = {"config": performance_workload_config, "runs": runs}
+        raw_workload_dir = raw_session_dir / workload_name
+        runs: list[PerformanceWorkloadRun] = []
+        if raw_workload_dir.exists() and raw_workload_dir.is_dir():
+            for raw_run_dir in raw_workload_dir.iterdir():
+                if raw_run_dir.is_dir():
+                    raw_run_results = load_raw_performance_workload_run_results(raw_run_dir)
+                    if raw_run_results is not None:
+                        runs.append(PerformanceWorkloadRun(raw_run_results, raw_run_dir))
+        workloads.append((orig_yaml, performance_workload_config, runs))
 
     return workloads
 
 class SessionMetadata(NamedTuple):
     session_info: SessionInfo
     environment_info: EnvironmentInfo | None
-    session_configs: list[Any]
+    workload_configs: list[tuple[str, PerformanceWorkloadConfig]]
 
-def load_session_metadata(session_dir: Path) -> SessionMetadata:
+def load_session_metadata(session_dir: Path) -> SessionMetadata | None:
     """Loads session.json, environment.json, and config.yaml for a given session."""
-    session_configs = []
-
     # Load session.json
     session_info = load_session_info(session_dir)
+    if session_info is None:
+        return None
 
     # Load environment.json
     environment_info = load_environment_info(session_dir)
 
     # Load config.yaml
-    try:
-        session_config_file = session_dir / "config.yaml"
-        if session_config_file.exists():
-            with open(session_config_file, "r") as f:
-                session_configs = list(yaml.safe_load_all(f))
-    except Exception as e:
-        print(f"Warning: Could not load config.yaml for {session_dir.name}: {e}")
+    workload_configs = load_workload_configs(session_dir)
 
-    return SessionMetadata(session_info, environment_info, session_configs)
+    return SessionMetadata(session_info, environment_info, workload_configs)
 
 
 def load_environment_info(session_dir: Path) -> EnvironmentInfo | None:
@@ -171,3 +156,27 @@ def load_session_info(session_dir: Path) -> SessionInfo | None:
     except Exception as e:
         print(f"Warning: Failed to open {file_path}: {e}")
     return None
+
+def load_workload_configs(session_dir: Path) -> list[tuple[str, PerformanceWorkloadConfig]]:
+    validated_workload_configs: list[tuple[str, PerformanceWorkloadConfig]] = []
+    path = session_dir / "config.yaml"
+    try:
+        if path.exists():
+            with open(path, "r") as f:
+                loaded_workload_configs = list(yaml.safe_load_all(f))
+    except Exception as e:
+        print(f"Warning: Could not load config.yaml for {session_dir.name}: {e}")
+        return validated_workload_configs
+    for loaded in loaded_workload_configs:
+        if "performance" in loaded:
+            try:
+                performance_ = loaded["performance"]
+                parsed = PerformanceWorkloadConfig.model_validate(performance_)
+                original = yaml.dump(loaded)
+            except Exception as e:
+                print(f"Warning: Failed to parse workload config loaded from {path}: {e}")
+                continue
+            validated_workload_configs.append((original, parsed))
+        else:
+            print(f"Warning: Unsupported workload config from {path}: {loaded}")
+    return validated_workload_configs

@@ -226,6 +226,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     let session_metadata = SessionInfo {
         session_id: session_id.clone(),
         tool_version,
+        workload_name: session_config_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
         config_file: session_config_path.to_string_lossy().to_string(),
         seed: actual_seed,
     };

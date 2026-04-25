@@ -2,9 +2,9 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 
-from python.report_generator.models import SessionInfo, EnvironmentInfo
 from .data_loader import load_session_workloads, load_session_metadata
 from .reporting import plotting, html
+from .workloads.performance import PerformanceWorkloadRun
 
 
 def main() -> None:
@@ -46,29 +46,29 @@ def main() -> None:
 
         # Load session metadata
         session_metadata = load_session_metadata(raw_session_dir)
+        if session_metadata is None:
+            continue
         # Load all workload runs for the session
-        workloads = load_session_workloads(raw_session_dir)
-        if not workloads:
+        session_workloads = load_session_workloads(raw_session_dir)
+        if not session_workloads:
             print(f"No valid workloads found for session {session_id}. Skipping.")
             continue
 
         workload_summaries = {}
         all_runs = []
 
-        for workload_name, data in workloads.items():
-            print(f"  Processing workload: {workload_name}")
-            workload_config = data["config"]
-            runs = data["runs"]
-            if not runs:
+        for orig_yaml_config, workload_config, workload_runs in session_workloads:
+            print(f"  Processing workload: {workload_config.name}")
+            if not workload_runs:
                 continue
             
-            all_runs.extend(runs)
+            all_runs.extend(workload_runs)
 
-            workload_dir = published_session_dir / workload_name
+            workload_dir = published_session_dir / workload_config.name
             workload_dir.mkdir(parents=True, exist_ok=True)
 
             # --- Generate individual run reports ---
-            for run in runs:
+            for run in workload_runs:
                 report_dir_name = run.adapter
                 if run.readers > 0:
                     report_dir_name += f"-r{run.readers}"
@@ -87,16 +87,16 @@ def main() -> None:
                 html.generate_run_html(report_dir, run)
 
             # --- Generate consolidated workload reports ---
-            store_order = workload_config.get("stores", [])
+            store_order = workload_config.stores
             store_order_map = {name: i for i, name in enumerate(store_order)}
             get_store_rank = lambda name: store_order_map.get(name, 999)
 
-            worker_groups = defaultdict(list)
-            for run in runs:
+            worker_groups = defaultdict[int, list[PerformanceWorkloadRun]](list)
+            for run in workload_runs:
                 worker_groups[run.worker_count].append(run)
 
             # Generate comparison plots for each worker count
-            first_run = runs[0]
+            first_run = workload_runs[0]
             # Base label for pluralization in scaling plots
             worker_label = "Readers" if first_run.is_read_workload else "Writers"
             worker_suffix = "r" if first_run.is_read_workload else "w"
@@ -143,26 +143,32 @@ def main() -> None:
                     get_store_rank)
 
             # Always generate scaling plots
-            plotting.plot_throughput_by_workers(runs, str(workload_dir / "by_workers_throughput.png"),
+            plotting.plot_throughput_by_workers(workload_runs, str(workload_dir / "by_workers_throughput.png"),
                                              get_store_rank)
-            plotting.plot_latency_by_workers(runs, str(workload_dir / "by_workers_latency.png"),
+            plotting.plot_latency_by_workers(workload_runs, str(workload_dir / "by_workers_latency.png"),
                                           get_store_rank)
-            plotting.plot_cpu_by_workers(runs, str(workload_dir / "by_workers_cpu.png"),
+            plotting.plot_cpu_by_workers(workload_runs, str(workload_dir / "by_workers_cpu.png"),
                                       get_store_rank)
-            plotting.plot_memory_by_workers(runs, str(workload_dir / "by_workers_memory.png"),
+            plotting.plot_memory_by_workers(workload_runs, str(workload_dir / "by_workers_memory.png"),
                                          get_store_rank)
-            plotting.plot_tool_latency_by_workers(runs, str(workload_dir / "by_workers_tool_latency.png"),
+            plotting.plot_tool_latency_by_workers(workload_runs, str(workload_dir / "by_workers_tool_latency.png"),
                                                    get_store_rank)
-            plotting.plot_tool_cpu_by_workers(runs, str(workload_dir / "by_workers_tool_cpu.png"),
+            plotting.plot_tool_cpu_by_workers(workload_runs, str(workload_dir / "by_workers_tool_cpu.png"),
                                                get_store_rank)
-            plotting.plot_tool_memory_by_workers(runs, str(workload_dir / "by_workers_tool_memory.png"),
+            plotting.plot_tool_memory_by_workers(workload_runs, str(workload_dir / "by_workers_tool_memory.png"),
                                                   get_store_rank)
 
             # Generate main workload HTML
-            html.generate_workload_html(published_session_dir, workload_name, runs, worker_groups, workload_config,
-                                        get_store_rank)
+            html.generate_workload_html(
+                published_session_dir,
+                workload_config.name,
+                workload_runs,
+                worker_groups,
+                orig_yaml_config,
+                get_store_rank,
+            )
 
-            workload_summaries[workload_name] = {
+            workload_summaries[workload_config.name] = {
                 'worker_counts': set(worker_groups.keys())
             }
 

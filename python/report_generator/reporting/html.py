@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Callable
 
 import yaml
 
-from ..models import EnvironmentInfo, SessionInfo
+from ..models import EnvironmentInfo, SessionInfo, PerformanceWorkloadConfig
 from ..data_loader import load_session_metadata, SessionMetadata
 from ..workloads.performance import PerformanceWorkloadRun
 
@@ -269,10 +269,16 @@ def generate_run_html(report_dir: Path, run: PerformanceWorkloadRun) -> None:
         f.write(html)
 
 
-def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], worker_groups: Dict[int, List[Any]],
-                           workload_config: Optional[Dict[str, Any]] = None,
-                           get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+def generate_workload_html(
+    out_base: Path,
+    workload_name: str,
+    runs: List[PerformanceWorkloadRun],
+    worker_groups: Dict[int, List[Any]],
+    orig_yaml: str,
+    get_store_rank: Optional[Callable[[str], int]] = None,
+) -> None:
     """Generate a consolidated report for a specific workload."""
+    workload_dir = out_base / workload_name
 
     def row_key(r: Any) -> Any:
         rank = get_store_rank(r.adapter) if get_store_rank else 0
@@ -284,7 +290,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
     worker_suffix = "r" if is_readers else "w"
 
     summary_rows = ""
-    has_container_stats = False
     for run in sorted(runs, key=row_key):
         report_dir_name = run.adapter
         if run.readers > 0:
@@ -295,9 +300,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
 
         metrics = run.metrics
         
-        if metrics.get('startup_time_s') or metrics.get("image_size_bytes"):
-            has_container_stats = True
-
         avg_cpu = metrics.get("avg_cpu_percent")
         peak_cpu = metrics.get("peak_cpu_percent")
         cpu_display = "N/A"
@@ -354,38 +356,39 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
         <img src='worker_slice_{worker_suffix}{wc}_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
       </div>"""
 
-        has_tool_latency = any(not r.tool_latency_percentiles == [] for r in group_runs)
-        has_tool_cpu = any(not r.tool_cpu_df.empty for r in group_runs)
-        has_tool_mem = any(not r.tool_memory_df.empty for r in group_runs)
+        tool_latency_png = f"worker_slice_{worker_suffix}{wc}_tool_latency_cdf.png"
+        tool_latency_png_exists = (workload_dir / tool_latency_png).exists()
+        tool_cpu_timeseries_png = f"worker_slice_{worker_suffix}{wc}_tool_cpu_timeseries.png"
+        tool_cpu_timeseries_png_exists = (workload_dir / tool_cpu_timeseries_png).exists()
+        tool_memory_timeseries_png = f"worker_slice_{worker_suffix}{wc}_tool_memory_timeseries.png"
+        tool_memory_timeseries_png_exists = (workload_dir / tool_memory_timeseries_png).exists()
 
-        tool_slice_html = ""
-        if has_tool_latency or has_tool_cpu or has_tool_mem:
-            tool_latency_slice_html = f"""
+        tool_latency_slice_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_tool_latency_cdf.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_tool_latency else ""
+        <img src='{tool_latency_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if tool_latency_png_exists else ""
 
-            tool_cpu_slice_html = f"""
+        tool_cpu_slice_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_tool_cpu_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_tool_cpu else ""
+        <img src='{tool_cpu_timeseries_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if tool_cpu_timeseries_png_exists else ""
 
-            tool_mem_slice_html = f"""
+        tool_mem_slice_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='worker_slice_{worker_suffix}{wc}_tool_memory_timeseries.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_tool_mem else ""
+        <img src='{tool_memory_timeseries_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if tool_memory_timeseries_png_exists else ""
 
-            tool_slice_html = f"""
+        tool_slice_html = f"""
     <div class='row'>
       {tool_cpu_slice_html}
       {tool_mem_slice_html}
     </div>
     <div class='row'>
       {tool_latency_slice_html}
-    </div>"""
+    </div>""" if tool_cpu_slice_html or tool_mem_slice_html or tool_latency_slice_html else ""
 
         worker_slice_sections += f"""
     <h2>{worker_label}s = {wc}</h2>
@@ -442,29 +445,32 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
     </div>
     {resource_usage_html}"""
 
-    has_any_tool_latency = any(not r.tool_latency_percentiles == [] for r in runs)
-    has_any_tool_cpu = any(not r.tool_cpu_df.empty for r in runs)
-    has_any_tool_mem = any(not r.tool_memory_df.empty for r in runs)
+    tool_latency_png = f"by_workers_tool_latency.png"
+    tool_latency_png_exists = (workload_dir / tool_latency_png).exists()
+    tool_cpu_png = f"by_workers_tool_cpu.png"
+    tool_cpu_png_exists = (workload_dir / tool_cpu_png).exists()
+    tool_memory_png = f"by_workers_tool_memory.png"
+    tool_memory_png_exists = (workload_dir / tool_memory_png).exists()
 
     tool_performance_section = ""
-    if has_any_tool_latency or has_any_tool_cpu or has_any_tool_mem:
+    if tool_latency_png_exists or tool_cpu_png_exists or tool_memory_png_exists:
         tool_latency_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Latency</h3>
-        <img src='by_workers_tool_latency.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_tool_latency else ""
+        <img src='{tool_latency_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if tool_latency_png_exists else ""
 
         tool_cpu_by_workers_html = f"""
       <div class='card'>
         <h3>Tool CPU</h3>
-        <img src='by_workers_tool_cpu.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_tool_cpu else ""
+        <img src='{tool_cpu_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if {tool_cpu_png_exists} else ""
 
         tool_mem_by_workers_html = f"""
       <div class='card'>
         <h3>Tool Memory</h3>
-        <img src='by_workers_tool_memory.png' width='600' style='max-width: 100%; height: auto;'>
-      </div>""" if has_any_tool_mem else ""
+        <img src='{tool_memory_png}' width='600' style='max-width: 100%; height: auto;'>
+      </div>""" if tool_memory_png_exists else ""
 
         tool_performance_section = f"""
     <div class='row'>
@@ -475,13 +481,10 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
       {tool_latency_by_workers_html}
     </div>"""
 
-    config_section = ""
-    if workload_config:
-        config_yaml = yaml.dump(workload_config, indent=2)
-        config_section = f"""
+    config_section = f"""
     <h2>Configuration</h2>
     <div class='card'>
-      <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{config_yaml}</pre>
+      <pre style='background-color: #f8f8f8; padding: 1rem; border-radius: 4px; overflow-x: auto;'>{orig_yaml}</pre>
     </div>"""
 
     html = f"""
@@ -515,7 +518,6 @@ def generate_workload_html(out_base: Path, workload_name: str, runs: List[Any], 
 </body>
 </html>
 """
-    workload_dir = out_base / workload_name
     workload_dir.mkdir(parents=True, exist_ok=True)
     with open(workload_dir / "index.html", "w") as f:
         f.write(html)
@@ -533,18 +535,17 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
 
         try:
             session_metadata = load_session_metadata(raw_session_dir)
-            config_file = session_metadata.session_info.config_file
-            workload_name = Path(config_file).stem if config_file != 'N/A' else 'N/A'
+            if session_metadata is None:
+                return None
+            workload_name = session_metadata.session_info.workload_name
 
             all_stores = set()
-            for cfg in session_metadata.session_configs:
-                perf_cfg = cfg.get('performance', cfg)
-                if 'stores' in perf_cfg:
-                    stores = perf_cfg['stores']
-                    if isinstance(stores, list):
-                        all_stores.update(stores)
-                    elif isinstance(stores, str):
-                        all_stores.add(stores)
+            for _orig_yaml, perf_cfg in session_metadata.workload_configs:
+                stores = perf_cfg.stores
+                if isinstance(stores, list):
+                    all_stores.update(stores)
+                elif isinstance(stores, str):
+                    all_stores.add(stores)
 
             sessions_summaries[session_id] = {
                 'workload_name': workload_name,
