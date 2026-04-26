@@ -11,6 +11,7 @@ performance:
   operations:
     write:
       event_size_bytes: 256
+      concurrency_control: true
   stores:
     - umadb
     - kurrentdb
