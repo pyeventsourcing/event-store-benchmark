@@ -358,13 +358,24 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
             if images[WorkerSliceImageKey.LATENCY_CDF].include_in_html
             else ""
         )
+        operation_errors_slice_html = (
+            f"""<div class='row'>
+      <div class='card'>
+        <h3>Operation Errors</h3>
+        <img src='{images[WorkerSliceImageKey.OPERATION_ERRORS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
+      </div>
+    </div>"""
+            if images[WorkerSliceImageKey.OPERATION_ERRORS].include_in_html
+            else ""
+        )
         performance_slice_html = (
             f"""
     <div class='row'>
       {throughput_slice_html}
       {latency_slice_html}
-    </div>"""
-            if throughput_slice_html or latency_slice_html
+    </div>
+    {operation_errors_slice_html}"""
+            if throughput_slice_html or latency_slice_html or operation_errors_slice_html
             else ""
         )
 
