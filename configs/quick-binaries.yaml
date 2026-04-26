@@ -13,9 +13,10 @@ performance:
     write:
       event_size_bytes: 256
   stores:
-    - umadb
-    - kurrentdb
-    - axonserver
+#    - umadb
+#    - kurrentdb
+#    - axonserver
+    - dummy
 ---
 performance:
   name: write-stream-conditional
@@ -33,9 +34,10 @@ performance:
       event_size_bytes: 256
       concurrency_control: true
   stores:
-    - umadb
-    - kurrentdb
-    - axonserver
+#    - umadb
+#    - kurrentdb
+#    - axonserver
+    - dummy
 ---
 performance:
   name: read-stream
@@ -62,6 +64,7 @@ performance:
     prepopulate_events: 50000
     prepopulate_streams: 5000
   stores:
-    - umadb
-    - kurrentdb
-    - axonserver
+#    - umadb
+#    - kurrentdb
+#    - axonserver
+    - dummy

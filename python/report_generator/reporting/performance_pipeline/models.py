@@ -12,6 +12,7 @@ class WorkerAxis(str, Enum):
 class RunImageKey(str, Enum):
     LATENCY_CDF = "latency_cdf"
     THROUGHPUT_TS = "throughput_timeseries"
+    OPERATION_ERRORS_TS = "operation_errors_timeseries"
     CPU_TS = "cpu_timeseries"
     MEMORY_TS = "memory_timeseries"
     TOOL_LATENCY_CDF = "tool_latency_cdf"
@@ -21,6 +22,7 @@ class RunImageKey(str, Enum):
 
 class WorkerSliceImageKey(str, Enum):
     THROUGHPUT = "throughput"
+    OPERATION_ERRORS = "operation_errors"
     LATENCY_CDF = "latency_cdf"
     CPU_TS = "cpu_timeseries"
     MEMORY_TS = "memory_timeseries"
@@ -31,6 +33,7 @@ class WorkerSliceImageKey(str, Enum):
 
 class ScalingImageKey(str, Enum):
     THROUGHPUT_BY_WORKERS = "throughput_by_workers"
+    OPERATION_ERRORS_BY_WORKERS = "operation_errors_by_workers"
     LATENCY_BY_WORKERS = "latency_by_workers"
     CPU_BY_WORKERS = "cpu_by_workers"
     MEMORY_BY_WORKERS = "memory_by_workers"

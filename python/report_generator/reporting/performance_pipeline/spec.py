@@ -40,6 +40,7 @@ def run_image_relpath(key: RunImageKey) -> str:
     return {
         RunImageKey.LATENCY_CDF: "latency_cdf.png",
         RunImageKey.THROUGHPUT_TS: "throughput_timeseries.png",
+        RunImageKey.OPERATION_ERRORS_TS: "operation_errors_timeseries.png",
         RunImageKey.CPU_TS: "cpu_timeseries.png",
         RunImageKey.MEMORY_TS: "memory_timeseries.png",
         RunImageKey.TOOL_LATENCY_CDF: "tool_latency_cdf.png",
@@ -52,6 +53,7 @@ def worker_slice_image_relpath(worker_suffix: str, worker_count: int, key: Worke
     prefix = f"worker_slice_{worker_suffix}{worker_count}"
     return {
         WorkerSliceImageKey.THROUGHPUT: f"{prefix}_throughput.png",
+        WorkerSliceImageKey.OPERATION_ERRORS: f"{prefix}_operation_errors.png",
         WorkerSliceImageKey.LATENCY_CDF: f"{prefix}_latency_cdf.png",
         WorkerSliceImageKey.CPU_TS: f"{prefix}_cpu_timeseries.png",
         WorkerSliceImageKey.MEMORY_TS: f"{prefix}_memory_timeseries.png",
@@ -64,6 +66,7 @@ def worker_slice_image_relpath(worker_suffix: str, worker_count: int, key: Worke
 def scaling_image_relpath(key: ScalingImageKey) -> str:
     return {
         ScalingImageKey.THROUGHPUT_BY_WORKERS: "by_workers_throughput.png",
+        ScalingImageKey.OPERATION_ERRORS_BY_WORKERS: "by_workers_operation_errors.png",
         ScalingImageKey.LATENCY_BY_WORKERS: "by_workers_latency.png",
         ScalingImageKey.CPU_BY_WORKERS: "by_workers_cpu.png",
         ScalingImageKey.MEMORY_BY_WORKERS: "by_workers_memory.png",
@@ -135,6 +138,10 @@ def build_run_images(sections: RunSections) -> dict[RunImageKey, ImageRef]:
     return {
         RunImageKey.LATENCY_CDF: ImageRef(run_image_relpath(RunImageKey.LATENCY_CDF), "Latency"),
         RunImageKey.THROUGHPUT_TS: ImageRef(run_image_relpath(RunImageKey.THROUGHPUT_TS), "Throughput"),
+        RunImageKey.OPERATION_ERRORS_TS: ImageRef(
+            run_image_relpath(RunImageKey.OPERATION_ERRORS_TS),
+            "Operation Errors",
+        ),
         RunImageKey.CPU_TS: ImageRef(run_image_relpath(RunImageKey.CPU_TS), "CPU", include_in_html=sections.show_store_cpu_plot),
         RunImageKey.MEMORY_TS: ImageRef(
             run_image_relpath(RunImageKey.MEMORY_TS), "Memory", include_in_html=sections.show_store_memory_plot
@@ -163,6 +170,10 @@ def build_worker_slice_images(
     return {
         WorkerSliceImageKey.THROUGHPUT: ImageRef(
             worker_slice_image_relpath(worker_suffix, worker_count, WorkerSliceImageKey.THROUGHPUT), "Throughput"
+        ),
+        WorkerSliceImageKey.OPERATION_ERRORS: ImageRef(
+            worker_slice_image_relpath(worker_suffix, worker_count, WorkerSliceImageKey.OPERATION_ERRORS),
+            "Operation Errors",
         ),
         WorkerSliceImageKey.LATENCY_CDF: ImageRef(
             worker_slice_image_relpath(worker_suffix, worker_count, WorkerSliceImageKey.LATENCY_CDF), "Latency"
@@ -199,6 +210,10 @@ def build_scaling_images(sections: ScalingSections) -> dict[ScalingImageKey, Ima
     return {
         ScalingImageKey.THROUGHPUT_BY_WORKERS: ImageRef(
             scaling_image_relpath(ScalingImageKey.THROUGHPUT_BY_WORKERS), "Throughput"
+        ),
+        ScalingImageKey.OPERATION_ERRORS_BY_WORKERS: ImageRef(
+            scaling_image_relpath(ScalingImageKey.OPERATION_ERRORS_BY_WORKERS),
+            "Operation Errors",
         ),
         ScalingImageKey.LATENCY_BY_WORKERS: ImageRef(scaling_image_relpath(ScalingImageKey.LATENCY_BY_WORKERS), "Latency"),
         ScalingImageKey.CPU_BY_WORKERS: ImageRef(

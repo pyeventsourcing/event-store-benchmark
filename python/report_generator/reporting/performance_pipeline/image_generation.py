@@ -56,6 +56,11 @@ def generate_workload_images(workload: PerformanceWorkloadReport) -> None:
         )
         _generate_image(
             run_dir,
+            run_report.images[RunImageKey.OPERATION_ERRORS_TS],
+            lambda out_path: plotting.plot_operation_errors_timeseries(run, out_path),
+        )
+        _generate_image(
+            run_dir,
             run_report.images[RunImageKey.CPU_TS],
             lambda out_path: plotting.plot_cpu_timeseries(run, out_path),
         )
@@ -100,6 +105,16 @@ def generate_workload_images(workload: PerformanceWorkloadReport) -> None:
             lambda out_path: plotting.plot_worker_slice_throughput(
                 runs,
                 f"Throughput — {title}",
+                out_path,
+                get_store_rank,
+            ),
+        )
+        _generate_image(
+            workload_dir,
+            worker_slice.images[WorkerSliceImageKey.OPERATION_ERRORS],
+            lambda out_path: plotting.plot_worker_slice_operation_errors(
+                runs,
+                f"Operation Errors — {title}",
                 out_path,
                 get_store_rank,
             ),
@@ -160,6 +175,11 @@ def generate_workload_images(workload: PerformanceWorkloadReport) -> None:
         workload_dir,
         workload.scaling.images[ScalingImageKey.THROUGHPUT_BY_WORKERS],
         lambda out_path: plotting.plot_throughput_by_workers(all_runs, out_path, get_store_rank),
+    )
+    _generate_image(
+        workload_dir,
+        workload.scaling.images[ScalingImageKey.OPERATION_ERRORS_BY_WORKERS],
+        lambda out_path: plotting.plot_operation_errors_by_workers(all_runs, out_path, get_store_rank),
     )
     _generate_image(
         workload_dir,

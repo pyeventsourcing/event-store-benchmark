@@ -88,6 +88,7 @@ class MemorySample(BaseModel):
 
 class PerformanceWorkflowSamples(BaseModel):
     throughput_samples: List[ThroughputSample] = Field(default_factory=list)
+    operation_error_samples: List[ThroughputSample] = Field(default_factory=list)
     latency_percentiles: List[LatencySample] = Field(default_factory=list)
     cpu_samples: List[CpuSample] = Field(default_factory=list)
     memory_samples: List[MemorySample] = Field(default_factory=list)

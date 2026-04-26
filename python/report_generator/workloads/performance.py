@@ -48,6 +48,7 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
     def _process_results(self) -> None:
         """Processes raw result data into structured formats and summary metrics."""
         self.throughput_df = pd.DataFrame([s.model_dump() for s in self.results.throughput_samples])
+        self.operation_errors_df = pd.DataFrame([s.model_dump() for s in self.results.operation_error_samples])
         self.latency_percentiles = self.results.latency_percentiles
         self.tool_latency_percentiles = self.results.tool_latency_percentiles
         self.cpu_df = pd.DataFrame([s.model_dump() for s in self.results.cpu_samples])
@@ -76,6 +77,7 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
         self.duration_s = 0
         self.average_throughput = 0
         self.peak_throughput = 0
+        self.total_operation_errors = 0
         if not self.throughput_df.empty:
             df = self.throughput_df.sort_values("elapsed_s")
             self.duration_s = df["elapsed_s"].iloc[-1]
@@ -86,6 +88,9 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
             ts = self.get_throughput_timeseries()
             if ts is not None:
                 self.peak_throughput = ts["throughput_eps_smooth"].max()
+
+        if not self.operation_errors_df.empty:
+            self.total_operation_errors = self.operation_errors_df["count"].sum()
 
     @property
     def name(self) -> str:
@@ -159,6 +164,27 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
             "time_s": extended_time_s,
             "throughput_eps": extended_eps,
             "throughput_eps_smooth": extended_eps_smooth,
+        }
+
+    def get_operation_errors_timeseries(self) -> Optional[Dict[str, Any]]:
+        """Returns operation error counts per interval over time."""
+        if self.operation_errors_df.empty or "count" not in self.operation_errors_df.columns:
+            return None
+
+        df = self.operation_errors_df.copy()
+        if len(df) < 1:
+            return None
+
+        df = df.sort_values("elapsed_s").reset_index(drop=True)
+        times = df["elapsed_s"].values
+        counts = df["count"].values
+
+        extended_time_s = np.concatenate([[0.0], times])
+        extended_counts = np.concatenate([[counts[0]], counts])
+
+        return {
+            "time_s": extended_time_s,
+            "operation_errors": extended_counts,
         }
 
     def get_cpu_timeseries(self) -> Optional[Dict[str, Any]]:

@@ -52,6 +52,7 @@ pub struct ContainerStats {
 pub struct PerformanceWorkloadResults {
     pub workload_config: serde_json::Value,
     pub throughput_samples: Vec<ThroughputSample>,
+    pub operation_error_samples: Vec<ThroughputSample>,
     pub store_latency_percentiles: Vec<LatencyPercentile>,
     pub tool_latency_percentiles: Vec<LatencyPercentile>,
 }
@@ -85,6 +86,10 @@ impl WorkloadResults {
                 let throughput = (total_count as f64) / duration.max(0.001);
                 println!("Throughput: {:.2} eps", throughput);
             }
+            if !results.operation_error_samples.is_empty() {
+                let total_errors: u64 = results.operation_error_samples.iter().map(|s| s.count).sum();
+                println!("Operation errors: {}", total_errors);
+            }
         }
     }
 }
@@ -93,12 +98,14 @@ impl PerformanceWorkloadResults {
     pub fn new(
         workload_config: serde_json::Value,
         throughput_samples: Vec<ThroughputSample>,
+        operation_error_samples: Vec<ThroughputSample>,
         store_latency_percentiles: Vec<LatencyPercentile>,
         tool_latency_percentiles: Vec<LatencyPercentile>,
     ) -> Self {
         Self {
             workload_config,
             throughput_samples,
+            operation_error_samples,
             store_latency_percentiles,
             tool_latency_percentiles: tool_latency_percentiles,
         }
@@ -120,6 +127,11 @@ impl WorkloadResults {
                 fs::write(
                     path.join("throughput.json"),
                     serde_json::to_string_pretty(&results.throughput_samples)?,
+                )?;
+
+                fs::write(
+                    path.join("operation_errors.json"),
+                    serde_json::to_string_pretty(&results.operation_error_samples)?,
                 )?;
 
                 fs::write(

@@ -158,6 +158,25 @@ def plot_throughput_timeseries(run: PerformanceWorkloadRun, out_path: str) -> No
     plt.close()
 
 
+def plot_operation_errors_timeseries(run: PerformanceWorkloadRun, out_path: str) -> None:
+    """Plot operation error counts over time for a single run object."""
+    timeseries = run.get_operation_errors_timeseries()
+    if timeseries is None:
+        return
+
+    plt.figure()
+    plt.plot(timeseries["time_s"], timeseries["operation_errors"],
+             linewidth=2.0, alpha=0.9, color='#d62728', marker=None,
+             drawstyle='steps-pre')
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Operation Errors")
+    plt.title("Operation Errors over Time")
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close()
+
+
 def plot_cpu_timeseries(run: PerformanceWorkloadRun, out_path: str) -> None:
     """Plot CPU usage over time for a single run object."""
     ts = run.get_cpu_timeseries()
@@ -333,6 +352,32 @@ def plot_worker_slice_throughput(runs: List[PerformanceWorkloadRun], title: str,
 
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Throughput (events/sec)")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close()
+
+
+def plot_worker_slice_operation_errors(runs: List[PerformanceWorkloadRun], title: str, out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+    """Plot operation errors over time comparing multiple runs."""
+    plt.figure()
+
+    sorted_runs = sorted(runs, key=lambda r: get_store_rank(r.adapter)) if get_store_rank else runs
+
+    for run in sorted_runs:
+        timeseries = run.get_operation_errors_timeseries()
+        if timeseries is None:
+            continue
+
+        color = get_adapter_color(run.adapter)
+        plt.plot(timeseries["time_s"], timeseries["operation_errors"],
+                 label=run.adapter, color=color, linewidth=2.0, alpha=0.9, marker=None,
+                 drawstyle='steps-pre')
+
+    plt.xlabel("Elapsed Time (s)")
+    plt.ylabel("Operation Errors")
     plt.title(title)
     plt.legend()
     plt.grid(True, ls=":", alpha=0.6)
@@ -522,6 +567,51 @@ def plot_throughput_by_workers(runs: List[PerformanceWorkloadRun], out_path: str
     ]
     plt.legend(handles=adapter_handles + metric_handles, ncol=2)
 
+    plt.grid(True, axis='y', ls=":", alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(out_path)
+    plt.close()
+
+
+def plot_operation_errors_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
+    """Plot operation errors vs worker count using grouped bars."""
+    data: Dict[int, Dict[str, float]] = defaultdict(dict)
+    all_adapters = set()
+    all_worker_counts = set()
+
+    for run in runs:
+        if run.total_operation_errors > 0:
+            data[run.worker_count][run.adapter] = run.total_operation_errors
+            all_adapters.add(run.adapter)
+            all_worker_counts.add(run.worker_count)
+
+    if not data:
+        return
+
+    worker_counts = sorted(list(all_worker_counts))
+    adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
+
+    first_run = runs[0] if runs else None
+    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    title = f"Operation Errors by {xlabel[:-1]} Count"
+
+    plt.figure()
+    x = np.arange(len(worker_counts))
+    width = 0.8 / len(adapters)
+
+    for i, adapter in enumerate(adapters):
+        vals = np.array([data[wc].get(adapter, 0) for wc in worker_counts])
+        offset = (i - (len(adapters) - 1) / 2) * width
+        color = get_adapter_color(adapter)
+        plt.bar(x + offset, vals, width, color=color, alpha=0.9)
+
+    plt.ylabel("Operation Errors")
+    plt.xlabel(xlabel)
+    plt.title(title)
+    plt.xticks(x, [str(wc) for wc in worker_counts])
+
+    adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
+    plt.legend(handles=adapter_handles)
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)

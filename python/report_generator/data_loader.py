@@ -13,6 +13,7 @@ def load_raw_performance_workload_run_results(run_dir: Path) -> RawPerformanceWo
     """Loads all raw data files for a single run into a RunData model."""
     config_file = run_dir / "config.yaml"
     throughput_file = run_dir / "throughput.json"
+    operation_errors_file = run_dir / "operation_errors.json"
     latency_file = run_dir / "latency.json"
     cpu_file = run_dir / "cpu.json"
     memory_file = run_dir / "memory.json"
@@ -36,6 +37,10 @@ def load_raw_performance_workload_run_results(run_dir: Path) -> RawPerformanceWo
         if throughput_file.exists():
             with open(throughput_file) as f:
                 results_data["throughput_samples"] = json.load(f)
+
+        if operation_errors_file.exists():
+            with open(operation_errors_file) as f:
+                results_data["operation_error_samples"] = json.load(f)
         
         if latency_file.exists():
             with open(latency_file) as f:

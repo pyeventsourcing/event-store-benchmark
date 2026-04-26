@@ -125,6 +125,15 @@ def render_run_html(run_report: RunReport) -> str:
       <img src='{images[RunImageKey.CPU_TS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
     </div>"""
 
+    operation_errors_html = ""
+    if images[RunImageKey.OPERATION_ERRORS_TS].include_in_html:
+        operation_errors_html = f"""<div class='row'>
+    <div class='card'>
+    <h2>Operation Errors</h2>
+    <img src='{images[RunImageKey.OPERATION_ERRORS_TS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
+    </div>
+  </div>"""
+
     memory_plot_html = ""
     if images[RunImageKey.MEMORY_TS].include_in_html:
         memory_plot_html = f"""
@@ -187,7 +196,7 @@ def render_run_html(run_report: RunReport) -> str:
 <body>
   <h1>Run Report</h1>
   <p><b>Adapter:</b> {run.adapter} &nbsp; | &nbsp; <b>Workload:</b> {run.name}</p>
-  <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps</p>
+  <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps &nbsp; | &nbsp; <b>Operation Errors:</b> {run.total_operation_errors:.0f}</p>
   <div class='row'>
     <div class='card'>
       <h2>Throughput</h2>
@@ -198,6 +207,7 @@ def render_run_html(run_report: RunReport) -> str:
       <img src='{images[RunImageKey.LATENCY_CDF].relative_path}' width='600' style='max-width: 100%; height: auto;'>
     </div>
   </div>
+  {operation_errors_html}
   <div class='row'>
     {cpu_plot_html}
     {memory_plot_html}
@@ -238,12 +248,14 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
         throughput_display = f"{run.average_throughput:.0f}"
         if run.peak_throughput > 0:
             throughput_display = f"{run.average_throughput:.0f} / {run.peak_throughput:.0f}"
+        operation_errors_display = f"{run.total_operation_errors:.0f}"
 
         summary_rows += f"""
       <tr>
         <td><a href='{report_link}'>{run.adapter}</a></td>
         <td>{run.worker_count}</td>
         <td>{throughput_display}</td>
+        <td>{operation_errors_display}</td>
         <td>{run.get_latency_percentile(50.0):.2f}</td>
         <td>{run.get_latency_percentile(99.0):.2f}</td>
         <td>{run.get_latency_percentile(99.9):.2f}</td>
@@ -360,6 +372,14 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
         else ""
     )
 
+    operation_errors_html = f"""
+    <div class='row'>
+      <div class='card'>
+        <h3>Operation Errors</h3>
+        <img src='{scaling[ScalingImageKey.OPERATION_ERRORS_BY_WORKERS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
+      </div>
+    </div>""" if scaling[ScalingImageKey.OPERATION_ERRORS_BY_WORKERS].include_in_html else ""
+
     performance_section = f"""
     <h2>Performance by {workload.worker_label_plural}</h2>
     <div class='row'>
@@ -372,6 +392,7 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
         <img src='{scaling[ScalingImageKey.LATENCY_BY_WORKERS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
       </div>
     </div>
+    {operation_errors_html}
     {resource_usage_html}"""
 
     tool_latency_by_workers_html = (
@@ -443,7 +464,7 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
   {worker_slice_sections}
   <h2>Runs</h2>
   <table>
-    <tr><th>Adapter</th><th>{workload.worker_label_plural}</th><th>Throughput (eps)</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
+    <tr><th>Adapter</th><th>{workload.worker_label_plural}</th><th>Throughput (eps)</th><th>Operation Errors</th><th>p50 (ms)</th><th>p99 (ms)</th><th>p99.9 (ms)</th><th>CPU (avg/peak)</th><th>Mem MB (avg/peak)</th></tr>
     {summary_rows}
   </table>
   {config_section}
