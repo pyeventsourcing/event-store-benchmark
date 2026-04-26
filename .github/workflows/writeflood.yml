@@ -59,8 +59,8 @@ jobs:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
-      TASKSET_DB_CPUS: ${{ vars.TASKSET_DB_CPUS || '0,1,2,3' }}
-      TASKSET_BENCH_CPUS: ${{ vars.TASKSET_BENCH_CPUS || '0,1,2,3' }}
+      TASKSET_DB_CPUS: ${{ vars.TASKSET_DB_CPUS || '0,1,2' }}
+      TASKSET_BENCH_CPUS: ${{ vars.TASKSET_BENCH_CPUS || '3' }}
     steps:
       - name: Download Makefile
         uses: actions/download-artifact@v8
