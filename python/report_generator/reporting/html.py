@@ -104,7 +104,8 @@ def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
         try:
             session_metadata = load_session_metadata(raw_session_dir)
             if session_metadata is None:
-                return None
+                print(f"Warning: Could not collect summary for session {session_id} from raw data: missing metadata")
+                continue
             workload_name = session_metadata.session_info.workload_name
 
             all_stores = set()
