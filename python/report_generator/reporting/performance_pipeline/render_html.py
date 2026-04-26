@@ -125,6 +125,30 @@ def render_run_html(run_report: RunReport) -> str:
       <img src='{images[RunImageKey.CPU_TS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
     </div>"""
 
+    throughput_plot_html = ""
+    if images[RunImageKey.THROUGHPUT_TS].include_in_html:
+        throughput_plot_html = f"""
+    <div class='card'>
+      <h2>Throughput</h2>
+      <img src='{images[RunImageKey.THROUGHPUT_TS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
+    </div>"""
+
+    latency_plot_html = ""
+    if images[RunImageKey.LATENCY_CDF].include_in_html:
+        latency_plot_html = f"""
+    <div class='card'>
+      <h2>Latency</h2>
+      <img src='{images[RunImageKey.LATENCY_CDF].relative_path}' width='600' style='max-width: 100%; height: auto;'>
+    </div>"""
+
+    performance_plots_html = ""
+    if throughput_plot_html or latency_plot_html:
+        performance_plots_html = f"""
+  <div class='row'>
+    {throughput_plot_html}
+    {latency_plot_html}
+  </div>"""
+
     operation_errors_html = ""
     if images[RunImageKey.OPERATION_ERRORS_TS].include_in_html:
         operation_errors_html = f"""<div class='row'>
@@ -197,16 +221,7 @@ def render_run_html(run_report: RunReport) -> str:
   <h1>Run Report</h1>
   <p><b>Adapter:</b> {run.adapter} &nbsp; | &nbsp; <b>Workload:</b> {run.name}</p>
   <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps &nbsp; | &nbsp; <b>Operation Errors:</b> {run.total_operation_errors:.0f}</p>
-  <div class='row'>
-    <div class='card'>
-      <h2>Throughput</h2>
-      <img src='{images[RunImageKey.THROUGHPUT_TS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-    </div>
-    <div class='card'>
-      <h2>Latency</h2>
-      <img src='{images[RunImageKey.LATENCY_CDF].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-    </div>
-  </div>
+  {performance_plots_html}
   {operation_errors_html}
   <div class='row'>
     {cpu_plot_html}
@@ -325,18 +340,37 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
             else ""
         )
 
-        worker_slice_sections += f"""
-    <h2>{workload.worker_label_plural} = {worker_slice.worker_count}</h2>
-    <div class='row'>
+        throughput_slice_html = (
+            f"""
       <div class='card'>
         <h3>Throughput</h3>
         <img src='{images[WorkerSliceImageKey.THROUGHPUT].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-      </div>
+      </div>"""
+            if images[WorkerSliceImageKey.THROUGHPUT].include_in_html
+            else ""
+        )
+        latency_slice_html = (
+            f"""
       <div class='card'>
         <h3>Latency</h3>
         <img src='{images[WorkerSliceImageKey.LATENCY_CDF].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-      </div>
-    </div>
+      </div>"""
+            if images[WorkerSliceImageKey.LATENCY_CDF].include_in_html
+            else ""
+        )
+        performance_slice_html = (
+            f"""
+    <div class='row'>
+      {throughput_slice_html}
+      {latency_slice_html}
+    </div>"""
+            if throughput_slice_html or latency_slice_html
+            else ""
+        )
+
+        worker_slice_sections += f"""
+    <h2>{workload.worker_label_plural} = {worker_slice.worker_count}</h2>
+    {performance_slice_html}
     <div class='row'>
       {cpu_slice_html}
       {mem_slice_html}
@@ -380,18 +414,37 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
       </div>
     </div>""" if scaling[ScalingImageKey.OPERATION_ERRORS_BY_WORKERS].include_in_html else ""
 
-    performance_section = f"""
-    <h2>Performance by {workload.worker_label_plural}</h2>
-    <div class='row'>
+    throughput_by_workers_html = (
+        f"""
       <div class='card'>
         <h3>Throughput</h3>
         <img src='{scaling[ScalingImageKey.THROUGHPUT_BY_WORKERS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-      </div>
+      </div>"""
+        if scaling[ScalingImageKey.THROUGHPUT_BY_WORKERS].include_in_html
+        else ""
+    )
+    latency_by_workers_html = (
+        f"""
       <div class='card'>
         <h3>Latency</h3>
         <img src='{scaling[ScalingImageKey.LATENCY_BY_WORKERS].relative_path}' width='600' style='max-width: 100%; height: auto;'>
-      </div>
-    </div>
+      </div>"""
+        if scaling[ScalingImageKey.LATENCY_BY_WORKERS].include_in_html
+        else ""
+    )
+    performance_charts_html = (
+        f"""
+    <div class='row'>
+      {throughput_by_workers_html}
+      {latency_by_workers_html}
+    </div>"""
+        if throughput_by_workers_html or latency_by_workers_html
+        else ""
+    )
+
+    performance_section = f"""
+    <h2>Performance by {workload.worker_label_plural}</h2>
+    {performance_charts_html}
     {operation_errors_html}
     {resource_usage_html}"""
 
