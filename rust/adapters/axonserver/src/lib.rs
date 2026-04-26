@@ -1,6 +1,6 @@
-use anyhow::Result;
+use anyhow::{Result};
 use async_trait::async_trait;
-use axonserver_client::proto::dcb::source_events_response;
+use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition};
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
 use bench_core::adapter::{
@@ -164,7 +164,7 @@ impl AxonServerAdapter {
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         let tagged_events: Vec<TaggedEvent> = events.iter().map(|evt| {
             let tags: Vec<Tag> = evt
                 .tags
@@ -189,11 +189,36 @@ impl EventStoreAdapter for AxonServerAdapter {
             }
         }).collect();
 
-        self.client.append(tagged_events).await?;
-        Ok(())
+        let condition = if let Some(global_position) = global_position {
+            Some(ConsistencyCondition{
+                consistency_marker: global_position as i64,
+                criterion: {
+                    let mut unique_tags = std::collections::HashSet::new();
+                    for tagged_event in &tagged_events {
+                        for tag in &tagged_event.tag {
+                            unique_tags.insert(tag.value.clone());
+                        }
+                    }
+                    unique_tags.into_iter().map(|tag_value| Criterion {
+                        tags_and_names: Some(TagsAndNamesCriterion {
+                            name: vec![],
+                            tag: vec![Tag {
+                                key: "stream".into(),
+                                value: tag_value,
+                            }],
+                        })
+                    }).collect()
+                }
+                
+            })
+        } else {
+            None
+        };
+        let position = self.client.append(tagged_events, condition).await?;
+        Ok(Some(if position >= 0 {position as u64} else {0}))
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let from = req.from_offset.unwrap_or(0) as i64;
         let criterion = Criterion {
             tags_and_names: Some(TagsAndNamesCriterion {

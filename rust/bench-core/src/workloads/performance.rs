@@ -188,6 +188,8 @@ pub struct OperationConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WriteOpConfig {
     pub event_size_bytes: usize,
+    #[serde(default)]
+    pub concurrency_control: bool,
     #[serde(default = "default_in_flight_limit")]
     pub in_flight_limit: usize,
 }
@@ -315,7 +317,7 @@ impl PerformanceWorkload {
         for adapter in writer_adapters.into_iter() {
             let activate_metrics = matches!(self.config.mode, PerformanceMode::Write | PerformanceMode::Writeflood);
             match self.config.mode {
-                PerformanceMode::Write => Self::spawn_writer_task(
+                PerformanceMode::Write => Self::spawn_stream_writer_task(
                     &mut worker_tasks,
                     adapter,
                     self.config.operations.write.clone(),
@@ -457,7 +459,7 @@ impl PerformanceWorkload {
                             tags: tags.clone(),
                         });
                     }
-                    adapter.append(&events).await?;
+                    adapter.append_to_stream(&events, None, None).await?;
                 }
                 Ok::<(), anyhow::Error>(())
             });
@@ -476,7 +478,7 @@ impl PerformanceWorkload {
         Ok(())
     }
 
-    fn spawn_writer_task(
+    fn spawn_stream_writer_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
@@ -503,10 +505,9 @@ impl PerformanceWorkload {
             let duration_seconds = msg.duration_seconds;
 
             let mut out_of_time = false;
-            let size = write_cfg.event_size_bytes;
 
             // Pre-allocate strings outside loop
-            let payload: Arc<[u8]> = Arc::from(vec![0u8; size]);
+            let payload: Arc<[u8]> = Arc::from(vec![0u8; write_cfg.event_size_bytes]);
 
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
@@ -519,6 +520,7 @@ impl PerformanceWorkload {
             let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
             let stream_len = 10;
             let mut stream_position = 0;
+            let mut global_position = 0;
 
             // Cache event types to avoid allocations in the loop
             let event_type_prefix = "test";
@@ -543,8 +545,17 @@ impl PerformanceWorkload {
                     operation_started = Some(Instant::now());
                 }
                 let mut success = false;
-                match adapter.append(&[evt]).await {
-                    Ok(_) => success = true,
+                match adapter.append_to_stream(
+                    &[evt],
+                    if write_cfg.concurrency_control {Some(stream_position)} else {None},
+                    if write_cfg.concurrency_control {Some(global_position)} else {None},
+                ).await {
+                    Ok(returned_global_position) => {
+                        success = true;
+                        if write_cfg.concurrency_control {
+                            global_position = returned_global_position.expect("global sequence value not returned");
+                        }
+                    },
                     Err(e) => {
                         eprintln!("Operation failed: {}", e);
                         sleep(Duration::from_secs(1)).await;
@@ -649,7 +660,7 @@ impl PerformanceWorkload {
                 if activate_metrics {
                     operation_started = Some(Instant::now());
                 }
-                let result = adapter.read(req).await;
+                let result = adapter.read_stream(req).await;
                 operation_completed = Instant::now();
 
                 match result {
@@ -765,7 +776,7 @@ impl PerformanceWorkload {
                 let adapter_clone = adapter.clone();
                 pending.push(async move {
                     let operation_started = Instant::now();
-                    match adapter_clone.append(&[evt]).await {
+                    match adapter_clone.append_to_stream(&[evt], None, None).await {
                         Ok(_) => {
                             let completed_at = Instant::now();
                             (completed_at, Some(completed_at - operation_started))
@@ -846,6 +857,7 @@ performance:
             operations: OperationConfig {
                 write: WriteOpConfig {
                     event_size_bytes: 256,
+                    concurrency_control: false,
                     in_flight_limit: 0,
                 },
                 read: ReadOpConfig::default(),

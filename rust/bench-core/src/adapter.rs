@@ -40,8 +40,8 @@ pub struct ReadEvent {
 #[async_trait]
 pub trait EventStoreAdapter: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
-    async fn append(&self, events: &[EventData]) -> anyhow::Result<()>;
-    async fn read(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>>;
+    async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
 }
 
 #[async_trait]

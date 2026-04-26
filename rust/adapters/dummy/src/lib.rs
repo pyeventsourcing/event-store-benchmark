@@ -143,11 +143,14 @@ pub struct DummyAdapter {
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, _events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, _events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        if stream_position.is_some() || global_position.is_some() {
+            anyhow::bail!("Optimistic concurrency control not implemented in DummyAdapter")
+        }
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
-        Ok(())
+        Ok(None)
     }
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok((0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {

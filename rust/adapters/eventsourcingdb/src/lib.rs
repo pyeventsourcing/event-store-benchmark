@@ -157,7 +157,10 @@ impl EventsourcingDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for EventsourcingDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        if stream_position.is_some() || global_position.is_some() {
+            anyhow::bail!("Optimistic concurrency control not implemented in EventsourcingDbAdapter")
+        }
         let candidates: Vec<EventCandidate> = events.iter().map(|evt| {
             let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
                 json!({"raw": serde_json::Value::String(
@@ -180,10 +183,10 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
             .write_events(candidates, vec![])
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let subject = format!("/{}", req.stream);
         let mut stream = self
             .client

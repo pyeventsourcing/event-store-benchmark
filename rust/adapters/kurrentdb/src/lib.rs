@@ -5,7 +5,7 @@ use bench_core::adapter::{
 };
 use bench_core::wait_for_ready;
 use bench_testcontainers::kurrentdb::{KurrentDb, KURRENTDB_PORT};
-use kurrentdb::{AppendToStreamOptions, KurrentDbClient, ReadStreamOptions, StreamPosition};
+use kurrentdb::{AppendToStreamOptions, KurrentDbClient, ReadStreamOptions, StreamPosition, StreamState};
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
@@ -153,9 +153,9 @@ impl KurrentDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for KurrentDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, _global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         if events.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         let stream_name = events[0].tags[0].to_string();
         let k_events: Vec<kurrentdb::EventData> = events
@@ -164,14 +164,22 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 kurrentdb::EventData::binary(evt.event_type.to_string(), evt.payload.to_vec().into()).id(Uuid::new_v4())
             })
             .collect();
-        let options = AppendToStreamOptions::default();
-        self.client
+        let options = if let Some(stream_position) = stream_position {
+            if stream_position == 0 {
+                AppendToStreamOptions::default().stream_state(StreamState::NoStream)
+            } else {
+                AppendToStreamOptions::default().stream_state(StreamState::StreamRevision(stream_position as u64 - 1))
+            }
+        } else {
+            AppendToStreamOptions::default()
+        };
+        let write_result = self.client
             .append_to_stream(stream_name, &options, k_events)
             .await?;
-        Ok(())
+        Ok(Some(write_result.position.commit))
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let count = req.limit.unwrap_or(4096) as usize;
         let options = ReadStreamOptions::default()
             .position(match req.from_offset {

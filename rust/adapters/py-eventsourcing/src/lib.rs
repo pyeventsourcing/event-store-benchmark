@@ -168,7 +168,10 @@ impl PyEventsourcingAdapter {
 #[async_trait]
 impl EventStoreAdapter for PyEventsourcingAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        if stream_position.is_some() || global_position.is_some() {
+            anyhow::bail!("Optimistic concurrency control not implemented in PyEventsourcingAdapter")
+        }
         let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
             DcbEvent {
                 type_name: evt.event_type.to_string(),
@@ -180,10 +183,10 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
         self.recorder.append(pg_events, None).await.map_err(|e| {
             anyhow::anyhow!("PyEventsourcing append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
         })?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let stream = req.stream.clone();
         let query = Some(py_eventsourcing::DcbQuery {
             items: vec![py_eventsourcing::DcbQueryItem {

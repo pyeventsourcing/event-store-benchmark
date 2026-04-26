@@ -12,7 +12,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use umadb_client::UmaDbClient;
-use umadb_dcb::{DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
+use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
@@ -151,18 +151,33 @@ impl UmaDbAdapter {
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         let dcb_events: Vec<DcbEvent> = events.iter().map(|evt| DcbEvent {
             event_type: evt.event_type.to_string(),
             tags: evt.tags.iter().map(|t| t.to_string()).collect(),
             data: evt.payload.to_vec(),
             uuid: None,
         }).collect();
-        let _pos: u64 = self.client.append(dcb_events, None, None).await?;
-        Ok(())
+        let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
+            // One query item with one tag, for each unique tag mentioned in all events.
+            Some(DcbAppendCondition {
+                fail_if_events_match: DcbQuery::new().item(
+                    dcb_events.iter()
+                        .flat_map(|evt| &evt.tags)
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .fold(DcbQueryItem::new(), |item, tag| item.tags(vec![tag.to_string()]))
+                ),
+                after: global_position,
+            })
+        } else {
+            None
+        };
+        let pos: u64 = self.client.append(dcb_events, append_condition, None).await?;
+        Ok(Some(pos))
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let query = DcbQuery {
             items: vec![DcbQueryItem {
                 types: vec![],

@@ -161,7 +161,10 @@ pub struct FactAdapter {
 #[async_trait]
 impl EventStoreAdapter for FactAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        if stream_position.is_some() || global_position.is_some() {
+            anyhow::bail!("Optimistic concurrency control not implemented in FactAdapter")
+        }
         let request = proto::AppendRequest {
             events: events
                 .iter()
@@ -178,10 +181,10 @@ impl EventStoreAdapter for FactAdapter {
         if !resp.ok {
             anyhow::bail!("append returned ok=false");
         }
-        Ok(())
+        Ok(None)
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let request = proto::ReadRequest {
             stream: req.stream,
             from_offset: req.from_offset,

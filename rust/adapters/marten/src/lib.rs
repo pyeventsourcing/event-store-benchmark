@@ -226,7 +226,10 @@ impl MartenAdapter {
 #[async_trait]
 impl EventStoreAdapter for MartenAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append(&self, events: &[EventData]) -> Result<()> {
+    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        if stream_position.is_some() || global_position.is_some() {
+            anyhow::bail!("Optimistic concurrency control not implemented in MartenAdapter")
+        }
         let mut marten_events: Vec<MartenDcbEvent> = events
             .iter()
             .map(|evt| MartenDcbEvent {
@@ -242,10 +245,10 @@ impl EventStoreAdapter for MartenAdapter {
             .map_err(|e| {
                 anyhow::anyhow!("Marten append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
             })?;
-        Ok(())
+        Ok(None)
     }
 
-    async fn read(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let mut query = EventTagQuery::new(req.from_offset.map(|o| o as i64).unwrap_or(-1));
         if !req.stream.is_empty() {
             query = query.with_tag(&req.stream);
