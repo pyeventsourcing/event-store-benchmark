@@ -126,7 +126,7 @@ impl StoreManager for DummyStoreManager {
     fn name(&self) -> &'static str {
         "dummy"
     }
-    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+    async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(DummyAdapter {
             scheduler: self.scheduler.clone(),
         }))

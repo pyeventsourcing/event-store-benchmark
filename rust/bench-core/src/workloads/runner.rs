@@ -198,7 +198,7 @@ impl WorkloadRunner {
             workload_results = async {
                 match self {
                     WorkloadRunner::Performance(w) => Ok(WorkloadResults::Performance(
-                        w.execute(store.as_ref(), cancel_token.clone(), tx, rx).await?,
+                        w.execute(store.as_mut(), cancel_token.clone(), tx, rx).await?,
                     )),
                     WorkloadRunner::Durability(w) => {
                         anyhow::bail!("Durability workloads not yet implemented: {}", w.name());

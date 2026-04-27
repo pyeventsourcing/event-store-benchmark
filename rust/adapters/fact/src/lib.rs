@@ -131,7 +131,7 @@ impl StoreManager for FactStoreManager {
         "fact"
     }
 
-    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+    async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
         let client = FactBenchClient::connect(self.uri.clone()).await?;
         Ok(Arc::new(FactAdapter { client }))
     }

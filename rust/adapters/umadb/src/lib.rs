@@ -113,7 +113,7 @@ impl StoreManager for UmaDbStoreManager {
         "umadb"
     }
 
-    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
+    async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
         Ok(Arc::new(UmaDbAdapter::new(self.uri.clone()).await?))
     }
 

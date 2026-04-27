@@ -71,6 +71,10 @@ jobs:
           sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
           sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
           sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
+          
+          sudo -u postgres psql -tAc "SHOW max_connections;"
+          sudo -u postgres psql -tAc "SHOW superuser_reserved_connections;"
+          sudo -u postgres psql -tAc "SELECT current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int AS usable_non_superuser_slots;"
 
       - name: Download benchmark tool
         uses: actions/download-artifact@v8

@@ -119,15 +119,14 @@ impl StoreManager for PyEventsourcingStoreManager {
         "py-eventsourcing"
     }
 
-    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        if let Some(recorder) = &self.recorder {
-            return Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder.clone())));
-        }
+    async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
+        if self.recorder.is_none() {
+            let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
 
-        // Lazy initialization for local stores where start() is not called
-        let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
-        Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder)))
-    }
+            self.recorder = Some(recorder);
+        }
+        let recorder = self.recorder.as_ref().expect("recorder initialized").clone();
+        Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder)))    }
 
     async fn logs(&self) -> Result<String> {
         if let Some(container) = &self.container {

@@ -277,7 +277,7 @@ impl PerformanceWorkload {
     /// Execute the workload
     pub async fn execute(
         &self,
-        store: &dyn StoreManager,
+        store: &mut dyn StoreManager,
         cancel_token: CancellationToken,
         tool_tx: watch::Sender<Option<SamplingConfigDecision>>,
         sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
@@ -428,7 +428,7 @@ impl PerformanceWorkload {
     }
 
     /// Prepare the workload (e.g., prepopulate data for read workloads)
-    pub async fn prepare(&self, store: &dyn StoreManager) -> Result<()> {
+    pub async fn prepare(&self, store: &mut dyn StoreManager) -> Result<()> {
         let setup_start = Instant::now();
 
         let total_events = self.config.setup.prepopulate_events;

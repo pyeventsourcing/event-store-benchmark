@@ -191,15 +191,12 @@ impl StoreManager for MartenStoreManager {
         "marten"
     }
 
-    async fn create_adapter(&self) -> Result<Arc<dyn EventStoreAdapter>> {
-        if let Some(client) = &self.client {
-            return Ok(Arc::new(MartenAdapter::with_client(client.clone())));
+    async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
+        if self.client.is_none() {
+            self.client = Some(MartenClient::connect(&self.uri).await?)
         }
-
-        // Lazy initialization for local stores where start() is not called
-        let client = MartenClient::connect(&self.uri).await?;
-        Ok(Arc::new(MartenAdapter::with_client(client)))
-    }
+        let client = self.client.as_ref().expect("client initialized").clone();
+        Ok(Arc::new(MartenAdapter::with_client(client)))    }
 
     async fn logs(&self) -> Result<String> {
         // Just return empty for now to avoid compilation issues with testcontainers logs API
