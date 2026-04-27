@@ -62,6 +62,7 @@ def main() -> None:
         )
 
     # Finally, update the top-level index of all sessions
+    print(f"\nGenerating top-level index...")
     html.generate_top_level_index(raw_base, published_base)
     print(f"\nTop-level index written to {published_base}/index.html")
 
