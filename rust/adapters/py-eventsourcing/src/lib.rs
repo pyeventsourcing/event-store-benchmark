@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{
     EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory,
@@ -180,9 +180,11 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             }
         }).collect();
 
-        self.recorder.append(pg_events, None).await.map_err(|e| {
-            anyhow::anyhow!("PyEventsourcing append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
-        })?;
+        self
+            .recorder
+            .append(pg_events, None)
+            .await
+            .context("PyEventsourcing append failed")?;
         Ok(None)
     }
 
@@ -195,13 +197,15 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             }],
         });
 
-        let events = self.recorder.read(
-            query,
-            req.from_offset.map(|o| o as i64),
-            req.limit.map(|l| l as i64)
-        ).await.map_err(|e| {
-            anyhow::anyhow!("PyEventsourcing read failed for stream '{}': {}. Check pool availability and database connection.", stream, e)
-        })?;
+        let events = self
+            .recorder
+            .read(
+                query,
+                req.from_offset.map(|o| o as i64),
+                req.limit.map(|l| l as i64),
+            )
+            .await
+            .with_context(|| format!("PyEventsourcing read failed for stream '{}'", stream))?;
 
         Ok(events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
