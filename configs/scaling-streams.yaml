@@ -1,9 +1,52 @@
 performance:
+  name: warmup-write
+  mode: write
+  use_docker: false
+  warmup_seconds: 0
+  duration_seconds: 30
+  samples_per_second: 2
+  concurrency:
+    readers: 0
+    writers: [1]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 10
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+---
+performance:
+  name: warmup-read
+  mode: read
+  use_docker: false
+  warmup_seconds: 0
+  duration_seconds: 30
+  samples_per_second: 2
+  concurrency:
+    readers: [1]
+    writers: 0
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 10
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
+---
+performance:
   name: read-stream
   mode: read
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 60
+  duration_seconds: 30
   samples_per_second: 2
   concurrency:
     readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
@@ -26,7 +69,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 60
+  duration_seconds: 30
   samples_per_second: 2
   concurrency:
     readers: 0
@@ -44,7 +87,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 60
+  duration_seconds: 30
   samples_per_second: 2
   concurrency:
     readers: 0
