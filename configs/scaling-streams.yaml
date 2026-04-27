@@ -3,11 +3,11 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
-    writers: [1]
+    writers: [2]
   operations:
     write:
       event_size_bytes: 256
@@ -23,11 +23,11 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
-    writers: [1]
+    writers: [2]
   operations:
     write:
       event_size_bytes: 256
@@ -44,10 +44,10 @@ performance:
   mode: read
   use_docker: false
   warmup_seconds: 0
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
-    readers: [1]
+    readers: [2]
     writers: 0
   operations:
     write:
@@ -67,7 +67,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
@@ -85,7 +85,7 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
@@ -104,7 +104,7 @@ performance:
   mode: read
   use_docker: false
   warmup_seconds: 1
-  duration_seconds: 30
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
