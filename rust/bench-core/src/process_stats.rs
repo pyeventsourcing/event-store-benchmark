@@ -17,6 +17,23 @@ fn get_process_memory(process: &Process) -> u64 {
     process.memory()
 }
 
+fn collect_descendants_including_root(sys: &System, root_pid: Pid) -> Vec<Pid> {
+    let mut pids = vec![root_pid];
+    let mut cursor = 0;
+
+    while cursor < pids.len() {
+        let parent = pids[cursor];
+        for (pid, process) in sys.processes() {
+            if process.parent() == Some(parent) && !pids.contains(pid) {
+                pids.push(*pid);
+            }
+        }
+        cursor += 1;
+    }
+
+    pids
+}
+
 pub struct ProcessMonitor {
     pid: Pid,
     stats: Arc<Mutex<CollectedStats>>,
@@ -77,7 +94,7 @@ impl ProcessMonitor {
             
             // Initial refresh to establish baseline for CPU usage
             sys.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&[pid]),
+                ProcessesToUpdate::All,
                 true,
                 ProcessRefreshKind::nothing().with_cpu().with_memory()
             );
@@ -98,18 +115,29 @@ impl ProcessMonitor {
                     break;
                 }
 
-                // Use refresh_processes_specifics to update CPU and memory for the target PID
+                // Refresh all processes so we can aggregate root + descendants.
                 sys.refresh_processes_specifics(
-                    ProcessesToUpdate::Some(&[pid]),
+                    ProcessesToUpdate::All,
                     false, // Use false for subsequent refreshes to allow delta calculation
                     ProcessRefreshKind::nothing().with_cpu().with_memory()
                 );
                 
-                if let Some(process) = sys.process(pid) {
+                if sys.process(pid).is_some() {
+                    let tracked_pids = collect_descendants_including_root(&sys, pid);
+                    let (total_cpu, total_memory) = tracked_pids
+                        .iter()
+                        .filter_map(|tracked_pid| sys.process(*tracked_pid))
+                        .fold((0.0_f64, 0_u64), |(cpu_acc, mem_acc), process| {
+                            (
+                                cpu_acc + process.cpu_usage() as f64,
+                                mem_acc + get_process_memory(process),
+                            )
+                        });
+
                     let elapsed_s = (next_sample_time - start_time).as_secs_f64();
                     let mut guard = stats_arc.lock().await;
-                    guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: process.cpu_usage() as f64 });
-                    guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: get_process_memory(process) });
+                    guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: total_cpu });
+                    guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: total_memory });
                 } else {
                     // Process no longer exists
                     break;

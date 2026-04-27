@@ -95,11 +95,15 @@ jobs:
 
       - name: Create tables for Marten
         if: ${{ matrix.store == 'marten' }}
-        run: ./target/release/es-bench create-marten-tables
+        run: |
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/marten.pid
+          ./target/release/es-bench create-marten-tables
 
       - name: Create tables for PyEventsourcing
         if: ${{ matrix.store == 'py-eventsourcing' }}
-        run: ./target/release/es-bench create-py-eventsourcing-tables
+        run: |
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/py-eventsourcing.pid
+          ./target/release/es-bench create-py-eventsourcing-tables
 
       - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
