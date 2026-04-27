@@ -84,8 +84,10 @@ impl Marten {
         };
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
 
+        let pool_size = 32;
         let pool = Pool::builder(mgr)
             .runtime(Runtime::Tokio1)
+            .max_size(pool_size)
             .timeouts(Timeouts {
                 wait: Some(Duration::from_secs(30)),
                 create: Some(Duration::from_secs(30)),
