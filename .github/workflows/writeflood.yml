@@ -115,7 +115,7 @@ jobs:
           tar -xzf umadb.tar.gz
           chmod +x umadb
           sudo mv umadb /usr/local/bin/umadb
-          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=1000 taskset -c "$TASKSET_DB_CPUS" nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
+          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=3000 taskset -c "$TASKSET_DB_CPUS" nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/umadb.pid
           for i in {1..60}; do
             if nc -z 127.0.0.1 50051; then
