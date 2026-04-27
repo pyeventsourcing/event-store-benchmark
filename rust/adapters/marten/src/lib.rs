@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{
     EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory,
@@ -242,9 +242,7 @@ impl EventStoreAdapter for MartenAdapter {
         self.client
             .append_events(&mut marten_events, None)
             .await
-            .map_err(|e| {
-                anyhow::anyhow!("Marten append failed: {}. This might be due to pool exhaustion or high latency in the database.", e)
-            })?;
+            .context("Marten append failed")?;
         Ok(None)
     }
 
@@ -254,8 +252,8 @@ impl EventStoreAdapter for MartenAdapter {
             query = query.with_tag(&req.stream);
         }
 
-        let events = self.client.read_events(&query).await.map_err(|e| {
-            anyhow::anyhow!("Marten read failed for stream '{}': {}. Check pool availability and database connection.", req.stream, e)
+        let events = self.client.read_events(&query).await.with_context(|| {
+            format!("Marten read failed for stream '{}'", req.stream)
         })?;
 
         let mut out = Vec::new();

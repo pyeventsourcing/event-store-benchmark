@@ -29,7 +29,7 @@ impl fmt::Display for MartenError {
             },
             MartenError::AppendConditionFailed => write!(f, "Append condition failed"),
             MartenError::Uuid(e) => write!(f, "Uuid error: {}", e),
-            MartenError::Pool(e) => write!(f, "Pool error: {}", e),
+            MartenError::Pool(e) => write!(f, "Pool error: {} ({:?})", e, e),
             MartenError::Connection(s) => write!(f, "Connection error: {}", s),
         }
     }
