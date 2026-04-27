@@ -347,7 +347,7 @@ impl PerformanceWorkload {
 
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
             let activate_metrics = matches!(self.config.mode, PerformanceMode::Read);
-            Self::spawn_reader_task(
+            Self::spawn_stream_reader_task(
                 &mut worker_tasks,
                 adapter,
                 self.config.operations.read.clone(),
@@ -545,8 +545,9 @@ impl PerformanceWorkload {
                 event_types.push(Arc::from(format!("{}-{}", event_type_prefix, i).as_str()));
             }
 
-            let mut operation_started: Option<Instant> = None;
-            let mut operation_duration: Option<Duration> = None;
+            let mut operation_started: Instant;
+            let mut operation_completed: Instant;
+            let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
 
             while !out_of_time && !cancel_token.is_cancelled() {
@@ -556,60 +557,49 @@ impl PerformanceWorkload {
                     tags: tags.clone(),
                 };
 
-                if activate_metrics {
-                    operation_started = Some(Instant::now());
-                }
-                let mut success = false;
-                let operation_completed: Instant;
-                match adapter.append_to_stream(
+                operation_started = Instant::now();
+                let operation_response = adapter.append_to_stream(
                     &[evt],
-                    if write_cfg.concurrency_control {Some(stream_position)} else {None},
-                    if write_cfg.concurrency_control {Some(global_position)} else {None},
-                ).await {
+                    if write_cfg.concurrency_control { Some(stream_position) } else { None },
+                    if write_cfg.concurrency_control { Some(global_position) } else { None },
+                ).await;
+                operation_completed = Instant::now();
+                operation_duration = operation_completed - operation_started;
+                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+
+                match operation_response {
                     Ok(returned_global_position) => {
-                        operation_completed = Instant::now();
-                        success = true;
                         if write_cfg.concurrency_control {
                             global_position = returned_global_position.expect("global sequence value not returned");
                         }
+                        if activate_metrics {
+                            // Record throughput sample
+                            if throughput_recorder.record(operation_completed, 1) == RecordingStatus::During {
+                                // Record latency sample
+                                store_latencies.record(operation_duration);
+                            }
+                        }
+                        // Increment stream position, maybe reset and change name.
+                        stream_position += 1;
+                        if stream_position == stream_len {
+                            stream_name = format!("stream-{}-", Uuid::new_v4());
+                            tags = Arc::from([Arc::from(stream_name.as_str())]);
+                            stream_position = 0;
+                        }
                     },
                     Err(e) => {
-                        operation_completed = Instant::now();
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Operation failed: {}", e);
+                        eprintln!("Operation failed after {} ms: {}", operation_duration.as_millis(), e);
                         sleep(Duration::from_secs(1)).await;
+                        loop_started = Instant::now();
+                        continue
                     }
                 }
-                if success {
-                    if activate_metrics {
-                        // Record throughput sample
-                        let status = throughput_recorder.record(operation_completed, 1);
-                        if status == RecordingStatus::During {
-                            // Record latency sample
-                            operation_duration = Some(operation_completed - operation_started.unwrap());
-                            store_latencies.record(operation_duration.unwrap());
-                        } else {
-                            operation_duration = None;
-                        }
-                    }
-                    // Increment stream position, maybe reset and change name.
-                    stream_position += 1;
-                    if stream_position == stream_len {
-                        stream_name = format!("stream-{}-", Uuid::new_v4());
-                        tags = Arc::from([Arc::from(stream_name.as_str())]);
-                        stream_position = 0;
-                    }
-                }
-                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
-                if operation_duration.is_some() {
-                    tool_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
-                }
-                if activate_metrics {
-                    loop_started = Instant::now();
-                }
+                tool_latencies.record(loop_started.elapsed() - operation_duration);
+                loop_started = Instant::now();
             }
 
             if activate_metrics {
@@ -620,7 +610,7 @@ impl PerformanceWorkload {
         });
     }
 
-    fn spawn_reader_task(
+    fn spawn_stream_reader_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
@@ -664,9 +654,9 @@ impl PerformanceWorkload {
             let mut store_latencies = LatencyRecorder::new_for_store_latencies();
             let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
-            let mut operation_started: Option<Instant> = None;
+            let mut operation_started: Instant;
             let mut operation_completed: Instant;
-            let mut operation_duration: Option<Duration> = None;
+            let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
 
             while !out_of_time && !cancel_token.is_cancelled() {
@@ -678,23 +668,19 @@ impl PerformanceWorkload {
                     limit: Some(read_cfg.limit as u64),
                 };
 
-                if activate_metrics {
-                    operation_started = Some(Instant::now());
-                }
-                let result = adapter.read_stream(req).await;
+                operation_started = Instant::now();
+                let operation_response = adapter.read_stream(req).await;
                 operation_completed = Instant::now();
+                operation_duration = operation_completed - operation_started;
+                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
-                match result {
+                match operation_response {
                     Ok(events) => {
                         if activate_metrics {
                             // Record throughput sample
-                            let status = throughput_recorder.record(operation_completed, events.len() as u64);
-                            if status == RecordingStatus::During {
+                            if throughput_recorder.record(operation_completed, events.len() as u64) == RecordingStatus::During {
                                 // Record latency sample
-                                operation_duration = Some(operation_completed - operation_started.unwrap());
-                                store_latencies.record(operation_duration.unwrap());
-                            } else {
-                                operation_duration = None;
+                                store_latencies.record(operation_duration);
                             }
                         }
                     }
@@ -702,18 +688,15 @@ impl PerformanceWorkload {
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Operation failed: {}", e);
+                        eprintln!("Operation failed after {} ms: {}", operation_duration.as_millis(), e);
                         sleep(Duration::from_secs(1)).await;
+                        loop_started = Instant::now();
+                        continue
                     }
                 }
-                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
-                if operation_duration.is_some() {
-                    tool_latencies.record(loop_started.elapsed() - operation_duration.unwrap());
-                }
-                if activate_metrics {
-                    loop_started = Instant::now();
-                }
+                tool_latencies.record(loop_started.elapsed() - operation_duration);
+                loop_started = Instant::now();
             }
             if activate_metrics {
                 Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
