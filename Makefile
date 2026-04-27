@@ -13,10 +13,10 @@ endif
 .PHONY: venv
 .PHONY: report
 .PHONY: run-smoke-test
-.PHONY: run-scaling-in-docker
-.PHONY: run-scaling-binaries
+.PHONY: run-scaling-streams-in-docker
+.PHONY: run-scaling-streams
 .PHONY: run-writeflood
-.PHONY: run-scaling-postgres
+.PHONY: run-scaling-streams-in-postgres
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
 .PHONY: help
@@ -60,21 +60,21 @@ run-scaling-readers:
 run-scaling-writers:
 	@make ./configs/scaling/writers.yaml
 
-# Run the scaling-in-docker workload
-run-scaling-in-docker:
-	@make ./configs/scaling-in-docker.yaml
+# Run the scaling-streams-in-docker workload
+run-scaling-streams-in-docker:
+	@make ./configs/scaling-streams-in-docker.yaml
 
-# Run the scaling-binaries workload
-run-scaling-binaries:
-	@make ./configs/scaling-binaries.yaml
+# Run the scaling-streams workload
+run-scaling-streams:
+	@make ./configs/scaling-streams.yaml
 
 # Run the writeflood workload
 run-writeflood:
 	@make ./configs/writeflood.yaml
 
-# Run the scaling-postgres workload
-run-scaling-postgres:
-	@make ./configs/scaling-postgres.yaml
+# Run the scaling-streams-in-postgres workload
+run-scaling-streams-in-postgres:
+	@make ./configs/scaling-streams-in-postgres.yaml
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE

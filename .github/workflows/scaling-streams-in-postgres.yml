@@ -1,4 +1,4 @@
-name: Scaling Postgres
+name: Scaling Streams in Postgres
 
 on:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
           path: Makefile
           retention-days: 1
 
-  run-scaling-postgres:
+  run-scaling-streams-in-postgres:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
@@ -112,7 +112,7 @@ jobs:
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          make run-scaling-postgres
+          make run-scaling-streams-in-postgres
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v6
@@ -122,7 +122,7 @@ jobs:
           retention-days: 1
 
   report:
-    needs: [setup, run-scaling-postgres]
+    needs: [setup, run-scaling-streams-in-postgres]
     runs-on: ubuntu-latest
     if: always()
     steps:

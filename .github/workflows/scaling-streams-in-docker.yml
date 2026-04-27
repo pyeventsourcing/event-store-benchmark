@@ -1,4 +1,4 @@
-name: Scaling in Docker
+name: Scaling Streams in Docker
 
 on:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
           path: Makefile
           retention-days: 1
 
-  run-scaling-in-docker:
+  run-scaling-streams-in-docker:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
@@ -83,7 +83,7 @@ jobs:
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          sudo -E make run-scaling-in-docker
+          sudo -E make run-scaling-streams-in-docker
           sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload scaling results
@@ -94,7 +94,7 @@ jobs:
           retention-days: 1
 
   report:
-    needs: [setup, run-scaling-in-docker]
+    needs: [setup, run-scaling-streams-in-docker]
     runs-on: ubuntu-latest
     if: always()
     steps:

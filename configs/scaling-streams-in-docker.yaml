@@ -1,5 +1,5 @@
 performance:
-  name: writer-scaling-in-docker
+  name: write-stream-unconditional-in-docker
   mode: write
   use_docker: true
   warmup_seconds: 0
@@ -20,7 +20,7 @@ performance:
 #    - dummy
 ---
 performance:
-  name: reader-scaling-in-docker
+  name: read-stream-in-docker
   mode: read
   use_docker: true
   warmup_seconds: 0

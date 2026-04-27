@@ -1,0 +1,39 @@
+performance:
+  name: quick-docker-performance-write
+  mode: write
+  use_docker: true
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency:
+    writers: [4]
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - umadb
+---
+performance:
+  name: smoke-test-performance-read
+  mode: read
+  use_docker: true
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency:
+    readers: [4]
+  operations:
+    read:
+      limit: 10
+    write:
+      event_size_bytes: 256
+  setup:
+    prepopulate_events: 500
+    prepopulate_streams: 50
+  stores:
+    - umadb
+#    - kurrentdb
+#    - axonserver
+#    - eventsourcingdb
+#    - fact
+#    - dummy

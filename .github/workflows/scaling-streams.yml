@@ -1,4 +1,4 @@
-name: Scaling Binaries
+name: Scaling Streams
 
 on:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
           path: Makefile
           retention-days: 1
 
-  run-scaling-binaries:
+  run-scaling-streams:
     needs: setup
     runs-on: ubuntu-latest
     strategy:
@@ -144,7 +144,7 @@ jobs:
 
       - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
         run: |
-          taskset -c 3 make run-scaling-binaries
+          taskset -c 3 make run-scaling-streams
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v6
@@ -155,7 +155,7 @@ jobs:
           retention-days: 1
 
   report:
-    needs: [setup, run-scaling-binaries]
+    needs: [setup, run-scaling-streams]
     runs-on: ubuntu-latest
     if: always()
     steps:
