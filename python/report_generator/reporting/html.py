@@ -178,7 +178,7 @@ def generate_session_index(
     env_section = _render_environment_info(session_metadata.environment_info)
 
     workload_sections = ""
-    for workload_name, summary in sorted(workload_summaries.items()):
+    for workload_name, summary in workload_summaries.items():
         by_workers_plots = f"""
       <div class='row'>
         <div class='card'>
