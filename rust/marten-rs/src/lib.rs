@@ -84,7 +84,10 @@ impl Marten {
         };
         let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
 
-        let pool_size = 32;
+        let pool_size = std::env::var("ESB_POSTGRES_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(12);
         let pool = Pool::builder(mgr)
             .runtime(Runtime::Tokio1)
             .max_size(pool_size)
