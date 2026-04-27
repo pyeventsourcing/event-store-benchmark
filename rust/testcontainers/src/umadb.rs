@@ -24,7 +24,8 @@ impl UmaDb {
         Self {
             env_vars: vec![
                 ("UMADB_READ_METHOD", "fileio"),
-                ("UMADB_PAGE_CACHE_MAX_MB", "3000"),
+                ("UMADB_PAGE_CACHE_MAX_PAGES", "200000"),
+                ("UMADB_ZERO_FILL_PAGES", "false"),
             ],
             mounts: vec![mount],
         }
