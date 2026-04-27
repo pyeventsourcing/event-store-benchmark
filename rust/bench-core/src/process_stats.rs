@@ -2,6 +2,8 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use std::time::{Duration, Instant};
+#[cfg(target_os = "linux")]
+use std::path::{Path, PathBuf};
 use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
 use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate, Process};
 
@@ -38,6 +40,94 @@ fn collect_descendants_including_root(sys: &System, root_pid: Pid) -> Vec<Pid> {
 pub enum MonitoringScope {
     RootOnly,
     RootPlusDescendants,
+    LinuxCgroupOfRoot,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+struct LinuxCgroupState {
+    cpu_stat_path: PathBuf,
+    memory_current_path: PathBuf,
+    last_cpu_usage_usec: Option<u64>,
+    last_cpu_sample_at: Option<Instant>,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxCgroupState {
+    fn from_root_pid(root_pid: Pid) -> Option<Self> {
+        let cgroup_relative = read_unified_v2_cgroup_path(root_pid)?;
+        let cgroup_dir = Path::new("/sys/fs/cgroup").join(cgroup_relative.trim_start_matches('/'));
+        let cpu_stat_path = cgroup_dir.join("cpu.stat");
+        let memory_current_path = cgroup_dir.join("memory.current");
+
+        if !cpu_stat_path.exists() || !memory_current_path.exists() {
+            return None;
+        }
+
+        Some(Self {
+            cpu_stat_path,
+            memory_current_path,
+            last_cpu_usage_usec: None,
+            last_cpu_sample_at: None,
+        })
+    }
+
+    fn read_cpu_usage_usec(&self) -> Option<u64> {
+        let content = std::fs::read_to_string(&self.cpu_stat_path).ok()?;
+        for line in content.lines() {
+            let mut parts = line.split_whitespace();
+            if parts.next() == Some("usage_usec") {
+                return parts.next()?.parse::<u64>().ok();
+            }
+        }
+        None
+    }
+
+    fn read_memory_current_bytes(&self) -> Option<u64> {
+        std::fs::read_to_string(&self.memory_current_path)
+            .ok()?
+            .trim()
+            .parse::<u64>()
+            .ok()
+    }
+
+    fn sample(&mut self, now: Instant) -> Option<(Option<f64>, u64)> {
+        let cpu_usage_usec_now = self.read_cpu_usage_usec()?;
+        let memory_bytes = self.read_memory_current_bytes()?;
+
+        let cpu_percent = if let (Some(prev_usage), Some(prev_time)) = (self.last_cpu_usage_usec, self.last_cpu_sample_at) {
+            let delta_cpu = cpu_usage_usec_now.saturating_sub(prev_usage) as f64;
+            let delta_wall = now.duration_since(prev_time).as_secs_f64() * 1_000_000.0;
+            if delta_wall > 0.0 {
+                Some((delta_cpu / delta_wall) * 100.0)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.last_cpu_usage_usec = Some(cpu_usage_usec_now);
+        self.last_cpu_sample_at = Some(now);
+
+        Some((cpu_percent, memory_bytes))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_unified_v2_cgroup_path(root_pid: Pid) -> Option<String> {
+    let cgroup_file = format!("/proc/{}/cgroup", root_pid.as_u32());
+    let content = std::fs::read_to_string(cgroup_file).ok()?;
+    for line in content.lines() {
+        let mut parts = line.splitn(3, ':');
+        let hierarchy_id = parts.next()?;
+        let controllers = parts.next()?;
+        let path = parts.next()?;
+        if hierarchy_id == "0" && controllers.is_empty() {
+            return Some(path.to_string());
+        }
+    }
+    None
 }
 
 pub struct ProcessMonitor {
@@ -108,6 +198,13 @@ impl ProcessMonitor {
                 ProcessRefreshKind::nothing().with_cpu().with_memory()
             );
 
+            #[cfg(target_os = "linux")]
+            let mut cgroup_state = if matches!(scope, MonitoringScope::LinuxCgroupOfRoot) {
+                LinuxCgroupState::from_root_pid(pid)
+            } else {
+                None
+            };
+
             let mut stop_rx = stop_rx;
             let mut sample_count = 1;
 
@@ -131,29 +228,49 @@ impl ProcessMonitor {
                     ProcessRefreshKind::nothing().with_cpu().with_memory()
                 );
                 
-                if sys.process(pid).is_some() {
-                    let tracked_pids = match scope {
-                        MonitoringScope::RootOnly => vec![pid],
-                        MonitoringScope::RootPlusDescendants => collect_descendants_including_root(&sys, pid),
-                    };
-                    let (total_cpu, total_memory) = tracked_pids
-                        .iter()
-                        .filter_map(|tracked_pid| sys.process(*tracked_pid))
-                        .fold((0.0_f64, 0_u64), |(cpu_acc, mem_acc), process| {
-                            (
-                                cpu_acc + process.cpu_usage() as f64,
-                                mem_acc + get_process_memory(process),
-                            )
-                        });
-
-                    let elapsed_s = (next_sample_time - start_time).as_secs_f64();
-                    let mut guard = stats_arc.lock().await;
-                    guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: total_cpu });
-                    guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: total_memory });
-                } else {
+                if sys.process(pid).is_none() {
                     // Process no longer exists
                     break;
                 }
+
+                let elapsed_s = (next_sample_time - start_time).as_secs_f64();
+
+                #[cfg(target_os = "linux")]
+                if matches!(scope, MonitoringScope::LinuxCgroupOfRoot) {
+                    if let Some(state) = cgroup_state.as_mut() {
+                        if let Some((cpu_percent_opt, memory_bytes)) = state.sample(Instant::now()) {
+                            let mut guard = stats_arc.lock().await;
+                            if let Some(cpu_percent) = cpu_percent_opt {
+                                guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent });
+                            }
+                            guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes });
+
+                            sample_count += 1;
+                            if Instant::now() >= end_time {
+                                break;
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                let tracked_pids = match scope {
+                    MonitoringScope::RootOnly | MonitoringScope::LinuxCgroupOfRoot => vec![pid],
+                    MonitoringScope::RootPlusDescendants => collect_descendants_including_root(&sys, pid),
+                };
+                let (total_cpu, total_memory) = tracked_pids
+                    .iter()
+                    .filter_map(|tracked_pid| sys.process(*tracked_pid))
+                    .fold((0.0_f64, 0_u64), |(cpu_acc, mem_acc), process| {
+                        (
+                            cpu_acc + process.cpu_usage() as f64,
+                            mem_acc + get_process_memory(process),
+                        )
+                    });
+
+                let mut guard = stats_arc.lock().await;
+                guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: total_cpu });
+                guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: total_memory });
 
                 sample_count += 1;
 

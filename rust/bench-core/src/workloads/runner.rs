@@ -26,7 +26,11 @@ pub enum WorkloadRunner {
 impl WorkloadRunner {
     fn monitor_scope_for_store(store_name: &str) -> MonitoringScope {
         if matches!(store_name, "marten" | "py-eventsourcing") {
-            MonitoringScope::RootPlusDescendants
+            if cfg!(target_os = "linux") {
+                MonitoringScope::LinuxCgroupOfRoot
+            } else {
+                MonitoringScope::RootPlusDescendants
+            }
         } else {
             MonitoringScope::RootOnly
         }
