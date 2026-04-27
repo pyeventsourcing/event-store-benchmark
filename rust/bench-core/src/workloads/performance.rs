@@ -591,7 +591,7 @@ impl PerformanceWorkload {
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Operation failed after {} ms: {}", operation_duration.as_millis(), e);
+                        eprintln!("Operation failed after {} ms: {:#}", operation_duration.as_millis(), e);
                         sleep(Duration::from_secs(1)).await;
                         loop_started = Instant::now();
                         continue
@@ -688,7 +688,7 @@ impl PerformanceWorkload {
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Operation failed after {} ms: {}", operation_duration.as_millis(), e);
+                        eprintln!("Operation failed after {} ms: {:#}", operation_duration.as_millis(), e);
                         sleep(Duration::from_secs(1)).await;
                         loop_started = Instant::now();
                         continue
