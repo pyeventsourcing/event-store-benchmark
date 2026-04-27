@@ -1,8 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{
-    EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory,
-};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
@@ -146,18 +144,48 @@ impl UmaDbAdapter {
             .map_err(|e| anyhow::anyhow!(e))?;
         Ok(Self { client })
     }
+
+    fn convert_events(events: &[EventData]) -> Vec<DcbEvent> {
+        events
+            .iter()
+            .map(|evt| DcbEvent {
+                event_type: evt.event_type.to_string(),
+                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+                data: evt.payload.to_vec(),
+                uuid: None,
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
+
+    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+        let dcb_events = Self::convert_events(events);
+
+        let dcb_condition: Option<DcbAppendCondition> = condition.map(|cond| DcbAppendCondition {
+            fail_if_events_match: DcbQuery {
+                items: cond
+                    .fail_if_events_match
+                    .items
+                    .into_iter()
+                    .map(|item| DcbQueryItem {
+                        types: item.types.into_iter().map(|t| t.to_string()).collect(),
+                        tags: item.tags.into_iter().map(|t| t.to_string()).collect(),
+                    })
+                    .collect(),
+            },
+            after: cond.after,
+        });
+
+        let pos: u64 = self.client.append(dcb_events, dcb_condition, None).await?;
+        Ok(Some(pos))
+    }
+
     async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
-        let dcb_events: Vec<DcbEvent> = events.iter().map(|evt| DcbEvent {
-            event_type: evt.event_type.to_string(),
-            tags: evt.tags.iter().map(|t| t.to_string()).collect(),
-            data: evt.payload.to_vec(),
-            uuid: None,
-        }).collect();
+        let dcb_events = Self::convert_events(events);
         let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
             // One query item with one tag, for each unique tag mentioned in all events.
             Some(DcbAppendCondition {

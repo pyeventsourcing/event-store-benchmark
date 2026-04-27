@@ -18,6 +18,108 @@ pub struct EventData {
     pub tags: Arc<[Arc<str>]>,
 }
 
+/// Represents a query item for filtering events
+#[derive(Debug, Clone, Default)]
+pub struct EsbQueryItem {
+    /// Event types to match
+    pub types: Vec<String>,
+    /// Tags that must all be present in the event
+    pub tags: Vec<String>,
+}
+
+impl EsbQueryItem {
+    /// Creates a new query item
+    pub fn new() -> Self {
+        Self {
+            types: vec![],
+            tags: vec![],
+        }
+    }
+
+    /// Sets the types for this query item
+    pub fn types<I, S>(mut self, types: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.types = types.into_iter().map(|s| s.into()).collect();
+        self
+    }
+
+    /// Sets the tags for this query item
+    pub fn tags<I, S>(mut self, tags: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.tags = tags.into_iter().map(|s| s.into()).collect();
+        self
+    }
+}
+
+/// A query composed of multiple query items
+#[derive(Debug, Clone, Default)]
+pub struct EsbQuery {
+    /// List of query items, where events matching any item are included in results
+    pub items: Vec<EsbQueryItem>,
+}
+
+impl EsbQuery {
+    /// Creates a new empty query
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    /// Creates a query with the specified items
+    pub fn with_items<I>(items: I) -> Self
+    where
+        I: IntoIterator<Item = EsbQueryItem>,
+    {
+        Self {
+            items: items.into_iter().collect(),
+        }
+    }
+
+    /// Adds a query item to this query
+    pub fn item(mut self, item: EsbQueryItem) -> Self {
+        self.items.push(item);
+        self
+    }
+
+    /// Adds multiple query items to this query
+    pub fn items<I>(mut self, items: I) -> Self
+    where
+        I: IntoIterator<Item = EsbQueryItem>,
+    {
+        self.items.extend(items);
+        self
+    }
+}
+
+/// Conditions that must be satisfied for an append operation to succeed
+#[derive(Debug, Clone, Default)]
+pub struct EsbAppendCondition {
+    /// Query that, if matching any events, will cause the append to fail
+    pub fail_if_events_match: EsbQuery,
+    /// Position after which to append; if None, append at the end
+    pub after: Option<u64>,
+}
+
+impl EsbAppendCondition {
+    /// Creates a new empty append condition
+    pub fn new(fail_if_events_match: EsbQuery) -> Self {
+        Self {
+            fail_if_events_match,
+            after: None,
+        }
+    }
+
+    pub fn after(mut self, after: Option<u64>) -> Self {
+        self.after = after;
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadRequest {
     pub stream: String,
@@ -40,6 +142,7 @@ pub struct ReadEvent {
 #[async_trait]
 pub trait EventStoreAdapter: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
+    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>>;
     async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>>;
     async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
 }

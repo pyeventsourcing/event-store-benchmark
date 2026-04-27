@@ -1,4 +1,4 @@
-use crate::adapter::{EventData, ReadRequest, StoreManager};
+use crate::adapter::{EsbAppendCondition, EsbQuery, EsbQueryItem, EventData, ReadRequest, StoreManager};
 use crate::common::{SetupConfig};
 use crate::metrics::{LatencyRecorder, PerformanceWorkloadResults, ThroughputRecorder, ThroughputSample, RecordingStatus, SamplingConfigDecision};
 use anyhow::Result;
@@ -169,6 +169,15 @@ impl Default for StoreValue {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AppendConditionValue {
+    #[default]
+    None,
+    OneTagOneType,
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConcurrencyConfig {
     #[serde(default)]
@@ -192,6 +201,8 @@ pub struct WriteOpConfig {
     pub concurrency_control: bool,
     #[serde(default = "default_in_flight_limit")]
     pub in_flight_limit: usize,
+    #[serde(default)]
+    pub append_condition: AppendConditionValue,
 }
 
 fn default_in_flight_limit() -> usize {
@@ -317,7 +328,7 @@ impl PerformanceWorkload {
         for adapter in writer_adapters.into_iter() {
             let activate_metrics = matches!(self.config.mode, PerformanceMode::Write | PerformanceMode::Writeflood);
             match self.config.mode {
-                PerformanceMode::Write => Self::spawn_stream_writer_task(
+                PerformanceMode::Write => Self::spawn_write_task(
                     &mut worker_tasks,
                     adapter,
                     self.config.operations.write.clone(),
@@ -347,7 +358,7 @@ impl PerformanceWorkload {
 
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
             let activate_metrics = matches!(self.config.mode, PerformanceMode::Read);
-            Self::spawn_stream_reader_task(
+            Self::spawn_read_task(
                 &mut worker_tasks,
                 adapter,
                 self.config.operations.read.clone(),
@@ -493,7 +504,7 @@ impl PerformanceWorkload {
         Ok(())
     }
 
-    fn spawn_stream_writer_task(
+    fn spawn_write_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
@@ -550,6 +561,7 @@ impl PerformanceWorkload {
             let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
 
+            println!("Append condition: {:?}", write_cfg.append_condition);
             while !out_of_time && !cancel_token.is_cancelled() {
                 let evt = EventData {
                     payload: payload.clone(),
@@ -558,11 +570,31 @@ impl PerformanceWorkload {
                 };
 
                 operation_started = Instant::now();
-                let operation_response = adapter.append_to_stream(
-                    &[evt],
-                    if write_cfg.concurrency_control { Some(stream_position) } else { None },
-                    if write_cfg.concurrency_control { Some(global_position) } else { None },
-                ).await;
+                let operation_response = match write_cfg.append_condition {
+                    AppendConditionValue::None => {
+                        adapter.append_to_stream(
+                            &[evt],
+                            if write_cfg.concurrency_control { Some(stream_position) } else { None },
+                            if write_cfg.concurrency_control { Some(global_position) } else { None },
+                        ).await
+
+                    },
+                    AppendConditionValue::OneTagOneType => {
+                        adapter.append_dcb(
+                            &[evt.clone()],
+                            Some(
+                                EsbAppendCondition::new(
+                                    EsbQuery::new()
+                                        .item(
+                                            EsbQueryItem::new()
+                                                .tags(vec![evt.tags[0].as_ref()])
+                                                .types(vec![evt.event_type.as_ref()])
+                                        )
+                                ).after(Some(0))
+                            ),
+                        ).await
+                    }
+                };
                 operation_completed = Instant::now();
                 operation_duration = operation_completed - operation_started;
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
@@ -610,7 +642,7 @@ impl PerformanceWorkload {
         });
     }
 
-    fn spawn_stream_reader_task(
+    fn spawn_read_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
@@ -873,6 +905,7 @@ performance:
                     event_size_bytes: 256,
                     concurrency_control: false,
                     in_flight_limit: 0,
+                    append_condition: AppendConditionValue::default(),
                 },
                 read: ReadOpConfig::default(),
             },

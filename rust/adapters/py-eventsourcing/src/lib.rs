@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{
-    EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory,
-};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::py_eventsourcing::{
     PyEventsourcingPostgres, POSTGRES_PORT,
@@ -167,6 +165,11 @@ impl PyEventsourcingAdapter {
 #[async_trait]
 impl EventStoreAdapter for PyEventsourcingAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
+
+    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+        anyhow::bail!("append_dcb not implemented in PyEventsourcingAdapter")
+    }
+
     async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         if stream_position.is_some() || global_position.is_some() {
             anyhow::bail!("Optimistic concurrency control not implemented in PyEventsourcingAdapter")

@@ -3,9 +3,7 @@ use async_trait::async_trait;
 use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition};
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
-use bench_core::adapter::{
-    EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory,
-};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
@@ -164,6 +162,11 @@ impl AxonServerAdapter {
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
+
+    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+        anyhow::bail!("append_dcb not implemented in AxonServerAdapter")
+    }
+
     async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         let tagged_events: Vec<TaggedEvent> = events.iter().map(|evt| {
             let tags: Vec<Tag> = evt
