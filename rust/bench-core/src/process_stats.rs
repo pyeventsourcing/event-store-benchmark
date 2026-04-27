@@ -34,8 +34,15 @@ fn collect_descendants_including_root(sys: &System, root_pid: Pid) -> Vec<Pid> {
     pids
 }
 
+#[derive(Clone, Copy)]
+pub enum MonitoringScope {
+    RootOnly,
+    RootPlusDescendants,
+}
+
 pub struct ProcessMonitor {
     pid: Pid,
+    scope: MonitoringScope,
     stats: Arc<Mutex<CollectedStats>>,
     stop_tx: Option<tokio::sync::oneshot::Sender<()>>,
     monitor_task: Option<JoinHandle<()>>,
@@ -48,9 +55,10 @@ struct CollectedStats {
 }
 
 impl ProcessMonitor {
-    pub fn new(pid_u32: u32) -> Self {
+    pub fn new(pid_u32: u32, scope: MonitoringScope) -> Self {
         Self {
             pid: Pid::from(pid_u32 as usize),
+            scope,
             stats: Arc::new(Mutex::new(CollectedStats::default())),
             stop_tx: None,
             monitor_task: None,
@@ -59,6 +67,7 @@ impl ProcessMonitor {
 
     pub async fn start(&mut self, mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>) {
         let pid = self.pid;
+        let scope = self.scope;
         let stats_arc = self.stats.clone();
         let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
         self.stop_tx = Some(stop_tx);
@@ -123,7 +132,10 @@ impl ProcessMonitor {
                 );
                 
                 if sys.process(pid).is_some() {
-                    let tracked_pids = collect_descendants_including_root(&sys, pid);
+                    let tracked_pids = match scope {
+                        MonitoringScope::RootOnly => vec![pid],
+                        MonitoringScope::RootPlusDescendants => collect_descendants_including_root(&sys, pid),
+                    };
                     let (total_cpu, total_memory) = tracked_pids
                         .iter()
                         .filter_map(|tracked_pid| sys.process(*tracked_pid))

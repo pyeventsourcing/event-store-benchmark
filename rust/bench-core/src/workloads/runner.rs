@@ -4,11 +4,12 @@ use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
 use tokio::sync::watch;
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 
 use crate::adapter::StoreManager;
 use crate::container_stats::ContainerMonitor;
 use crate::metrics::{ContainerStats, CpuSample, MemorySample, RunResults, SamplingConfigDecision, WorkloadResults};
-use crate::process_stats::ProcessMonitor;
+use crate::process_stats::{MonitoringScope, ProcessMonitor};
 use super::performance::{PerformanceConfig, PerformanceWorkload};
 use super::durability::DurabilityWorkload;
 use super::consistency::ConsistencyWorkload;
@@ -23,6 +24,38 @@ pub enum WorkloadRunner {
 }
 
 impl WorkloadRunner {
+    fn monitor_scope_for_store(store_name: &str) -> MonitoringScope {
+        if matches!(store_name, "marten" | "py-eventsourcing") {
+            MonitoringScope::RootPlusDescendants
+        } else {
+            MonitoringScope::RootOnly
+        }
+    }
+
+    fn expected_process_name_for_store(store_name: &str) -> Option<&'static str> {
+        match store_name {
+            "marten" | "py-eventsourcing" => Some("postgres"),
+            "umadb" => Some("umadb"),
+            _ => None,
+        }
+    }
+
+    fn is_pid_matching_expected_process_name(pid: u32, expected_process_name: &str) -> bool {
+        let mut sys = System::new_with_specifics(
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing()),
+        );
+        let sys_pid = Pid::from(pid as usize);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[sys_pid]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+
+        sys.process(sys_pid)
+            .and_then(|process| process.name().to_str())
+            .is_some_and(|name| name == expected_process_name)
+    }
+
     pub fn type_str(&self) -> Result<&str> {
         match self {
             WorkloadRunner::Performance(_) => Ok("performance"),
@@ -155,11 +188,29 @@ impl WorkloadRunner {
             (monitor, Some(startup_time_s))
         } else {
             let pid_file = format!("{}.pid", store_name);
+            let monitor_scope = Self::monitor_scope_for_store(store_name);
             let monitor = if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
-                    let pm = ProcessMonitor::new(pid);
-                    Some(Monitor::Process(pm))
+                    if let Some(expected_process_name) = Self::expected_process_name_for_store(store_name) {
+                        if !Self::is_pid_matching_expected_process_name(pid, expected_process_name) {
+                            eprintln!(
+                                "PID {} from {} does not match expected process name '{}' for {}, skipping monitoring",
+                                pid,
+                                pid_file,
+                                expected_process_name,
+                                store_name
+                            );
+                            None
+                        } else {
+                            println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
+                            let pm = ProcessMonitor::new(pid, monitor_scope);
+                            Some(Monitor::Process(pm))
+                        }
+                    } else {
+                        println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
+                        let pm = ProcessMonitor::new(pid, monitor_scope);
+                        Some(Monitor::Process(pm))
+                    }
                 } else {
                     eprintln!("Failed to parse PID from {}: {}", pid_file, pid_str);
                     None
@@ -175,7 +226,7 @@ impl WorkloadRunner {
         let (tx, rx) = watch::channel(None::<SamplingConfigDecision>);
 
         // Start tool process monitor
-        let mut tool_monitor = ProcessMonitor::new(std::process::id());
+        let mut tool_monitor = ProcessMonitor::new(std::process::id(), MonitoringScope::RootOnly);
         tool_monitor.start(rx.clone()).await;
 
         // Start monitor if it exists
