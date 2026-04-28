@@ -12,8 +12,8 @@ performance:
     write:
       event_size_bytes: 256
   stores:
-#    - py-eventsourcing
-    - marten
+    - py-eventsourcing
+#    - marten
 #    - umadb
 ---
 performance:
@@ -35,6 +35,6 @@ performance:
     prepopulate_events: 5000
     prepopulate_streams: 500
   stores:
-#    - py-eventsourcing
-    - marten
+    - py-eventsourcing
+#    - marten
 #    - umadb
