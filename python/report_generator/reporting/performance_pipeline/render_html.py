@@ -220,6 +220,7 @@ def render_run_html(run_report: RunReport) -> str:
 <body>
   <h1>Run Report</h1>
   <p><b>Adapter:</b> {run.adapter} &nbsp; | &nbsp; <b>Workload:</b> {run.name}</p>
+  <p><a href='../index.html'>← Back to workload report</a></p>
   <p><b>Duration:</b> {run.duration_s:.1f}s &nbsp; | &nbsp; <b>Throughput:</b> {run.average_throughput:.0f} eps &nbsp; | &nbsp; <b>Operation Errors:</b> {run.total_operation_errors:.0f}</p>
   {performance_plots_html}
   {operation_errors_html}
@@ -522,7 +523,7 @@ def render_workload_html(workload: PerformanceWorkloadReport) -> str:
 </head>
 <body>
   <h1>Workload Report — {workload.workload_name}</h1>
-  <p><a href="../index.html">← Back to all workloads</a></p>
+  <p><a href="../index.html">← Back to session report</a></p>
   {performance_section}
   {tool_performance_section}
   {worker_slice_sections}

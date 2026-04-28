@@ -20,6 +20,7 @@ def generate_session_images(report: PerformanceSessionReport) -> None:
         generate_workload_images(workload)
 
     session_out_dir = Path(report.session_out_dir)
+    (session_out_dir / "report").mkdir(parents=True, exist_ok=True)
     _generate_session_plot(
         all_runs,
         session_out_dir,
@@ -37,11 +38,13 @@ def generate_session_images(report: PerformanceSessionReport) -> None:
 def generate_workload_images(workload: PerformanceWorkloadReport) -> None:
     workload_dir = Path(workload.workload_out_dir)
     workload_dir.mkdir(parents=True, exist_ok=True)
+    (workload_dir / "report").mkdir(parents=True, exist_ok=True)
     get_store_rank = _make_get_store_rank(workload.store_order)
 
     for run_report in workload.runs:
         run_dir = workload_dir / run_report.report_dir_name
         run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "report").mkdir(parents=True, exist_ok=True)
         run = run_report.run
 
         _generate_image(

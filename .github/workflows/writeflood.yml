@@ -152,8 +152,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: results-writeflood-${{ matrix.store }}
-          path: |
-            results/raw/
+          path: results/
           retention-days: 1
 
   report:
@@ -178,7 +177,7 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: results-*
-          path: results/raw/
+          path: results/
           merge-multiple: true
 
       - name: Generate report
@@ -188,4 +187,4 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: benchmark-report
-          path: results/published
+          path: results/

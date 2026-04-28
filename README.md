@@ -29,7 +29,7 @@ For convenience, a `Makefile` is provided to simplify common tasks.
 - **Run the 'scaling readers' workload**: `make run-scaling-readers`
 - **Run the 'scaling writers' workload**: `make run-scaling-writers`
 - **Generate HTML reports**: `make report`
-- **Read HTML reports**: Open `results/published/index.html` in your brower
+- **Read HTML reports**: Open `results/index.html` in your browser
 - **Print available Makefile targets**: `make help`
 
 

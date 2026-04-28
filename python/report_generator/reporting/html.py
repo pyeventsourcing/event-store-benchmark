@@ -94,7 +94,7 @@ def _render_environment_info(env_info: EnvironmentInfo | None) -> str:
 def generate_top_level_index(raw_base: Path, published_base: Path) -> None:
     """Generate top-level index.html that links to individual session reports."""
     sessions_summaries = {}
-    published_session_ids = sorted([d.name for d in published_base.iterdir() if d.is_dir()])
+    published_session_ids = sorted([d.name for d in published_base.iterdir() if d.is_dir() and d.name.startswith("esb-")])
 
     for session_id in published_session_ids:
         raw_session_dir = raw_base / session_id
@@ -183,11 +183,11 @@ def generate_session_index(
       <div class='row'>
         <div class='card'>
           <h3>Throughput</h3>
-          <img src='{workload_name}/by_workers_throughput.png' width='600' style='max-width: 100%; height: auto;'>
+          <img src='{workload_name}/report/by_workers_throughput.png' width='600' style='max-width: 100%; height: auto;'>
         </div>
         <div class='card'>
           <h3>Latency</h3>
-          <img src='{workload_name}/by_workers_latency.png' width='600' style='max-width: 100%; height: auto;'>
+          <img src='{workload_name}/report/by_workers_latency.png' width='600' style='max-width: 100%; height: auto;'>
         </div>
       </div>"""
 
@@ -201,9 +201,9 @@ def generate_session_index(
 
     container_stats_section = ""
     if has_image_size is None:
-        has_image_size = (session_out_dir / "image_size.png").exists()
+        has_image_size = (session_out_dir / "report" / "image_size.png").exists()
     if has_startup_time is None:
-        has_startup_time = (session_out_dir / "startup_time.png").exists()
+        has_startup_time = (session_out_dir / "report" / "startup_time.png").exists()
     
     if has_image_size or has_startup_time:
         container_stats_section = f"""
@@ -212,11 +212,11 @@ def generate_session_index(
       <div class='row'>
         {f'''<div class='card'>
           <h3>Image Size</h3>
-          <img src='image_size.png' width='600' style='max-width: 100%; height: auto;'>
+          <img src='report/image_size.png' width='600' style='max-width: 100%; height: auto;'>
         </div>''' if has_image_size else ''}
         {f'''<div class='card'>
           <h3>Startup Time</h3>
-          <img src='startup_time.png' width='600' style='max-width: 100%; height: auto;'>
+          <img src='report/startup_time.png' width='600' style='max-width: 100%; height: auto;'>
         </div>''' if has_startup_time else ''}
       </div>
     </div>"""

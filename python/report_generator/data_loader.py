@@ -104,7 +104,7 @@ def load_session_workloads(raw_session_dir: Path) -> list[tuple[str, Performance
         runs: list[PerformanceWorkloadRun] = []
         if raw_workload_dir.exists() and raw_workload_dir.is_dir():
             for raw_run_dir in raw_workload_dir.iterdir():
-                if raw_run_dir.is_dir():
+                if raw_run_dir.is_dir() and raw_run_dir.name != "report":
                     raw_run_results = load_raw_performance_workload_run_results(raw_run_dir)
                     if raw_run_results is not None:
                         runs.append(PerformanceWorkloadRun(raw_run_results, raw_run_dir))

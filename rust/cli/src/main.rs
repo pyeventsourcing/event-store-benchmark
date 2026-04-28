@@ -187,8 +187,8 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     // Read config file
     let session_config_yaml = fs::read_to_string(session_config_path)?;
 
-    // Create raw results directory
-    let session_results_path = PathBuf::from("results/raw").join(&session_id);
+    // Create session results directory
+    let session_results_path = PathBuf::from("results").join(format!("esb-{}", session_id));
     fs::create_dir_all(&session_results_path)?;
 
     // Record session config
@@ -254,7 +254,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
         println!("\n=== Running {} / {} ===", original_workload_name, workload_run_name);
 
-        // Create workload run results directory (results/raw/<session_id>/<original_workload_name>/<workload_run_name>)
+        // Create workload run results directory (results/esb-<session_id>/<original_workload_name>/<workload_run_name>)
         let run_results_path = session_results_path.join(&original_workload_name).join(&workload_run_name);
         fs::create_dir_all(&run_results_path)?;
 

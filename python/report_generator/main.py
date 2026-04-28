@@ -8,8 +8,8 @@ from .reporting.performance_pipeline import generate_performance_session_reports
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate ES-BENCH benchmark report from raw results")
-    parser.add_argument("--raw", type=str, default="results/raw", help="Path to raw results dir")
-    parser.add_argument("--out", type=str, default="results/published", help="Output reports dir")
+    parser.add_argument("--raw", type=str, default="results", help="Path to results dir")
+    parser.add_argument("--out", type=str, default="results", help="Output reports dir")
     parser.add_argument("--force", action="store_true", help="Force regeneration of already published sessions")
     args = parser.parse_args()
 
@@ -21,7 +21,7 @@ def main() -> None:
         print(f"No sessions found in {raw_base}")
         return
 
-    all_session_ids = sorted([d.name for d in raw_base.iterdir() if d.is_dir()])
+    all_session_ids = sorted([d.name for d in raw_base.iterdir() if d.is_dir() and d.name.startswith("esb-")])
     if not all_session_ids:
         print(f"No sessions found in {raw_base}")
         return
@@ -31,7 +31,7 @@ def main() -> None:
         sessions_to_process = all_session_ids
     else:
         for session_id in all_session_ids:
-            if not (published_base / session_id).exists():
+            if not (published_base / session_id / "index.html").exists():
                 sessions_to_process.append(session_id)
 
     if not sessions_to_process:

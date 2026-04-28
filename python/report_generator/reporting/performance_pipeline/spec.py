@@ -38,48 +38,48 @@ def worker_labels(worker_axis: WorkerAxis) -> tuple[str, str, str]:
 
 def run_image_relpath(key: RunImageKey) -> str:
     return {
-        RunImageKey.LATENCY_CDF: "latency_cdf.png",
-        RunImageKey.THROUGHPUT_TS: "throughput_timeseries.png",
-        RunImageKey.OPERATION_ERRORS_TS: "operation_errors_timeseries.png",
-        RunImageKey.CPU_TS: "cpu_timeseries.png",
-        RunImageKey.MEMORY_TS: "memory_timeseries.png",
-        RunImageKey.TOOL_LATENCY_CDF: "tool_latency_cdf.png",
-        RunImageKey.TOOL_CPU_TS: "tool_cpu_timeseries.png",
-        RunImageKey.TOOL_MEMORY_TS: "tool_memory_timeseries.png",
+        RunImageKey.LATENCY_CDF: "report/latency_cdf.png",
+        RunImageKey.THROUGHPUT_TS: "report/throughput_timeseries.png",
+        RunImageKey.OPERATION_ERRORS_TS: "report/operation_errors_timeseries.png",
+        RunImageKey.CPU_TS: "report/cpu_timeseries.png",
+        RunImageKey.MEMORY_TS: "report/memory_timeseries.png",
+        RunImageKey.TOOL_LATENCY_CDF: "report/tool_latency_cdf.png",
+        RunImageKey.TOOL_CPU_TS: "report/tool_cpu_timeseries.png",
+        RunImageKey.TOOL_MEMORY_TS: "report/tool_memory_timeseries.png",
     }[key]
 
 
 def worker_slice_image_relpath(worker_suffix: str, worker_count: int, key: WorkerSliceImageKey) -> str:
     prefix = f"worker_slice_{worker_suffix}{worker_count}"
     return {
-        WorkerSliceImageKey.THROUGHPUT: f"{prefix}_throughput.png",
-        WorkerSliceImageKey.OPERATION_ERRORS: f"{prefix}_operation_errors.png",
-        WorkerSliceImageKey.LATENCY_CDF: f"{prefix}_latency_cdf.png",
-        WorkerSliceImageKey.CPU_TS: f"{prefix}_cpu_timeseries.png",
-        WorkerSliceImageKey.MEMORY_TS: f"{prefix}_memory_timeseries.png",
-        WorkerSliceImageKey.TOOL_LATENCY_CDF: f"{prefix}_tool_latency_cdf.png",
-        WorkerSliceImageKey.TOOL_CPU_TS: f"{prefix}_tool_cpu_timeseries.png",
-        WorkerSliceImageKey.TOOL_MEMORY_TS: f"{prefix}_tool_memory_timeseries.png",
+        WorkerSliceImageKey.THROUGHPUT: f"report/{prefix}_throughput.png",
+        WorkerSliceImageKey.OPERATION_ERRORS: f"report/{prefix}_operation_errors.png",
+        WorkerSliceImageKey.LATENCY_CDF: f"report/{prefix}_latency_cdf.png",
+        WorkerSliceImageKey.CPU_TS: f"report/{prefix}_cpu_timeseries.png",
+        WorkerSliceImageKey.MEMORY_TS: f"report/{prefix}_memory_timeseries.png",
+        WorkerSliceImageKey.TOOL_LATENCY_CDF: f"report/{prefix}_tool_latency_cdf.png",
+        WorkerSliceImageKey.TOOL_CPU_TS: f"report/{prefix}_tool_cpu_timeseries.png",
+        WorkerSliceImageKey.TOOL_MEMORY_TS: f"report/{prefix}_tool_memory_timeseries.png",
     }[key]
 
 
 def scaling_image_relpath(key: ScalingImageKey) -> str:
     return {
-        ScalingImageKey.THROUGHPUT_BY_WORKERS: "by_workers_throughput.png",
-        ScalingImageKey.OPERATION_ERRORS_BY_WORKERS: "by_workers_operation_errors.png",
-        ScalingImageKey.LATENCY_BY_WORKERS: "by_workers_latency.png",
-        ScalingImageKey.CPU_BY_WORKERS: "by_workers_cpu.png",
-        ScalingImageKey.MEMORY_BY_WORKERS: "by_workers_memory.png",
-        ScalingImageKey.TOOL_LATENCY_BY_WORKERS: "by_workers_tool_latency.png",
-        ScalingImageKey.TOOL_CPU_BY_WORKERS: "by_workers_tool_cpu.png",
-        ScalingImageKey.TOOL_MEMORY_BY_WORKERS: "by_workers_tool_memory.png",
+        ScalingImageKey.THROUGHPUT_BY_WORKERS: "report/by_workers_throughput.png",
+        ScalingImageKey.OPERATION_ERRORS_BY_WORKERS: "report/by_workers_operation_errors.png",
+        ScalingImageKey.LATENCY_BY_WORKERS: "report/by_workers_latency.png",
+        ScalingImageKey.CPU_BY_WORKERS: "report/by_workers_cpu.png",
+        ScalingImageKey.MEMORY_BY_WORKERS: "report/by_workers_memory.png",
+        ScalingImageKey.TOOL_LATENCY_BY_WORKERS: "report/by_workers_tool_latency.png",
+        ScalingImageKey.TOOL_CPU_BY_WORKERS: "report/by_workers_tool_cpu.png",
+        ScalingImageKey.TOOL_MEMORY_BY_WORKERS: "report/by_workers_tool_memory.png",
     }[key]
 
 
 def session_image_relpath(key: SessionImageKey) -> str:
     return {
-        SessionImageKey.IMAGE_SIZE: "image_size.png",
-        SessionImageKey.STARTUP_TIME: "startup_time.png",
+        SessionImageKey.IMAGE_SIZE: "report/image_size.png",
+        SessionImageKey.STARTUP_TIME: "report/startup_time.png",
     }[key]
 
 
