@@ -44,6 +44,20 @@ def _set_y_limit_with_margin(ax: Any, values: Any, margin: float = 0.05) -> None
         ax.set_ylim(bottom=0, top=1)
 
 
+def _grouped_bar_layout(
+    group_count: int,
+    series_count: int,
+    group_width: float = 0.72,
+    inter_group_scale: float = 1.2,
+    intra_group_gap_ratio: float = 0.06,
+) -> tuple[np.ndarray, float, float]:
+    """Return x positions, bar width, and offset step for grouped bars."""
+    x = np.arange(group_count) * inter_group_scale
+    width = group_width / max(1, series_count)
+    offset_step = width * (1 + intra_group_gap_ratio)
+    return x, width, offset_step
+
+
 def _filter_cdf_to_percentile(latencies_ms: Sequence[float], percentiles: Sequence[float], cap: float = 99.9) -> tuple[list[float], list[float]]:
     filtered = [(latency, percentile) for latency, percentile in zip(latencies_ms, percentiles) if percentile <= cap]
     if not filtered:
@@ -528,15 +542,14 @@ def plot_throughput_by_workers(runs: List[PerformanceWorkloadRun], out_path: str
     title = f"Throughput by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_vals = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
         
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
@@ -596,12 +609,11 @@ def plot_operation_errors_by_workers(runs: List[PerformanceWorkloadRun], out_pat
     title = f"Operation Errors by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     for i, adapter in enumerate(adapters):
         vals = np.array([data[wc].get(adapter, 0) for wc in worker_counts])
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         plt.bar(x + offset, vals, width, color=color, alpha=0.9)
 
@@ -645,8 +657,7 @@ def plot_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, g
     title = f"Latency by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_p50_vals = []
     for i, adapter in enumerate(adapters):
@@ -654,7 +665,7 @@ def plot_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, g
         p99_vals = np.array([data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts])
         p999_vals = np.array([data[wc].get(adapter, {}).get("p999", 0) for wc in worker_counts])
 
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
 
         plt.bar(x + offset, p50_vals, width, color=color, alpha=1.0)
@@ -718,8 +729,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: s
     title = f"Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_p50_vals = []
     for i, adapter in enumerate(adapters):
@@ -727,7 +737,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: s
         p99_vals = np.array([data[wc].get(adapter, {}).get("p99", 0) for wc in worker_counts])
         p999_vals = np.array([data[wc].get(adapter, {}).get("p999", 0) for wc in worker_counts])
 
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
 
         plt.bar(x + offset, p50_vals, width, color=color, alpha=1.0)
@@ -789,15 +799,14 @@ def plot_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_s
     title = f"CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_cpu: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
         
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
@@ -851,15 +860,14 @@ def plot_tool_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, 
     title = f"Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_cpu: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
         
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
@@ -915,15 +923,14 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
     title = f"Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_mem: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
         
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
@@ -977,15 +984,14 @@ def plot_tool_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: st
     title = f"Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
-    x = np.arange(len(worker_counts))
-    width = 0.8 / len(adapters)
+    x, width, offset_step = _grouped_bar_layout(len(worker_counts), len(adapters))
 
     all_mem: List[float] = []
     for i, adapter in enumerate(adapters):
         avg_vals = np.array([data[wc].get(adapter, {}).get("avg", 0) for wc in worker_counts])
         peak_vals = np.array([data[wc].get(adapter, {}).get("peak", 0) for wc in worker_counts])
         
-        offset = (i - (len(adapters) - 1) / 2) * width
+        offset = (i - (len(adapters) - 1) / 2) * offset_step
         color = get_adapter_color(adapter)
         
         plt.bar(x + offset, avg_vals, width, color=color, alpha=1.0)
