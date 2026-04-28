@@ -561,7 +561,6 @@ impl PerformanceWorkload {
             let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
 
-            println!("Append condition: {:?}", write_cfg.append_condition);
             while !out_of_time && !cancel_token.is_cancelled() {
                 let evt = EventData {
                     payload: payload.clone(),
