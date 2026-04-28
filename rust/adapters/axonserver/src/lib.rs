@@ -157,40 +157,73 @@ impl AxonServerAdapter {
             .map_err(|e| anyhow::anyhow!(e))?;
         Ok(Self { client })
     }
+
+    fn convert_events(events: &[EventData]) -> Vec<TaggedEvent> {
+        events
+            .iter()
+            .map(|evt| {
+                let tags: Vec<Tag> = evt
+                    .tags
+                    .iter()
+                    .map(|t| Tag {
+                        key: t.as_bytes().to_vec().into(),
+                        value: Vec::new().into(),
+                    })
+                    .collect();
+
+                let event = Event {
+                    identifier: uuid::Uuid::new_v4().to_string(),
+                    timestamp: now_millis(),
+                    name: evt.event_type.to_string(),
+                    version: String::new(),
+                    payload: evt.payload.to_vec().into(),
+                    metadata: Default::default(),
+                };
+
+                TaggedEvent {
+                    event: Some(event),
+                    tag: tags,
+                }
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
-        anyhow::bail!("append_dcb not implemented in AxonServerAdapter")
+    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+        let tagged_events = Self::convert_events(events);
+
+        let consistency_condition = condition.map(|c| ConsistencyCondition {
+            consistency_marker: c.after.map_or(0, |p| p as i64),
+            criterion: c
+                .fail_if_events_match
+                .items
+                .into_iter()
+                .map(|item| Criterion {
+                    tags_and_names: Some(TagsAndNamesCriterion {
+                        name: item.types,
+                        tag: item
+                            .tags
+                            .into_iter()
+                            .map(|t| Tag {
+                                key: t.as_bytes().to_vec().into(),
+                                value: Vec::new().into(),
+                            })
+                            .collect(),
+                    }),
+                })
+                .collect(),
+        });
+
+        let position = self.client.append(tagged_events, consistency_condition).await?;
+        Ok(Some(if position >= 0 { position as u64 } else { 0 }))
     }
 
     async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
-        let tagged_events: Vec<TaggedEvent> = events.iter().map(|evt| {
-            let tags: Vec<Tag> = evt
-                .tags
-                .iter()
-                .map(|t| Tag {
-                    key: t.as_bytes().to_vec().into(),
-                    value: Vec::new().into(),
-                })
-                .collect();
-
-            let event = Event {
-                identifier: uuid::Uuid::new_v4().to_string(),
-                timestamp: now_millis(),
-                name: evt.event_type.to_string(),
-                version: String::new(),
-                payload: evt.payload.to_vec().into(),
-                metadata: Default::default(),
-            };
-            TaggedEvent {
-                event: Some(event),
-                tag: tags,
-            }
-        }).collect();
+        let tagged_events = Self::convert_events(events);
 
         let condition = if let Some(global_position) = global_position {
             Some(ConsistencyCondition{
