@@ -141,7 +141,7 @@ def generate_plots(results: List[Dict[str, Any]], output_dir: str) -> None:
     ax2.set_xticks(x)
     ax2.set_xticklabels(clients)
     
-    ax2.legend()
+    ax2.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12), ncol=3, frameon=False)
     ax2.grid(True, axis='y', ls=':', alpha=0.6)
 
     plt.tight_layout()

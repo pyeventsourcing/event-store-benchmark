@@ -7,7 +7,7 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import LogLocator, NullFormatter, FuncFormatter
 
 from .style import (
-    get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
+    ADAPTER_COLORS, get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
     FONT_SIZE_TITLE, FONT_SIZE_LABEL, FONT_SIZE_TICK, FONT_SIZE_LEGEND
 )
 from ..workloads.performance import PerformanceWorkloadRun
@@ -86,6 +86,92 @@ def _plot_cdf_line_with_end_markers(
         zorder=3,
     )
     return filtered_latencies, filtered_percentiles
+
+
+def _reorder_for_row_first_legend(items: list[tuple[Any, str]], ncol: int) -> list[tuple[Any, str]]:
+    """Reorder legend items so matplotlib's column-wise packing appears row-wise."""
+    if ncol <= 1 or len(items) <= ncol:
+        return items
+
+    rows = [items[i:i + ncol] for i in range(0, len(items), ncol)]
+    reordered: list[tuple[Any, str]] = []
+    for col in range(ncol):
+        for row in rows:
+            if col < len(row):
+                reordered.append(row[col])
+    return reordered
+
+
+def _legend_below(*args: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("loc", "upper center")
+    kwargs.setdefault("bbox_to_anchor", (0.5, -0.12))
+    kwargs.setdefault("frameon", False)
+
+    handles = kwargs.get("handles")
+    labels = kwargs.get("labels")
+    if labels is None:
+        if handles is not None:
+            labels = [h.get_label() for h in handles]
+        else:
+            current_handles, current_labels = plt.gca().get_legend_handles_labels()
+            if handles is None:
+                handles = current_handles
+            labels = current_labels
+
+    if handles is not None and labels is not None and len(handles) == len(labels):
+        adapter_items = [(h, l) for h, l in zip(handles, labels) if l in ADAPTER_COLORS and l != "dummy"]
+        other_items = [(h, l) for h, l in zip(handles, labels) if not (l in ADAPTER_COLORS and l != "dummy")]
+        ordered_items = adapter_items + other_items
+        if ordered_items:
+            adapter_columns = min(len(adapter_items), 5) if adapter_items else 0
+            if adapter_columns > 0:
+                kwargs["ncol"] = adapter_columns
+                ordered_items = _reorder_for_row_first_legend(ordered_items, adapter_columns)
+            kwargs["handles"] = [h for h, _ in ordered_items]
+            kwargs["labels"] = [l for _, l in ordered_items]
+            labels = kwargs["labels"]
+
+    adapter_columns = len([label for label in labels if label in ADAPTER_COLORS and label != "dummy"])
+    if adapter_columns > 0:
+        kwargs["ncol"] = min(adapter_columns, 5)
+
+    return plt.legend(*args, **kwargs)
+
+
+def _axes_legend_below(ax: Any, *args: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("loc", "upper center")
+    kwargs.setdefault("bbox_to_anchor", (0.5, -0.12))
+    kwargs.setdefault("frameon", False)
+
+    handles = kwargs.get("handles")
+    labels = kwargs.get("labels")
+    if labels is None:
+        if handles is not None:
+            labels = [h.get_label() for h in handles]
+        else:
+            current_handles, current_labels = ax.get_legend_handles_labels()
+            if handles is None:
+                handles = current_handles
+            labels = current_labels
+
+    if handles is not None and labels is not None and len(handles) == len(labels):
+        adapter_items = [(h, l) for h, l in zip(handles, labels) if l in ADAPTER_COLORS and l != "dummy"]
+        other_items = [(h, l) for h, l in zip(handles, labels) if not (l in ADAPTER_COLORS and l != "dummy")]
+        ordered_items = adapter_items + other_items
+        if ordered_items:
+            adapter_columns = min(len(adapter_items), 5) if adapter_items else 0
+            if adapter_columns > 0:
+                kwargs["ncol"] = adapter_columns
+                ordered_items = _reorder_for_row_first_legend(ordered_items, adapter_columns)
+            kwargs["handles"] = [h for h, _ in ordered_items]
+            kwargs["labels"] = [l for _, l in ordered_items]
+            labels = kwargs["labels"]
+
+    adapter_columns = len([label for label in labels if label in ADAPTER_COLORS and label != "dummy"])
+    if adapter_columns > 0:
+        kwargs["ncol"] = min(adapter_columns, 5)
+
+    return ax.legend(*args, **kwargs)
 
 
 def plot_latency_cdf(run: PerformanceWorkloadRun, out_path: str) -> None:
@@ -300,7 +386,7 @@ def plot_worker_slice_latency_cdf(runs: List[PerformanceWorkloadRun], title: str
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
     plt.title(title)
-    plt.legend()
+    _legend_below()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -341,7 +427,7 @@ def plot_worker_slice_tool_latency_cdf(runs: List[PerformanceWorkloadRun], title
     plt.gca().xaxis.set_minor_formatter(NullFormatter())
     plt.ticklabel_format(style='plain', axis='y')
     plt.title(title)
-    plt.legend()
+    _legend_below()
     plt.grid(True, which="both", ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -367,7 +453,7 @@ def plot_worker_slice_throughput(runs: List[PerformanceWorkloadRun], title: str,
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Throughput (events/sec)")
     plt.title(title)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -393,7 +479,7 @@ def plot_worker_slice_operation_errors(runs: List[PerformanceWorkloadRun], title
     plt.xlabel("Elapsed Time (s)")
     plt.ylabel("Operation Errors")
     plt.title(title)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -422,7 +508,7 @@ def plot_worker_slice_cpu(runs: List[PerformanceWorkloadRun], title: str, out_pa
     plt.ylabel("CPU Usage (%)")
     plt.title(title)
     _set_y_limit_with_margin(plt.gca(), all_cpu)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -451,7 +537,7 @@ def plot_worker_slice_tool_cpu(runs: List[PerformanceWorkloadRun], title: str, o
     plt.ylabel("CPU Usage (%)")
     plt.title(title)
     _set_y_limit_with_margin(plt.gca(), all_cpu)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -480,7 +566,7 @@ def plot_worker_slice_memory(runs: List[PerformanceWorkloadRun], title: str, out
     plt.ylabel("Memory Usage (MB)")
     plt.title(title)
     _set_y_limit_with_margin(plt.gca(), all_mem)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -509,7 +595,7 @@ def plot_worker_slice_tool_memory(runs: List[PerformanceWorkloadRun], title: str
     plt.ylabel("Memory Usage (MB)")
     plt.title(title)
     _set_y_limit_with_margin(plt.gca(), all_mem)
-    plt.legend()
+    _legend_below()
     plt.grid(True, ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -578,7 +664,7 @@ def plot_throughput_by_workers(runs: List[PerformanceWorkloadRun], out_path: str
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=2)
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -623,7 +709,7 @@ def plot_operation_errors_by_workers(runs: List[PerformanceWorkloadRun], out_pat
     plt.xticks(x, [str(wc) for wc in worker_counts])
 
     adapter_handles = [Line2D([0], [0], color=get_adapter_color(a), lw=4, label=a) for a in adapters]
-    plt.legend(handles=adapter_handles)
+    _legend_below(handles=adapter_handles)
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -695,7 +781,7 @@ def plot_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, g
         Line2D([0], [0], color='gray', alpha=0.3, lw=4, label='p99.9')
     ]
 
-    plt.legend(handles=adapter_handles + percentile_handles, ncol=2)
+    _legend_below(handles=adapter_handles + percentile_handles, ncol=2)
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(out_path)
@@ -766,7 +852,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: s
         Line2D([0], [0], color='gray', alpha=0.6, lw=4, label='p99'),
         Line2D([0], [0], color='gray', alpha=0.3, lw=4, label='p99.9')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=len(adapters) if len(adapters) < 4 else 4)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=len(adapters) if len(adapters) < 4 else 4)
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -826,7 +912,7 @@ def plot_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_s
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=2)
     
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -887,7 +973,7 @@ def plot_tool_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, 
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=2)
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -950,7 +1036,7 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=2)
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -1011,7 +1097,7 @@ def plot_tool_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: st
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    plt.legend(handles=adapter_handles + metric_handles, ncol=2)
+    _legend_below(handles=adapter_handles + metric_handles, ncol=2)
 
     plt.grid(True, axis='y', ls=":", alpha=0.6)
     plt.tight_layout()
@@ -1161,7 +1247,7 @@ def plot_image_size(runs: List[Any], out_path: str, get_store_rank: Optional[Cal
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    ax.legend(handles=metric_handles, loc='upper right')
+    _axes_legend_below(ax, handles=metric_handles)
 
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches='tight')
@@ -1230,7 +1316,7 @@ def plot_startup_time(runs: List[Any], out_path: str, get_store_rank: Optional[C
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
         Line2D([0], [0], color='gray', alpha=0.5, lw=4, label='Peak')
     ]
-    ax.legend(handles=metric_handles, loc='upper right')
+    _axes_legend_below(ax, handles=metric_handles)
 
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches='tight')
