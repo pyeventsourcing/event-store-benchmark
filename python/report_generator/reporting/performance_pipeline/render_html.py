@@ -30,10 +30,12 @@ def write_workload_reports(report: PerformanceSessionReport) -> dict[str, dict[s
     return workload_summaries
 
 
-def get_session_container_plot_availability(report: PerformanceSessionReport) -> tuple[bool, bool]:
-    has_image_size = report.session_images[SessionImageKey.IMAGE_SIZE].include_in_html
-    has_startup_time = report.session_images[SessionImageKey.STARTUP_TIME].include_in_html
-    return has_image_size, has_startup_time
+def get_session_plot_availability(report: PerformanceSessionReport) -> tuple[bool, bool]:
+    has_container_stats_summary = report.session_images[SessionImageKey.CONTAINER_STATS_SUMMARY].include_in_html
+    has_selected_slice_summary = report.session_images[
+        SessionImageKey.SELECTED_SLICE_SUMMARY_BY_WORKLOAD
+    ].include_in_html
+    return has_container_stats_summary, has_selected_slice_summary
 
 
 def render_run_html(run_report: RunReport) -> str:

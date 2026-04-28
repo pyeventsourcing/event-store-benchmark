@@ -78,8 +78,8 @@ def scaling_image_relpath(key: ScalingImageKey) -> str:
 
 def session_image_relpath(key: SessionImageKey) -> str:
     return {
-        SessionImageKey.IMAGE_SIZE: "report/image_size.png",
-        SessionImageKey.STARTUP_TIME: "report/startup_time.png",
+        SessionImageKey.CONTAINER_STATS_SUMMARY: "report/container_stats_summary.png",
+        SessionImageKey.SELECTED_SLICE_SUMMARY_BY_WORKLOAD: "report/selected_slice_summary_by_workload.png",
     }[key]
 
 
@@ -244,6 +244,12 @@ def build_scaling_images(sections: ScalingSections) -> dict[ScalingImageKey, Ima
 
 def build_session_images() -> dict[SessionImageKey, ImageRef]:
     return {
-        SessionImageKey.IMAGE_SIZE: ImageRef(session_image_relpath(SessionImageKey.IMAGE_SIZE), "Image Size"),
-        SessionImageKey.STARTUP_TIME: ImageRef(session_image_relpath(SessionImageKey.STARTUP_TIME), "Startup Time"),
+        SessionImageKey.CONTAINER_STATS_SUMMARY: ImageRef(
+            session_image_relpath(SessionImageKey.CONTAINER_STATS_SUMMARY),
+            "Container Stats Summary",
+        ),
+        SessionImageKey.SELECTED_SLICE_SUMMARY_BY_WORKLOAD: ImageRef(
+            session_image_relpath(SessionImageKey.SELECTED_SLICE_SUMMARY_BY_WORKLOAD),
+            "Selected Slice Performance Summary by Workload",
+        ),
     }

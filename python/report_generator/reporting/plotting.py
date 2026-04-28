@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -168,6 +169,23 @@ def _legend_below(*args: Any, **kwargs: Any) -> Any:
     adapter_columns = len([label for label in labels if label in ADAPTER_COLORS and label != "dummy"])
     if adapter_columns > 0:
         kwargs["ncol"] = min(adapter_columns, 5)
+
+    return plt.legend(*args, **kwargs)
+
+
+def _legend_below_single_row(*args: Any, **kwargs: Any) -> Any:
+    kwargs.setdefault("loc", "lower center")
+    kwargs.setdefault("bbox_to_anchor", (0.5, 0.01))
+    kwargs.setdefault("frameon", False)
+
+    handles = kwargs.get("handles")
+    labels = kwargs.get("labels")
+    if labels is None and handles is not None:
+        labels = [h.get_label() for h in handles]
+        kwargs["labels"] = labels
+
+    if handles is not None:
+        kwargs.setdefault("ncol", len(handles))
 
     return plt.legend(*args, **kwargs)
 
@@ -1261,29 +1279,15 @@ def plot_image_size(runs: List[Any], out_path: str, get_store_rank: Optional[Cal
         peak_image_sizes.append(float(np.max(img_sizes)))
 
     fig, ax = plt.subplots()
-    colors = [get_adapter_color(adapter) for adapter in adapters]
-
-    def plot_bar(ax: Any, avg_data: Sequence[float], peak_data: Sequence[float], title: str, ylabel: str, fmt_str: str) -> None:
-        x = np.arange(len(adapters))
-        ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
-        ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
-               color=colors, edgecolor='black', linewidth=1.5, alpha=0.5)
-
-        ax.set_ylabel(ylabel, fontweight='bold')
-        ax.set_title(title, fontweight='bold', fontsize=14)
-        ax.set_xticks(x)
-        ax.set_xticklabels(adapters)
-        ax.grid(True, alpha=0.3, axis='y')
-        _set_y_limit_with_margin(ax, peak_data)
-        
-        for i, (avg, peak) in enumerate(zip(avg_data, peak_data)):
-            if peak > 0:
-                label = fmt_str.format(avg)
-                if peak > avg * 1.05:
-                    label += f" / {fmt_str.format(peak)}"
-                ax.text(i, peak, label, ha='center', va='bottom', fontweight='bold', fontsize=10)
-
-    plot_bar(ax, avg_image_sizes, peak_image_sizes, "Container Image Size", "Image Size (MB)", '{:.0f}')
+    _plot_container_avg_peak_bars(
+        ax,
+        adapters,
+        avg_image_sizes,
+        peak_image_sizes,
+        "Container Image Size",
+        "Image Size (MB)",
+        "{:.0f}",
+    )
 
     metric_handles = [
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
@@ -1330,29 +1334,15 @@ def plot_startup_time(runs: List[Any], out_path: str, get_store_rank: Optional[C
         peak_startup_times.append(float(np.max(s_times)))
 
     fig, ax = plt.subplots()
-    colors = [get_adapter_color(adapter) for adapter in adapters]
-
-    def plot_bar(ax: Any, avg_data: Sequence[float], peak_data: Sequence[float], title: str, ylabel: str, fmt_str: str) -> None:
-        x = np.arange(len(adapters))
-        ax.bar(x, avg_data, color=colors, edgecolor='black', linewidth=1.5, alpha=1.0)
-        ax.bar(x, np.maximum(0, np.array(peak_data) - np.array(avg_data)), bottom=avg_data,
-               color=colors, edgecolor='black', linewidth=1.5, alpha=0.5)
-
-        ax.set_ylabel(ylabel, fontweight='bold')
-        ax.set_title(title, fontweight='bold', fontsize=14)
-        ax.set_xticks(x)
-        ax.set_xticklabels(adapters)
-        ax.grid(True, alpha=0.3, axis='y')
-        _set_y_limit_with_margin(ax, peak_data)
-        
-        for i, (avg, peak) in enumerate(zip(avg_data, peak_data)):
-            if peak > 0:
-                label = fmt_str.format(avg)
-                if peak > avg * 1.05:
-                    label += f" / {fmt_str.format(peak)}"
-                ax.text(i, peak, label, ha='center', va='bottom', fontweight='bold', fontsize=10)
-
-    plot_bar(ax, avg_startup_times, peak_startup_times, "Container Startup Time", "Startup Time (s)", '{:.2f}')
+    _plot_container_avg_peak_bars(
+        ax,
+        adapters,
+        avg_startup_times,
+        peak_startup_times,
+        "Container Startup Time",
+        "Startup Time (s)",
+        "{:.2f}",
+    )
 
     metric_handles = [
         Line2D([0], [0], color='gray', alpha=1.0, lw=4, label='Average'),
@@ -1363,3 +1353,460 @@ def plot_startup_time(runs: List[Any], out_path: str, get_store_rank: Optional[C
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches='tight')
     plt.close()
+
+
+def _collect_container_metric(
+    runs: List[Any],
+    metric_key: str,
+    transform: Callable[[float], float],
+    allow_value: Callable[[float], bool],
+) -> Dict[str, List[float]]:
+    adapter_data: Dict[str, List[float]] = {}
+    for run in runs:
+        raw_val = run.metrics.get(metric_key)
+        if raw_val is None:
+            continue
+        val = transform(raw_val)
+        if not allow_value(val):
+            continue
+        adapter_data.setdefault(run.adapter, []).append(val)
+    return adapter_data
+
+
+def _collect_avg_peak_series(
+    adapter_data: Dict[str, List[float]],
+    get_store_rank: Optional[Callable[[str], int]],
+) -> tuple[list[str], list[float], list[float]]:
+    adapters_list = list(adapter_data.keys())
+    if get_store_rank:
+        adapters = sorted(adapters_list, key=get_store_rank)
+    else:
+        adapters = sorted(adapters_list)
+
+    avg_values: List[float] = []
+    peak_values: List[float] = []
+    for adapter in adapters:
+        values = adapter_data[adapter]
+        avg_values.append(float(np.mean(values)))
+        peak_values.append(float(np.max(values)))
+
+    return adapters, avg_values, peak_values
+
+
+def _plot_container_avg_peak_bars(
+    ax: Any,
+    adapters: Sequence[str],
+    avg_data: Sequence[float],
+    peak_data: Sequence[float],
+    title: str,
+    ylabel: str,
+    fmt_str: str,
+    show_xtick_labels: bool = True,
+    show_peak_segment: bool = True,
+    show_title_as_xlabel: bool = False,
+) -> None:
+    colors = [get_adapter_color(adapter) for adapter in adapters]
+    x = np.arange(len(adapters))
+    ax.bar(x, avg_data, color=colors, alpha=1.0)
+    if show_peak_segment:
+        ax.bar(
+            x,
+            np.maximum(0, np.array(peak_data) - np.array(avg_data)),
+            bottom=avg_data,
+            color=colors,
+            alpha=0.5,
+        )
+
+    ax.set_ylabel(ylabel, fontweight='bold')
+    if show_title_as_xlabel:
+        ax.set_title(title, fontweight='bold', fontsize=FONT_SIZE_LABEL)
+    else:
+        ax.set_title(title, fontweight='bold', fontsize=FONT_SIZE_TITLE)
+    ax.set_xticks(x)
+    if show_xtick_labels:
+        ax.set_xticklabels(adapters)
+    else:
+        ax.set_xticklabels([])
+    ax.grid(True, alpha=0.3, axis='y')
+    _set_y_limit_with_margin(ax, peak_data if show_peak_segment else avg_data)
+
+    for i, (avg, peak) in enumerate(zip(avg_data, peak_data)):
+        bar_top = peak if show_peak_segment else avg
+        if bar_top > 0:
+            label = fmt_str.format(avg)
+            if show_peak_segment and peak > avg * 1.05:
+                label += f" / {fmt_str.format(peak)}"
+            ax.text(i, bar_top, label, ha='center', va='bottom', fontweight='bold', fontsize=FONT_SIZE_TICK)
+
+
+def plot_container_stats_summary(
+    runs: List[Any],
+    out_path: str,
+    get_store_rank: Optional[Callable[[str], int]] = None,
+) -> None:
+    image_sizes_by_adapter = _collect_container_metric(
+        runs,
+        metric_key="image_size_bytes",
+        transform=lambda value: value / (1024 * 1024),
+        allow_value=lambda value: value > 0,
+    )
+    startup_times_by_adapter = _collect_container_metric(
+        runs,
+        metric_key="startup_time_s",
+        transform=float,
+        allow_value=lambda value: value > 0,
+    )
+
+    if not image_sizes_by_adapter and not startup_times_by_adapter:
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(PLOT_WIDTH * 2, PLOT_HEIGHT))
+    image_ax, startup_ax = axes
+
+    image_adapters: list[str] = []
+    startup_adapters: list[str] = []
+
+    if image_sizes_by_adapter:
+        image_adapters, avg_image_sizes, peak_image_sizes = _collect_avg_peak_series(
+            image_sizes_by_adapter,
+            get_store_rank,
+        )
+        _plot_container_avg_peak_bars(
+            image_ax,
+            image_adapters,
+            avg_image_sizes,
+            peak_image_sizes,
+            "Container Image Size",
+            "Image Size (MB)",
+            "{:.0f}",
+            show_xtick_labels=False,
+            show_title_as_xlabel=True,
+        )
+    else:
+        image_ax.set_axis_off()
+
+    if startup_times_by_adapter:
+        startup_adapters, avg_startup_times, peak_startup_times = _collect_avg_peak_series(
+            startup_times_by_adapter,
+            get_store_rank,
+        )
+        _plot_container_avg_peak_bars(
+            startup_ax,
+            startup_adapters,
+            avg_startup_times,
+            peak_startup_times,
+            "Container Startup Time",
+            "Startup Time (s)",
+            "{:.2f}",
+            show_xtick_labels=False,
+            show_peak_segment=False,
+            show_title_as_xlabel=True,
+        )
+    else:
+        startup_ax.set_axis_off()
+
+    legend_adapters: list[str] = []
+    if image_sizes_by_adapter:
+        legend_adapters.extend(image_adapters)
+    if startup_times_by_adapter:
+        for adapter in startup_adapters:
+            if adapter not in legend_adapters:
+                legend_adapters.append(adapter)
+
+    if legend_adapters:
+        adapter_handles = [
+            Line2D([0], [0], color=get_adapter_color(adapter), lw=8, label=adapter)
+            for adapter in legend_adapters
+        ]
+        _legend_below_single_row(
+            handles=adapter_handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.01),
+            bbox_transform=fig.transFigure,
+        )
+
+    fig.subplots_adjust(top=0.90, bottom=0.16, wspace=0.28)
+    plt.savefig(out_path, bbox_inches='tight')
+    plt.close()
+
+
+def _select_best_worker_count_metrics_by_workload(
+    workloads: List[Any],
+) -> tuple[int | None, list[str], list[str], dict[str, dict[str, float]], dict[str, dict[str, float]]]:
+    worker_scores_by_workload: dict[str, dict[int, float]] = {}
+
+    for workload in workloads:
+        runs = [run_report.run for run_report in workload.runs]
+        worker_scores: dict[int, list[float]] = defaultdict(list)
+
+        for run in runs:
+            throughput = run.average_throughput
+            p99_latency_ms = run.get_latency_percentile(99.0)
+            if throughput <= 0 or p99_latency_ms <= 0:
+                continue
+            worker_scores[run.worker_count].append(throughput / p99_latency_ms)
+
+        if not worker_scores:
+            continue
+
+        worker_scores_by_workload[workload.workload_name] = {
+            worker_count: float(np.mean(scores))
+            for worker_count, scores in worker_scores.items()
+            if scores
+        }
+
+    global_worker_scores: dict[int, list[float]] = defaultdict(list)
+    for workload_scores in worker_scores_by_workload.values():
+        if not workload_scores:
+            continue
+
+        max_score = max(workload_scores.values())
+        if max_score <= 0:
+            continue
+
+        for worker_count, score in workload_scores.items():
+            global_worker_scores[worker_count].append(score / max_score)
+
+    if not global_worker_scores:
+        return None, [], [], {}, {}
+
+    best_worker_count: int | None = None
+    best_global_score = float("-inf")
+    for worker_count, normalized_scores in global_worker_scores.items():
+        if not normalized_scores:
+            continue
+        score = float(np.mean(normalized_scores))
+        if best_worker_count is None or score > best_global_score or (
+            score == best_global_score and worker_count < best_worker_count
+        ):
+            best_worker_count = worker_count
+            best_global_score = score
+
+    if best_worker_count is None:
+        return None, [], [], {}, {}
+
+    workload_names: list[str] = []
+    adapter_order: list[str] = []
+    throughput_by_workload: dict[str, dict[str, float]] = {}
+    p99_by_workload: dict[str, dict[str, float]] = {}
+
+    for workload in workloads:
+        runs = [run_report.run for run_report in workload.runs]
+
+        adapter_throughput: dict[str, list[float]] = defaultdict(list)
+        adapter_p99: dict[str, list[float]] = defaultdict(list)
+
+        for run in runs:
+            if run.worker_count != best_worker_count:
+                continue
+            throughput = run.average_throughput
+            p99_latency_ms = run.get_latency_percentile(99.0)
+            if throughput <= 0 or p99_latency_ms <= 0:
+                continue
+            adapter_throughput[run.adapter].append(throughput)
+            adapter_p99[run.adapter].append(p99_latency_ms)
+
+        if not adapter_throughput:
+            continue
+
+        workload_name = workload.workload_name
+        workload_names.append(workload_name)
+        throughput_by_workload[workload_name] = {
+            adapter: float(np.mean(values))
+            for adapter, values in adapter_throughput.items()
+            if values
+        }
+        p99_by_workload[workload_name] = {
+            adapter: float(np.mean(values))
+            for adapter, values in adapter_p99.items()
+            if values
+        }
+
+        for adapter in workload.store_order:
+            if adapter in throughput_by_workload[workload_name] and adapter not in adapter_order:
+                adapter_order.append(adapter)
+        for adapter in throughput_by_workload[workload_name]:
+            if adapter not in adapter_order:
+                adapter_order.append(adapter)
+
+    return best_worker_count, workload_names, adapter_order, throughput_by_workload, p99_by_workload
+
+
+def get_selected_worker_count_for_session_summary(workloads: List[Any]) -> int | None:
+    selected_worker_count, _, _, _, _ = _select_best_worker_count_metrics_by_workload(workloads)
+    return selected_worker_count
+
+
+def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_path: str) -> None:
+    selected_worker_count, workload_names, adapters, throughput_by_workload, p99_by_workload = (
+        _select_best_worker_count_metrics_by_workload(workloads)
+    )
+    if selected_worker_count is None or not workload_names or not adapters:
+        return
+
+    col_count = len(workload_names)
+    fig, axes = plt.subplots(
+        2,
+        col_count,
+        figsize=(PLOT_WIDTH * 2, max(PLOT_HEIGHT * 1.25, 10.0)),
+        squeeze=False,
+        gridspec_kw={"hspace": 0.32, "wspace": 0.26},
+    )
+
+    adapter_handles: list[Line2D] = [
+        Line2D([0], [0], color=get_adapter_color(adapter), lw=8, label=adapter) for adapter in adapters
+    ]
+    plotted_any = False
+
+    for idx, workload_name in enumerate(workload_names):
+        throughput_ax = axes[0, idx]
+        latency_ax = axes[1, idx]
+
+        throughput_values_by_adapter = throughput_by_workload.get(workload_name, {})
+        latency_values_by_adapter = p99_by_workload.get(workload_name, {})
+        valid_adapters = [
+            adapter
+            for adapter in adapters
+            if adapter in throughput_values_by_adapter and adapter in latency_values_by_adapter
+        ]
+
+        if not valid_adapters:
+            throughput_ax.set_visible(False)
+            latency_ax.set_visible(False)
+            continue
+
+        x = np.arange(len(valid_adapters), dtype=float)
+        colors = [get_adapter_color(adapter) for adapter in valid_adapters]
+        throughput_values = np.array([throughput_values_by_adapter[adapter] for adapter in valid_adapters], dtype=float)
+        latency_values = np.array([latency_values_by_adapter[adapter] for adapter in valid_adapters], dtype=float)
+
+        throughput_ax.bar(x, throughput_values, 0.72, color=colors, alpha=0.9)
+        throughput_ax.set_xticks([])
+        throughput_ax.set_title(workload_name, fontweight='bold', fontsize=FONT_SIZE_LABEL)
+        if idx == 0:
+            throughput_ax.set_ylabel("Throughput (events/s)", fontweight='bold')
+        throughput_ax.grid(True, axis='y', alpha=0.3)
+        throughput_ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
+        _set_y_limit_with_margin(throughput_ax, [float(v) for v in throughput_values if v > 0])
+        for x_pos, value in zip(x, throughput_values):
+            if value > 0:
+                throughput_ax.text(
+                    x_pos,
+                    value,
+                    f"{value:.0f}",
+                    ha='center',
+                    va='bottom',
+                    fontweight='bold',
+                    fontsize=FONT_SIZE_TICK,
+                )
+
+        latency_ax.bar(x, latency_values, 0.72, color=colors, alpha=0.9)
+        latency_ax.set_xticks([])
+        if idx == 0:
+            latency_ax.set_ylabel("p99 Latency (ms)", fontweight='bold')
+        latency_ax.grid(True, axis='y', alpha=0.3)
+        latency_ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
+        _set_y_limit_with_margin(latency_ax, [float(v) for v in latency_values if v > 0])
+        for x_pos, value in zip(x, latency_values):
+            if value > 0:
+                latency_ax.text(
+                    x_pos,
+                    value,
+                    f"{value:.2f}",
+                    ha='center',
+                    va='bottom',
+                    fontweight='bold',
+                    fontsize=FONT_SIZE_TICK,
+                )
+
+        plotted_any = True
+
+    if not plotted_any:
+        plt.close()
+        return
+
+    _legend_below_single_row(
+        handles=adapter_handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.01),
+        bbox_transform=fig.transFigure,
+    )
+    fig.subplots_adjust(bottom=0.16, top=0.90)
+    plt.savefig(out_path, bbox_inches='tight')
+    plt.close()
+
+
+def _plot_selected_slice_metric_by_workload(
+    workload_names: list[str],
+    adapters: list[str],
+    selected_worker_count: int,
+    out_path: str,
+    metric_by_workload: dict[str, dict[str, float]],
+    title: str,
+    ylabel: str,
+) -> None:
+    if not workload_names or not adapters:
+        return
+
+    subplot_count = len(workload_names)
+    cols = 1 if subplot_count == 1 else 2
+    rows = math.ceil(subplot_count / cols)
+
+    fig, axes = plt.subplots(
+        rows,
+        cols,
+        figsize=(max(PLOT_WIDTH, cols * 6), max(PLOT_HEIGHT, rows * 3.8)),
+        squeeze=False,
+        gridspec_kw={"hspace": 0.24, "wspace": 0.28},
+    )
+    axes_flat = axes.flatten()
+
+    adapter_handles: list[Line2D] = [Line2D([0], [0], color=get_adapter_color(adapter), lw=8, label=adapter) for adapter in adapters]
+    plotted_any = False
+
+    for idx, workload_name in enumerate(workload_names):
+        ax = axes_flat[idx]
+        values_by_adapter = metric_by_workload.get(workload_name, {})
+
+        valid_adapters = [adapter for adapter in adapters if adapter in values_by_adapter]
+        if not valid_adapters:
+            ax.set_visible(False)
+            continue
+
+        x = np.arange(len(valid_adapters), dtype=float)
+        values = np.array([values_by_adapter[adapter] for adapter in valid_adapters], dtype=float)
+        colors = [get_adapter_color(adapter) for adapter in valid_adapters]
+
+        ax.bar(x, values, 0.72, color=colors, edgecolor='black', linewidth=1.2, alpha=0.9)
+        ax.set_title(workload_name, fontweight='bold', fontsize=12)
+        if idx % cols == 0:
+            ax.set_ylabel(ylabel, fontweight='bold')
+        ax.set_xticks([])
+        ax.grid(True, axis='y', alpha=0.3)
+        ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
+        _set_y_limit_with_margin(ax, [float(v) for v in values if v > 0])
+        plotted_any = True
+
+    for idx in range(subplot_count, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
+    if not plotted_any:
+        plt.close()
+        return
+
+    fig.suptitle(f"{title} (Workers: {selected_worker_count})", fontweight='bold', fontsize=14)
+    _legend_below_single_row(
+        handles=adapter_handles,
+        bbox_transform=fig.transFigure,
+    )
+    fig.subplots_adjust(bottom=0.16, top=0.90)
+    plt.savefig(out_path, bbox_inches='tight')
+    plt.close()
+
+
+def plot_session_selected_slice_throughput_by_workload(workloads: List[Any], out_path: str) -> None:
+    plot_session_selected_slice_summary_by_workload(workloads, out_path)
+
+
+def plot_session_selected_slice_p99_latency_by_workload(workloads: List[Any], out_path: str) -> None:
+    plot_session_selected_slice_summary_by_workload(workloads, out_path)

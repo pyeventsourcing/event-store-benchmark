@@ -24,14 +24,14 @@ def generate_session_images(report: PerformanceSessionReport) -> None:
     _generate_session_plot(
         all_runs,
         session_out_dir,
-        report.session_images[SessionImageKey.IMAGE_SIZE],
-        lambda out_path: plotting.plot_image_size(all_runs, out_path, _get_store_rank_from_runs(all_runs)),
+        report.session_images[SessionImageKey.CONTAINER_STATS_SUMMARY],
+        lambda out_path: plotting.plot_container_stats_summary(all_runs, out_path, _get_store_rank_from_runs(all_runs)),
     )
     _generate_session_plot(
         all_runs,
         session_out_dir,
-        report.session_images[SessionImageKey.STARTUP_TIME],
-        lambda out_path: plotting.plot_startup_time(all_runs, out_path, _get_store_rank_from_runs(all_runs)),
+        report.session_images[SessionImageKey.SELECTED_SLICE_SUMMARY_BY_WORKLOAD],
+        lambda out_path: plotting.plot_session_selected_slice_summary_by_workload(report.workloads, out_path),
     )
 
 

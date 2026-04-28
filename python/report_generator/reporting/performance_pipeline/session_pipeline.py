@@ -4,9 +4,10 @@ from ...data_loader import SessionMetadata
 from ...models import PerformanceWorkloadConfig
 from ...workloads.performance import PerformanceWorkloadRun
 from .. import html
+from ..plotting import get_selected_worker_count_for_session_summary
 from .builder import build_session_report
 from .image_generation import generate_session_images
-from .render_html import get_session_container_plot_availability, write_workload_reports
+from .render_html import get_session_plot_availability, write_workload_reports
 
 
 def generate_performance_session_reports(
@@ -20,11 +21,13 @@ def generate_performance_session_reports(
     session_report = build_session_report(session_id, published_session_dir, session_workloads)
     generate_session_images(session_report)
     workload_summaries = write_workload_reports(session_report)
-    has_image_size, has_startup_time = get_session_container_plot_availability(session_report)
+    has_container_stats_summary, has_selected_slice_summary = get_session_plot_availability(session_report)
+    selected_worker_count = get_selected_worker_count_for_session_summary(session_report.workloads)
     html.generate_session_index(
         published_session_dir,
         workload_summaries,
         session_metadata,
-        has_image_size=has_image_size,
-        has_startup_time=has_startup_time,
+        has_container_stats_summary=has_container_stats_summary,
+        has_selected_slice_summary=has_selected_slice_summary,
+        selected_worker_count=selected_worker_count,
     )

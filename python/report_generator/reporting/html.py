@@ -171,8 +171,9 @@ def generate_session_index(
     session_out_dir: Path,
     workload_summaries: Dict[str, Any],
     session_metadata: SessionMetadata,
-    has_image_size: Optional[bool] = None,
-    has_startup_time: Optional[bool] = None,
+    has_container_stats_summary: Optional[bool] = None,
+    has_selected_slice_summary: Optional[bool] = None,
+    selected_worker_count: Optional[int] = None,
 ) -> None:
     """Generate index.html for a specific session."""
     env_section = _render_environment_info(session_metadata.environment_info)
@@ -200,24 +201,36 @@ def generate_session_index(
     session_title = f"Benchmark Session: {session_metadata.session_info.session_id}"
 
     container_stats_section = ""
-    if has_image_size is None:
-        has_image_size = (session_out_dir / "report" / "image_size.png").exists()
-    if has_startup_time is None:
-        has_startup_time = (session_out_dir / "report" / "startup_time.png").exists()
-    
-    if has_image_size or has_startup_time:
+    if has_container_stats_summary is None:
+        has_container_stats_summary = (session_out_dir / "report" / "container_stats_summary.png").exists()
+    if has_selected_slice_summary is None:
+        has_selected_slice_summary = (session_out_dir / "report" / "selected_slice_summary_by_workload.png").exists()
+
+    if has_container_stats_summary:
         container_stats_section = f"""
     <div class='workload-section'>
       <h2>Container Stats</h2>
       <div class='row'>
-        {f'''<div class='card'>
-          <h3>Image Size</h3>
-          <img src='report/image_size.png' width='600' style='max-width: 100%; height: auto;'>
-        </div>''' if has_image_size else ''}
-        {f'''<div class='card'>
-          <h3>Startup Time</h3>
-          <img src='report/startup_time.png' width='600' style='max-width: 100%; height: auto;'>
-        </div>''' if has_startup_time else ''}
+        <div class='card'>
+          <img src='report/container_stats_summary.png' width='1200' style='max-width: 100%; height: auto;'>
+        </div>
+      </div>
+    </div>"""
+
+    selected_slice_section = ""
+    if has_selected_slice_summary:
+        selected_slice_heading = (
+            f"Performance Summary - Workers: {selected_worker_count}"
+            if selected_worker_count is not None
+            else "Performance Summary"
+        )
+        selected_slice_section = f"""
+    <div class='workload-section'>
+      <h2>{selected_slice_heading}</h2>
+      <div class='row'>
+        <div class='card'>
+          <img src='report/selected_slice_summary_by_workload.png' width='1200' style='max-width: 100%; height: auto;'>
+        </div>
       </div>
     </div>"""
 
@@ -247,6 +260,7 @@ def generate_session_index(
   <p><a href="../index.html">← Back to all sessions</a></p>
   {env_section}
   {container_stats_section}
+  {selected_slice_section}
   <h2 style='margin-bottom: 0;'>Workload Reports</h2>
   {workload_sections}
 </body>

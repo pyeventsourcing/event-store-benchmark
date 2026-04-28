@@ -43,8 +43,8 @@ class ScalingImageKey(str, Enum):
 
 
 class SessionImageKey(str, Enum):
-    IMAGE_SIZE = "image_size"
-    STARTUP_TIME = "startup_time"
+    CONTAINER_STATS_SUMMARY = "container_stats_summary"
+    SELECTED_SLICE_SUMMARY_BY_WORKLOAD = "selected_slice_summary_by_workload"
 
 
 @dataclass(slots=True)
