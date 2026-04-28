@@ -65,8 +65,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql postgresql-contrib
-          sudo systemctl start postgresql
-          sudo systemctl status postgresql      
+          sudo mkdir -p /etc/systemd/system/postgresql.service.d
+          sudo tee /etc/systemd/system/postgresql.service.d/override.conf >/dev/null <<'EOF'
+          [Service]
+          CPUAffinity=0 1 2
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl restart postgresql
+          sudo systemctl status postgresql
+          systemctl show postgresql -p CPUAffinity
+
+          pgrep -x postgres | xargs -I{} taskset -cp {}
           
           sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
           sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
@@ -130,9 +139,9 @@ jobs:
           echo "UmaDB failed to start after 60 seconds"
           exit 1
 
-      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+      - name: Run scaling workload
         run: |
-          make run-scaling-streams-in-postgres
+          taskset -c 3 make run-scaling-streams-in-postgres
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v6
