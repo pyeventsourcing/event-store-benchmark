@@ -1548,6 +1548,7 @@ def _plot_container_avg_peak_bars(
         ax.set_xticklabels(adapters)
     else:
         ax.set_xticklabels([])
+    ax.tick_params(axis='both', which='both', length=0)
     ax.grid(True, alpha=0.3, axis='y')
     _set_y_limit_with_margin(ax, peak_data if show_peak_segment else avg_data)
 
@@ -1765,11 +1766,11 @@ def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_pa
     if selected_worker_count is None or not workload_names or not adapters:
         return
 
-    col_count = len(workload_names)
+    row_count = len(workload_names)
     fig, axes = plt.subplots(
+        row_count,
         2,
-        col_count,
-        figsize=(PLOT_WIDTH * 2, max(PLOT_HEIGHT * 1.25, 10.0)),
+        figsize=(PLOT_WIDTH * 2, max(PLOT_HEIGHT * max(1.25, row_count * 0.9), 10.0)),
         squeeze=False,
         gridspec_kw={"hspace": 0.32, "wspace": 0.26},
     )
@@ -1780,8 +1781,8 @@ def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_pa
     plotted_any = False
 
     for idx, workload_name in enumerate(workload_names):
-        throughput_ax = axes[0, idx]
-        latency_ax = axes[1, idx]
+        throughput_ax = axes[idx, 0]
+        latency_ax = axes[idx, 1]
 
         throughput_values_by_adapter = throughput_by_workload.get(workload_name, {})
         latency_values_by_adapter = p99_by_workload.get(workload_name, {})
@@ -1811,9 +1812,9 @@ def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_pa
             linewidth=BAR_EDGE_LINEWIDTH,
         )
         throughput_ax.set_xticks([])
-        throughput_ax.set_title(workload_name, fontweight='bold', fontsize=FONT_SIZE_LABEL)
         if idx == 0:
-            throughput_ax.set_ylabel("Throughput (events/s)", fontweight='bold')
+            throughput_ax.set_title("Throughput events/s", fontweight='bold', fontsize=FONT_SIZE_LABEL)
+        throughput_ax.set_ylabel(workload_name, fontweight='bold')
         throughput_ax.grid(True, axis='y', alpha=0.3)
         throughput_ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
         _set_y_limit_with_margin(throughput_ax, [float(v) for v in throughput_values if v > 0])
@@ -1840,7 +1841,7 @@ def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_pa
         )
         latency_ax.set_xticks([])
         if idx == 0:
-            latency_ax.set_ylabel("p99 Latency (ms)", fontweight='bold')
+            latency_ax.set_title("p99 latency (ms)", fontweight='bold', fontsize=FONT_SIZE_LABEL)
         latency_ax.grid(True, axis='y', alpha=0.3)
         latency_ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
         _set_y_limit_with_margin(latency_ax, [float(v) for v in latency_values if v > 0])
@@ -1868,90 +1869,6 @@ def plot_session_selected_slice_summary_by_workload(workloads: List[Any], out_pa
         bbox_to_anchor=(0.5, 0.01),
         bbox_transform=fig.transFigure,
     )
-    fig.subplots_adjust(bottom=0.16, top=0.90)
+    fig.subplots_adjust(bottom=0.08, top=0.90)
     plt.savefig(out_path, bbox_inches='tight')
     plt.close()
-
-
-def _plot_selected_slice_metric_by_workload(
-    workload_names: list[str],
-    adapters: list[str],
-    selected_worker_count: int,
-    out_path: str,
-    metric_by_workload: dict[str, dict[str, float]],
-    title: str,
-    ylabel: str,
-) -> None:
-    if not workload_names or not adapters:
-        return
-
-    subplot_count = len(workload_names)
-    cols = 1 if subplot_count == 1 else 2
-    rows = math.ceil(subplot_count / cols)
-
-    fig, axes = plt.subplots(
-        rows,
-        cols,
-        figsize=(max(PLOT_WIDTH, cols * 6), max(PLOT_HEIGHT, rows * 3.8)),
-        squeeze=False,
-        gridspec_kw={"hspace": 0.24, "wspace": 0.28},
-    )
-    axes_flat = axes.flatten()
-
-    adapter_handles: list[Line2D] = [Line2D([0], [0], color=get_adapter_color(adapter), lw=8, label=adapter) for adapter in adapters]
-    plotted_any = False
-
-    for idx, workload_name in enumerate(workload_names):
-        ax = axes_flat[idx]
-        values_by_adapter = metric_by_workload.get(workload_name, {})
-
-        valid_adapters = [adapter for adapter in adapters if adapter in values_by_adapter]
-        if not valid_adapters:
-            ax.set_visible(False)
-            continue
-
-        x = np.arange(len(valid_adapters), dtype=float)
-        values = np.array([values_by_adapter[adapter] for adapter in valid_adapters], dtype=float)
-        colors = [get_adapter_color(adapter) for adapter in valid_adapters]
-
-        ax.bar(
-            x,
-            values,
-            BAR_SINGLE_WIDTH,
-            color=colors,
-            edgecolor=BAR_EDGE_COLOR,
-            linewidth=BAR_EDGE_LINEWIDTH,
-            alpha=0.9,
-        )
-        ax.set_title(workload_name, fontweight='bold', fontsize=12)
-        if idx % cols == 0:
-            ax.set_ylabel(ylabel, fontweight='bold')
-        ax.set_xticks([])
-        ax.grid(True, axis='y', alpha=0.3)
-        ax.yaxis.set_major_formatter(FuncFormatter(_format_tick))
-        _set_y_limit_with_margin(ax, [float(v) for v in values if v > 0])
-        plotted_any = True
-
-    for idx in range(subplot_count, len(axes_flat)):
-        axes_flat[idx].set_visible(False)
-
-    if not plotted_any:
-        plt.close()
-        return
-
-    fig.suptitle(f"{title} (Workers: {selected_worker_count})", fontweight='bold', fontsize=14)
-    _legend_below_single_row(
-        handles=adapter_handles,
-        bbox_transform=fig.transFigure,
-    )
-    fig.subplots_adjust(bottom=0.16, top=0.90)
-    plt.savefig(out_path, bbox_inches='tight')
-    plt.close()
-
-
-def plot_session_selected_slice_throughput_by_workload(workloads: List[Any], out_path: str) -> None:
-    plot_session_selected_slice_summary_by_workload(workloads, out_path)
-
-
-def plot_session_selected_slice_p99_latency_by_workload(workloads: List[Any], out_path: str) -> None:
-    plot_session_selected_slice_summary_by_workload(workloads, out_path)
