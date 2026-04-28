@@ -828,9 +828,10 @@ impl PerformanceWorkload {
                             (completed_at, Some(completed_at - operation_started), false)
                         }
                         Err(e) => {
-                            eprintln!("Operation failed: {}", e);
+                            let completed_at = Instant::now();
+                            eprintln!("Operation failed after {} ms: {:#}", (completed_at - operation_started).as_millis(), e);
                             sleep(Duration::from_secs(1)).await;
-                            (Instant::now(), None, true)
+                            (completed_at, None, true)
                         }
                     }
                 });
