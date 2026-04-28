@@ -14,6 +14,22 @@ pub enum MartenError {
     Uuid(uuid::Error),
     Pool(deadpool_postgres::PoolError),
     Connection(String),
+    Context {
+        operation: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
+
+impl MartenError {
+    pub fn context<E>(operation: impl Into<String>, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        MartenError::Context {
+            operation: operation.into(),
+            source: Box::new(source),
+        }
+    }
 }
 
 impl fmt::Display for MartenError {
@@ -31,6 +47,9 @@ impl fmt::Display for MartenError {
             MartenError::Uuid(e) => write!(f, "Uuid error: {}", e),
             MartenError::Pool(e) => write!(f, "Pool error: {} ({:?})", e, e),
             MartenError::Connection(s) => write!(f, "Connection error: {}", s),
+            MartenError::Context { operation, source } => {
+                write!(f, "{}: {}", operation, source)
+            }
         }
     }
 }
@@ -43,6 +62,7 @@ impl std::error::Error for MartenError {
             MartenError::Uuid(e) => Some(e),
             MartenError::Pool(e) => Some(e),
             MartenError::Connection(_) => None,
+            MartenError::Context { source, .. } => Some(source.as_ref()),
         }
     }
 }
@@ -133,7 +153,16 @@ impl Marten {
     }
 
     pub async fn new_boundary<'a>(&self, mut query: EventTagQuery<'a>) -> Result<Boundary<'a>, MartenError> {
-        let events = self.read_events(&query).await?;
+        let events = self.read_events(&query).await.map_err(|e| {
+            MartenError::context(
+                format!(
+                    "new_boundary failed while reading events (last_seen_seq_id={}, tags={})",
+                    query.last_seen_seq_id,
+                    query.conditions.len()
+                ),
+                e,
+            )
+        })?;
         let mut last_seen_seq_id = query.last_seen_seq_id;
         for i in 0..events.len() {
             let seq_id = events[i].seq_id;
@@ -150,16 +179,32 @@ impl Marten {
         let mut pending_events = boundary.pending_events;
         let query = boundary.query;
 
-        let result_seq_ids = self.append_events(&mut pending_events, Some(&query)).await?;
+        let result_seq_ids = self
+            .append_events(&mut pending_events, Some(&query))
+            .await
+            .map_err(|e| {
+                MartenError::context(
+                    format!(
+                        "save_boundary append failed (pending_events={}, last_seen_seq_id={}, tags={})",
+                        pending_events.len(),
+                        query.last_seen_seq_id,
+                        query.conditions.len()
+                    ),
+                    e,
+                )
+            })?;
         Ok(result_seq_ids)
     }
 
     pub async fn append_events(&self, events: &mut Vec<MartenDcbEvent>, query: Option<&EventTagQuery<'_>>) -> Result<Vec<i64>, MartenError> {
-        let client = self.pool.get().await?;
+        let client = self.pool.get().await.map_err(|e| {
+            MartenError::context("append_events failed to acquire postgres connection", e)
+        })?;
 
         let num_events = events.len();
 
-        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")?;
+        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")
+            .map_err(|e| MartenError::context("append_events failed to parse default stream id", e))?;
 
         // If all tags are the same, then make UUID version 5 for the stream ID,
         // otherwise use the default_stream_id.
@@ -205,18 +250,41 @@ impl Marten {
                     &tags,
                 ).await
             };
-            tokio::time::timeout(Duration::from_secs(60), fut).await
-                .map_err(|_| MartenError::Connection("Timeout in quick_append_events".to_string()))?
-                .map_err(MartenError::from)
+            let quick_result = tokio::time::timeout(Duration::from_secs(60), fut).await
+                .map_err(|_| MartenError::Connection(
+                    format!(
+                        "Timeout in quick_append_events (events={}, stream_id={})",
+                        num_events,
+                        stream_id
+                    )
+                ))?;
+            quick_result.map_err(|e| {
+                MartenError::context(
+                    format!(
+                        "quick_append_events failed (events={}, stream_id={})",
+                        num_events,
+                        stream_id
+                    ),
+                    e,
+                )
+            })
         } else {
             let fut = async move {
                 let client_ref = &**client;
-                let current_version = append::get_stream_version(client_ref, &stream_id).await?;
+                let current_version = append::get_stream_version(client_ref, &stream_id).await
+                    .map_err(|e| MartenError::context(
+                        format!("failed to fetch stream version (stream_id={})", stream_id),
+                        e,
+                    ))?;
 
                 let mut marten_events = Vec::new();
 
                 // Get new sequence numbers from the database
-                let seq_ids = get_next_sequence_numbers(client_ref, num_events).await?;
+                let seq_ids = get_next_sequence_numbers(client_ref, num_events).await
+                    .map_err(|e| MartenError::context(
+                        format!("failed to allocate sequence numbers (count={})", num_events),
+                        e,
+                    ))?;
 
                 for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
                     marten_events.push(read::MartenEvent {
@@ -234,16 +302,31 @@ impl Marten {
                 // Call conditional_rich_append
                 let mut client = client;
                 let result_seq_ids = if let Some(query) = query {
-                    append::conditional_rich_append_events(&mut *client, marten_events, &query).await?
+                    append::conditional_rich_append_events(&mut *client, marten_events, &query).await
+                        .map_err(|e| MartenError::context(
+                            format!(
+                                "conditional_rich_append_events failed (events={}, last_seen_seq_id={}, tags={})",
+                                num_events,
+                                query.last_seen_seq_id,
+                                query.conditions.len()
+                            ),
+                            e,
+                        ))?
                 } else {
-                    append::rich_append_events(&mut *client, marten_events).await?
+                    append::rich_append_events(&mut *client, marten_events).await
+                        .map_err(|e| MartenError::context(
+                            format!("rich_append_events failed (events={})", num_events),
+                            e,
+                        ))?
                 };
 
                 Ok::<Vec<i64>, MartenError>(result_seq_ids)
             };
 
             tokio::time::timeout(Duration::from_secs(60), fut).await
-                .map_err(|_| MartenError::Connection("Timeout in rich_append_events".to_string()))?
+                .map_err(|_| MartenError::Connection(
+                    format!("Timeout in rich_append_events (events={})", num_events)
+                ))?
         }
     }
 
@@ -253,11 +336,28 @@ impl Marten {
     }
 
     pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, MartenError> {
-        let client = self.pool.get().await?;
+        let client = self.pool.get().await.map_err(|e| {
+            MartenError::context("read_events failed to acquire postgres connection", e)
+        })?;
         let fut = read::select_events_for_query(&**client, query);
-        tokio::time::timeout(Duration::from_secs(60), fut).await
-            .map_err(|_| MartenError::Connection("Timeout reading events".to_string()))?
-            .map_err(MartenError::from)
+        let read_result = tokio::time::timeout(Duration::from_secs(60), fut).await
+            .map_err(|_| MartenError::Connection(
+                format!(
+                    "Timeout reading events (last_seen_seq_id={}, tags={})",
+                    query.last_seen_seq_id,
+                    query.conditions.len()
+                )
+            ))?;
+        read_result.map_err(|e| {
+            MartenError::context(
+                format!(
+                    "read_events query failed (last_seen_seq_id={}, tags={})",
+                    query.last_seen_seq_id,
+                    query.conditions.len()
+                ),
+                e,
+            )
+        })
     }
 
 }

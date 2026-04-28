@@ -230,6 +230,25 @@ impl EventStoreAdapter for MartenAdapter {
         if stream_position.is_some() || global_position.is_some() {
             anyhow::bail!("Optimistic concurrency control not implemented in MartenAdapter")
         }
+        let event_count = events.len();
+        let event_types_preview = events
+            .iter()
+            .take(5)
+            .map(|evt| evt.event_type.as_ref())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let tags_preview = events
+            .first()
+            .map(|evt| {
+                evt.tags
+                    .iter()
+                    .take(5)
+                    .map(|tag| tag.as_ref())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default();
+
         let mut marten_events: Vec<MartenDcbEvent> = events
             .iter()
             .map(|evt| MartenDcbEvent {
@@ -242,7 +261,16 @@ impl EventStoreAdapter for MartenAdapter {
         self.client
             .append_events(&mut marten_events, None)
             .await
-            .context("Marten append failed")?;
+            .with_context(|| {
+                format!(
+                    "Marten append failed (events={}, event_types=[{}], first_event_tags=[{}], stream_position={:?}, global_position={:?})",
+                    event_count,
+                    event_types_preview,
+                    tags_preview,
+                    stream_position,
+                    global_position
+                )
+            })?;
         Ok(None)
     }
 
