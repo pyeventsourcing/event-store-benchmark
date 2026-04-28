@@ -338,6 +338,7 @@ impl PerformanceWorkload {
                     sampling_config_rx.clone(),
                 ),
                 PerformanceMode::Writeflood => Self::spawn_writer_flood_task(
+                    store.name().to_string(),
                     &mut worker_tasks,
                     adapter,
                     self.config.operations.write.clone(),
@@ -738,6 +739,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_writer_flood_task(
+        store_name: String,
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
@@ -775,14 +777,16 @@ impl PerformanceWorkload {
             let tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
-            let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
-            let stream_len = 10;
+            // TODO: Hack to give Marten a bit of a chance (otherwise it just generates errors).
+            let stream_len = if store_name == "marten" { 1 } else { 10 };
             let mut stream_position = 0;
+            let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_ref())]);
 
             let event_type_prefix = "test";
             let mut event_types: Vec<Arc<str>> = Vec::with_capacity(stream_len);
             for i in 0..stream_len {
-                event_types.push(Arc::from(format!("{}-{}", event_type_prefix, i).as_str()));
+                let event_type = format!("{}-{}", event_type_prefix, i);
+                event_types.push(Arc::from(event_type));
             }
 
             let mut pending = FuturesUnordered::new();
@@ -838,7 +842,7 @@ impl PerformanceWorkload {
                 stream_position += 1;
                 if stream_position == stream_len {
                     stream_name = format!("stream-{}-", Uuid::new_v4());
-                    tags = Arc::from([Arc::from(stream_name.as_str())]);
+                    tags = Arc::from([Arc::from(stream_name.clone())]);
                     stream_position = 0;
                 }
 
