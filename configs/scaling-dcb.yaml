@@ -3,13 +3,12 @@ performance:
   mode: write
   use_docker: false
   warmup_seconds: 1
-#  duration_seconds: 60
-  duration_seconds: 2
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
 #    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    writers: [1]
+    writers: [1, 2, 4]
   operations:
     write:
       event_size_bytes: 256
@@ -18,4 +17,4 @@ performance:
 
   stores:
     - umadb
-#    - axonserver
+    - axonserver

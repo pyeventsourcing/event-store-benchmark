@@ -15,6 +15,7 @@ endif
 .PHONY: run-smoke-test
 .PHONY: run-scaling-streams-in-docker
 .PHONY: run-scaling-streams
+.PHONY: run-scaling-dcb
 .PHONY: run-writeflood
 .PHONY: run-scaling-streams-in-postgres
 .PHONY: run-scaling-readers
@@ -67,6 +68,10 @@ run-scaling-streams-in-docker:
 # Run the scaling-streams workload
 run-scaling-streams:
 	@make ./configs/scaling-streams.yaml
+
+# Run the scaling-dcb workload
+run-scaling-dcb:
+	@make ./configs/scaling-dcb.yaml
 
 # Run the writeflood workload
 run-writeflood:
