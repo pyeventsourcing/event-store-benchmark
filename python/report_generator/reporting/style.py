@@ -8,7 +8,7 @@ from matplotlib.pyplot import get_cmap
 # This fits well in reports while remaining legible.
 PLOT_WIDTH = 8
 PLOT_HEIGHT = 5
-PLOT_DPI = 100
+PLOT_DPI = 150
 
 # Font sizes for consistency
 FONT_SIZE_TITLE = 14
