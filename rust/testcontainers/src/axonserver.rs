@@ -2,7 +2,7 @@ use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::Image;
 
 const NAME: &str = "axoniq/axonserver";
-const TAG: &str = "2025.2.7-jdk-17-nonroot";
+const TAG: &str = "2026.0.0-jdk-17-nonroot";
 
 /// gRPC API port exposed by Axon Server.
 pub const AXONSERVER_GRPC_PORT: ContainerPort = ContainerPort::Tcp(8124);

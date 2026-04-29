@@ -132,7 +132,7 @@ kurrentdb-benchmark-rust-minimal:
 
 .PHONY: start-axon-server-dcb
 start-axon-server-dcb:
-	docker pull axoniq/axonserver:2025.2.7-jdk-17-nonroot
+	docker pull axoniq/axonserver:2026.0.0-jdk-17-nonroot
 	docker run -d --rm \
 	  --name my-axon-server-dcb \
 	  -p 8024:8024 \
