@@ -208,8 +208,8 @@ impl EventStoreAdapter for UmaDbAdapter {
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let query = DcbQuery {
             items: vec![DcbQueryItem {
-                types: vec![],
-                tags: vec![req.stream],
+                types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
+                tags: vec![req.tag],
             }],
         };
         let mut rr = self.client

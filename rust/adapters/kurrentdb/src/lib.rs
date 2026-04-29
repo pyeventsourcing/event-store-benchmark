@@ -190,7 +190,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 None => StreamPosition::Start,
             })
             .max_count(count);
-        let mut stream = self.client.read_stream(req.stream, &options).await?;
+        let mut stream = self.client.read_stream(req.tag, &options).await?;
         let mut out = Vec::new();
         while let Some(event) = stream.next().await? {
             let recorded = event.get_original_event();

@@ -190,7 +190,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let subject = format!("/{}", req.stream);
+        let subject = format!("/{}", req.tag);
         let mut stream = self
             .client
             .read_events(&subject, None)

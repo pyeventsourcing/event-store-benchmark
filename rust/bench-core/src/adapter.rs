@@ -122,7 +122,8 @@ impl EsbAppendCondition {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadRequest {
-    pub stream: String,
+    pub tag: String,
+    pub event_type: Option<String>,
     #[serde(default)]
     pub from_offset: Option<u64>,
     #[serde(default)]

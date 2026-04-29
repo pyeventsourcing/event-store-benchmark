@@ -177,6 +177,14 @@ pub enum AppendConditionValue {
     OneTagOneType,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DcbQueryValue {
+    #[default]
+    None,
+    OneTagOneType,
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConcurrencyConfig {
@@ -213,6 +221,9 @@ fn default_in_flight_limit() -> usize {
 pub struct ReadOpConfig {
     #[serde(default = "default_read_limit")]
     pub limit: usize,
+    #[serde(default)]
+    pub dcb_query: DcbQueryValue,
+
 }
 
 fn default_read_limit() -> usize {
@@ -690,12 +701,17 @@ impl PerformanceWorkload {
             let mut operation_completed: Instant;
             let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
+            let event_type = match read_cfg.dcb_query {
+                DcbQueryValue::OneTagOneType => Some("setup".to_string()),
+                DcbQueryValue::None => None,
+            };
 
             while !out_of_time && !cancel_token.is_cancelled() {
                 let stream_idx = rng.random_range(0..prepopulated_streams);
 
                 let req = ReadRequest {
-                    stream: stream_names[stream_idx as usize].clone(),
+                    tag: stream_names[stream_idx as usize].clone(),
+                    event_type: event_type.clone(),
                     from_offset: None,
                     limit: Some(read_cfg.limit as u64),
                 };

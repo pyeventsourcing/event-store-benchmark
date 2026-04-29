@@ -232,11 +232,11 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
-        let stream = req.stream.clone();
+        let stream = req.tag.clone();
         let query = Some(py_eventsourcing::DcbQuery {
             items: vec![py_eventsourcing::DcbQueryItem {
-                types: vec![],
-                tags: vec![req.stream],
+                types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
+                tags: vec![req.tag],
             }],
         });
 

@@ -258,9 +258,9 @@ impl EventStoreAdapter for AxonServerAdapter {
         let from = req.from_offset.unwrap_or(0) as i64;
         let criterion = Criterion {
             tags_and_names: Some(TagsAndNamesCriterion {
-                name: vec![],
+                name: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]} ,
                 tag: vec![Tag {
-                    key: req.stream.as_bytes().to_vec().into(),
+                    key: req.tag.as_bytes().to_vec().into(),
                     value: Vec::new().into(),
                 }],
             }),

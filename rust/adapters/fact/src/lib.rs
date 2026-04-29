@@ -188,7 +188,7 @@ impl EventStoreAdapter for FactAdapter {
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let request = proto::ReadRequest {
-            stream: req.stream,
+            stream: req.tag,
             from_offset: req.from_offset,
             limit: req.limit,
         };

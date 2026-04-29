@@ -288,12 +288,12 @@ impl EventStoreAdapter for MartenAdapter {
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let mut query = EventTagQuery::new(req.from_offset.map(|o| o as i64).unwrap_or(-1));
-        if !req.stream.is_empty() {
-            query = query.with_tag(&req.stream);
+        if !req.tag.is_empty() {
+            query = query.with_tag(&req.tag);
         }
 
         let events = self.client.read_events(&query).await.with_context(|| {
-            format!("Marten read failed for stream '{}'", req.stream)
+            format!("Marten read failed for stream '{}'", req.tag)
         })?;
 
         let mut out = Vec::new();
