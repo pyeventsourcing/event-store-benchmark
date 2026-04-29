@@ -14,7 +14,7 @@ serde_yaml = "0.9"
 rand = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 tokio-util = { version = "0.7" }
-tracing = "0.1"
+#tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # Adapters
@@ -25,7 +25,7 @@ axonserver-adapter = { path = "../adapters/axonserver" }
 eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb" }
 fact-adapter = { path = "../adapters/fact" }
 marten-adapter = { path = "../adapters/marten" }
-postgres-dcb-ttcte-adapter = { path = "../adapters/postgres-dcb-ttcte" }
-marten-rs = { path = "../marten-rs" }
-postgres-dcb-ttcte = { path = "../postgres-dcb-ttcte" }
-tokio-postgres = "0.7"
+py-eventsourcing-adapter = { path = "../adapters/py-eventsourcing" }
+#marten-rs = { path = "../marten-rs" }
+#py-eventsourcing = { path = "../py-eventsourcing" }
+#tokio-postgres = "0.7"
