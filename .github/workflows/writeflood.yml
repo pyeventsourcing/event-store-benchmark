@@ -68,7 +68,14 @@ jobs:
           name: Makefile
           path: .
 
-      - name: Install and start axonserver
+      - name: Set up Java
+        if: ${{ matrix.store == 'axonserver' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      
+      - name: Install and start Axon Server
         if: ${{ matrix.store == 'axonserver' }}
         run: |
           curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.0.zip -o axonserver.zip
@@ -88,7 +95,7 @@ jobs:
           echo "Axon Server failed to start after 60 seconds"
           exit 1
 
-      - name: Install and start kurrentdb
+      - name: Install and start KurrentDB
         if: ${{ matrix.store == 'kurrentdb' }}
         run: |
           curl -1sLf 'https://packages.kurrent.io/public/kurrent-lts/setup.deb.sh' | sudo -E bash

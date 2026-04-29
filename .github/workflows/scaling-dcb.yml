@@ -112,6 +112,13 @@ jobs:
           pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
           ./target/release/es-bench create-py-eventsourcing-tables
 
+      - name: Set up Java
+        if: ${{ matrix.store == 'axonserver' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Install and start Axon Server
         if: ${{ matrix.store == 'axonserver' }}
         run: |
