@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, axonserver]
+        store: [umadb, axonserver, py-eventsourcing]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
@@ -66,7 +66,38 @@ jobs:
           name: Makefile
           path: .
 
-      - name: Install and start axonserver
+      - name: Start Postgres
+        if: ${{ matrix.store == 'py-eventsourcing' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+          sudo mkdir -p /etc/systemd/system/postgresql.service.d
+          sudo tee /etc/systemd/system/postgresql.service.d/override.conf >/dev/null <<'EOF'
+          [Service]
+          CPUAffinity=0 1 2
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl restart postgresql
+          sudo systemctl status postgresql
+          systemctl show postgresql -p CPUAffinity
+
+          pgrep -x postgres | xargs -I{} taskset -cp {}
+          
+          sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
+          sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
+          sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
+          
+          sudo -u postgres psql -tAc "SHOW max_connections;"
+          sudo -u postgres psql -tAc "SHOW superuser_reserved_connections;"
+          sudo -u postgres psql -tAc "SELECT current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int AS usable_non_superuser_slots;"
+
+      - name: Create tables for PyEventsourcing
+        if: ${{ matrix.store == 'py-eventsourcing' }}
+        run: |
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/py-eventsourcing.pid
+          ./target/release/es-bench create-py-eventsourcing-tables
+
+      - name: Install and start Axon Server
         if: ${{ matrix.store == 'axonserver' }}
         run: |
           curl -L https://download.axoniq.io/axonserver/AxonServer-2025.2.7.zip -o axonserver.zip

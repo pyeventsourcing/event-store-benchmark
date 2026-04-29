@@ -18,3 +18,4 @@ performance:
   stores:
     - umadb
     - axonserver
+    - py-eventsourcing

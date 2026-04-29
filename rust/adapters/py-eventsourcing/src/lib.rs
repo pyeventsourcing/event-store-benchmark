@@ -166,9 +166,34 @@ impl PyEventsourcingAdapter {
 impl EventStoreAdapter for PyEventsourcingAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
-        anyhow::bail!("append_dcb not implemented in PyEventsourcingAdapter")
-    }
+    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+        let append_condition: Option<DcbAppendCondition> = condition.map(|cond| {
+            DcbAppendCondition {
+                fail_if_events_match: DcbQuery {
+                    items: cond.fail_if_events_match.items.iter().map(|item| {
+                        DcbQueryItem {
+                            types: item.types.clone(),
+                            tags: item.tags.clone(),
+                        }
+                    }).collect()
+                },
+                after: cond.after.map(|pos| pos as i64),
+            }
+        });
+        let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
+            DcbEvent {
+                type_name: evt.event_type.to_string(),
+                data: evt.payload.to_vec(),
+                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+            }
+        }).collect();
+
+        let pos = self
+            .recorder
+            .append(pg_events, append_condition)
+            .await
+            .context("PyEventsourcing append failed")?;
+        Ok(Some(pos as u64))    }
 
     async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
         let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
