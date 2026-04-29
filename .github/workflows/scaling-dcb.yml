@@ -66,6 +66,21 @@ jobs:
           name: Makefile
           path: .
 
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
       - name: Start Postgres
         if: ${{ matrix.store == 'py-eventsourcing' }}
         run: |
@@ -137,21 +152,6 @@ jobs:
           cat $GITHUB_WORKSPACE/umadb.log
           echo "UmaDB failed to start after 60 seconds"
           exit 1
-
-      - name: Download benchmark tool
-        uses: actions/download-artifact@v8
-        with:
-          name: es-bench
-          path: target/release/
-
-      - name: Download configs
-        uses: actions/download-artifact@v8
-        with:
-          name: configs
-          path: configs/
-
-      - name: Make benchmark tool executable
-        run: chmod +x target/release/es-bench
 
       - name: Run scaling DCB workload
         run: |
