@@ -227,9 +227,21 @@ impl EventStoreAdapter for MartenAdapter {
     }
 
     async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
-        if stream_position.is_some() || global_position.is_some() {
-            anyhow::bail!("Optimistic concurrency control not implemented in MartenAdapter")
-        }
+        let event_tag_query = if stream_position.is_some() || global_position.is_some() {
+            let mut query = EventTagQuery::new(global_position.unwrap() as i64);
+
+            let mut seen_tags = std::collections::HashSet::new();
+            for event in events {
+                for tag in event.tags.iter() {
+                    if seen_tags.insert(tag.as_ref()) {
+                        query = query.with_tag(tag);
+                    }
+                }
+            }
+            Some(query)
+        } else {
+            None
+        };
         let event_count = events.len();
         let event_types_preview = events
             .iter()
@@ -258,8 +270,8 @@ impl EventStoreAdapter for MartenAdapter {
             })
             .collect();
 
-        self.client
-            .append_events(&mut marten_events, None)
+        let sequence_ids = self.client
+            .append_events(&mut marten_events, event_tag_query.as_ref())
             .await
             .with_context(|| {
                 format!(
@@ -271,7 +283,7 @@ impl EventStoreAdapter for MartenAdapter {
                     global_position
                 )
             })?;
-        Ok(None)
+        Ok(Some(sequence_ids.last().expect("Marten sequence ID").clone() as u64))
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {

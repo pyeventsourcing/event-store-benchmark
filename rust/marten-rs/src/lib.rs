@@ -92,6 +92,7 @@ pub mod read;
 #[derive(Clone)]
 pub struct Marten {
     pub pool: Pool,
+    default_stream_id: Uuid,
 }
 
 impl Marten {
@@ -120,7 +121,9 @@ impl Marten {
             .map_err(|e| {
                 MartenError::Connection(format!("Pool creation failed: {}", e))
             })?;
-        Ok(Self { pool })
+        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")
+            .map_err(|e| MartenError::context("append_events failed to parse default stream id", e))?;
+        Ok(Self {pool, default_stream_id})
     }
 
     pub async fn drop_tables(&self) -> Result<(), MartenError> {
@@ -203,16 +206,13 @@ impl Marten {
 
         let num_events = events.len();
 
-        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")
-            .map_err(|e| MartenError::context("append_events failed to parse default stream id", e))?;
-
         // If all tags are the same, then make UUID version 5 for the stream ID,
         // otherwise use the default_stream_id.
         let stream_id = events.first()
             .and_then(|e| e.tags.first())
             .filter(|first_tag| events.iter().all(|e| e.tags.first().map_or(false, |t| t == *first_tag)))
             .map(|first_tag| Uuid::new_v5(&Uuid::NAMESPACE_OID, first_tag.as_bytes()))
-            .unwrap_or(default_stream_id);
+            .unwrap_or(self.default_stream_id);
         
         let mut any_event_with_more_than_two_tags = false;
         for i in 0..num_events {
@@ -289,7 +289,7 @@ impl Marten {
                 for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
                     marten_events.push(read::MartenEvent {
                         id: Uuid::new_v4(),
-                        stream_id: stream_id,
+                        stream_id,
                         version: current_version + (i as i32) + 1,
                         data,
                         event_type,
@@ -302,7 +302,7 @@ impl Marten {
                 // Call conditional_rich_append
                 let mut client = client;
                 let result_seq_ids = if let Some(query) = query {
-                    append::conditional_rich_append_events(&mut *client, marten_events, &query).await
+                    append::conditional_rich_append_events(&mut *client, marten_events, query).await
                         .map_err(|e| MartenError::context(
                             format!(
                                 "conditional_rich_append_events failed (events={}, last_seen_seq_id={}, tags={})",

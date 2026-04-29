@@ -1,5 +1,37 @@
+#performance:
+#  name: writeflood-stream-unconditional
+#  mode: writeflood
+#  duration_seconds: 2
+#  concurrency:
+#    writers: [2]
+#  operations:
+#    write:
+#      event_size_bytes: 256
+#      in_flight_limit: 250
+#  stores:
+##    - py-eventsourcing
+##    - marten
+#    - umadb
+#---
+#performance:
+#  name: write-stream-unconditional
+#  mode: write
+#  use_docker: false
+#  warmup_seconds: 0
+#  duration_seconds: 3
+#  samples_per_second: 2
+#  concurrency:
+#    writers: [2]
+#  operations:
+#    write:
+#      event_size_bytes: 256
+#  stores:
+#    - py-eventsourcing
+#    - marten
+#    - umadb
+#---
 performance:
-  name: scaling-writers
+  name: write-stream-conditional
   mode: write
   use_docker: false
   warmup_seconds: 0
@@ -11,30 +43,31 @@ performance:
   operations:
     write:
       event_size_bytes: 256
+      concurrency_control: true
   stores:
     - py-eventsourcing
 #    - marten
 #    - umadb
----
-performance:
-  name: scaling-readers
-  mode: read
-  use_docker: false
-  warmup_seconds: 0
-  duration_seconds: 3
-  samples_per_second: 2
-  concurrency:
-    readers: [2]
-    writers: 0
-  operations:
-    write:
-      event_size_bytes: 256
-    read:
-      limit: 10
-  setup:
-    prepopulate_events: 5000
-    prepopulate_streams: 500
-  stores:
-    - py-eventsourcing
+#---
+#performance:
+#  name: read-stream
+#  mode: read
+#  use_docker: false
+#  warmup_seconds: 0
+#  duration_seconds: 3
+#  samples_per_second: 2
+#  concurrency:
+#    readers: [2]
+#    writers: 0
+#  operations:
+#    write:
+#      event_size_bytes: 256
+#    read:
+#      limit: 10
+#  setup:
+#    prepopulate_events: 5000
+#    prepopulate_streams: 500
+#  stores:
+##    - py-eventsourcing
 #    - marten
-#    - umadb
+##    - umadb

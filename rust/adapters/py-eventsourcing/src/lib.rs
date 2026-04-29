@@ -5,7 +5,7 @@ use bench_core::wait_for_ready;
 use bench_testcontainers::py_eventsourcing::{
     PyEventsourcingPostgres, POSTGRES_PORT,
 };
-use py_eventsourcing::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent};
+use py_eventsourcing::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem};
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
@@ -170,10 +170,26 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
         anyhow::bail!("append_dcb not implemented in PyEventsourcingAdapter")
     }
 
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
-        if stream_position.is_some() || global_position.is_some() {
-            anyhow::bail!("Optimistic concurrency control not implemented in PyEventsourcingAdapter")
-        }
+    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+        let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
+            // One query item with one tag, for each unique tag mentioned in all events.
+            Some(DcbAppendCondition {
+                fail_if_events_match: DcbQuery {
+                    items: events.iter()
+                        .flat_map(|evt| evt.tags.iter())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .map(|tag| DcbQueryItem {
+                            types: vec![],
+                            tags: vec![tag.to_string()],
+                        })
+                        .collect()
+                },
+                after: Some(global_position.expect("global position") as i64),
+            })
+        } else {
+            None
+        };
         let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
             DcbEvent {
                 type_name: evt.event_type.to_string(),
@@ -182,12 +198,12 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             }
         }).collect();
 
-        self
+        let pos = self
             .recorder
-            .append(pg_events, None)
+            .append(pg_events, append_condition)
             .await
             .context("PyEventsourcing append failed")?;
-        Ok(None)
+        Ok(Some(pos as u64))
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
