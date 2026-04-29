@@ -132,7 +132,7 @@ kurrentdb-benchmark-rust-minimal:
 
 .PHONY: start-axon-server-dcb
 start-axon-server-dcb:
-	docker pull axoniq/axonserver:2026.0.0-jdk-17-nonroot
+	docker pull axoniq/axonserver:2026.0.0-jdk-21-nonroot
 	docker run -d --rm \
 	  --name my-axon-server-dcb \
 	  -p 8024:8024 \
@@ -143,7 +143,7 @@ start-axon-server-dcb:
 	  axoniq/axonserver
 	sleep 15
 #	  -e AXONIQ_AXONSERVER_EVENT_FORCE_INTERVAL="0" \
-#	  axoniq/axonserver:latest-jdk-17-nonroot
+#	  axoniq/axonserver:latest-jdk-21-nonroot
 #	@printf "Waiting for Axon Server to initialize DCB"
 # 	@until curl -sf -X POST "http://127.0.0.1:8024/v2/cluster/init?dcb=true" \
 #	      | grep -q "Accepted init cluster request"; do \
