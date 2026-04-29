@@ -116,7 +116,7 @@ jobs:
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
           pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
-          ./target/release/es-bench create-postgres-dcb-ttcte-tables
+          ./target/release/es-bench create-py-eventsourcing-tables
 
       - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
