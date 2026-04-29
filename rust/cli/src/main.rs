@@ -36,9 +36,9 @@ enum Commands {
     },
     /// List available store adapters
     ListStores,
-    /// Create tables for py-eventsourcing adapter
+    /// Create tables for postgres-dcb-ttcte adapter
     CreatePyEventsourcingTables,
-    /// Drop tables for py-eventsourcing adapter
+    /// Drop tables for postgres-dcb-ttcte adapter
     DropPyEventsourcingTables,
     /// Create tables for marten adapter
     CreateMartenTables,
@@ -96,7 +96,7 @@ fn main() -> Result<()> {
                 let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
                     .expect("Adapter should be PyEventsourcingAdapter");
                 adapter.recorder().create_tables().await?;
-                println!("py-eventsourcing tables created successfully");
+                println!("postgres-dcb-ttcte tables created successfully");
                 Ok::<(), anyhow::Error>(())
             })?;
             Ok(())
@@ -110,7 +110,7 @@ fn main() -> Result<()> {
                 let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
                     .expect("Adapter should be PyEventsourcingAdapter");
                 adapter.recorder().drop_tables().await?;
-                println!("py-eventsourcing tables dropped successfully");
+                println!("postgres-dcb-ttcte tables dropped successfully");
                 Ok::<(), anyhow::Error>(())
             })?;
             Ok(())

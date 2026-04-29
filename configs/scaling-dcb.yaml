@@ -18,4 +18,4 @@ performance:
   stores:
     - umadb
     - axonserver
-    - py-eventsourcing
+    - postgres-dcb-ttcte

@@ -960,8 +960,8 @@ dependencies = [
  "kurrentdb-adapter",
  "marten-adapter",
  "marten-rs",
- "py-eventsourcing",
- "py-eventsourcing-adapter",
+ "postgres-dcb-ttcte",
+ "postgres-dcb-ttcte-adapter",
  "rand 0.10.1",
  "serde",
  "serde_json",
@@ -2595,7 +2595,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "py-eventsourcing"
+name = "postgres-dcb-ttcte"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2611,14 +2611,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "py-eventsourcing-adapter"
+name = "postgres-dcb-ttcte-adapter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "bench-core",
  "bench-testcontainers",
- "py-eventsourcing",
+ "postgres-dcb-ttcte",
  "serde_json",
  "testcontainers",
  "tokio",

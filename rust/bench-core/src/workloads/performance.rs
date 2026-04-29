@@ -778,7 +778,7 @@ impl PerformanceWorkload {
 
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
             // TODO: Hack to give Marten a bit of a chance (otherwise it just generates errors).
-            let stream_len = if store_name == "marten" { 1 } else { 10 };
+            let stream_len = if store_name == "postgres-dcb-marten" { 1 } else { 10 };
             let mut stream_position = 0;
             let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_ref())]);
 

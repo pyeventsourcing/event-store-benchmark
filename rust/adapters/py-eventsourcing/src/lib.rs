@@ -29,7 +29,7 @@ impl PyEventsourcingStoreManager {
             uri: Self::format_uri(POSTGRES_PORT.as_u16()),
             container: None,
             use_docker,
-            data_dir: StoreDataDir::new(data_dir, "py-eventsourcing"),
+            data_dir: StoreDataDir::new(data_dir, "postgres-dcb-ttcte"),
             recorder: None,
             memory_limit_mb: None,
             docker_platform: None,
@@ -114,7 +114,7 @@ impl StoreManager for PyEventsourcingStoreManager {
     }
 
     fn name(&self) -> &'static str {
-        "py-eventsourcing"
+        "postgres-dcb-ttcte"
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
@@ -265,7 +265,7 @@ pub struct PyEventsourcingFactory;
 
 impl StoreManagerFactory for PyEventsourcingFactory {
     fn name(&self) -> &'static str {
-        "py-eventsourcing"
+        "postgres-dcb-ttcte"
     }
 
     fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {

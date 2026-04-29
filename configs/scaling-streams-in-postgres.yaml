@@ -9,8 +9,8 @@ performance:
       event_size_bytes: 256
       in_flight_limit: 250
   stores:
-    - py-eventsourcing
-    - marten
+    - postgres-dcb-ttcte
+    - postgres-dcb-marten
     - umadb
 ---
 performance:
@@ -26,8 +26,8 @@ performance:
     write:
       event_size_bytes: 256
   stores:
-    - py-eventsourcing
-    - marten
+    - postgres-dcb-ttcte
+    - postgres-dcb-marten
     - umadb
 ---
 performance:
@@ -44,8 +44,8 @@ performance:
       event_size_bytes: 256
       concurrency_control: true
   stores:
-    - py-eventsourcing
-    - marten
+    - postgres-dcb-ttcte
+    - postgres-dcb-marten
     - umadb
 ---
 performance:
@@ -66,6 +66,6 @@ performance:
     prepopulate_events: 5000
     prepopulate_streams: 500
   stores:
-    - py-eventsourcing
-    - marten
+    - postgres-dcb-ttcte
+    - postgres-dcb-marten
     - umadb

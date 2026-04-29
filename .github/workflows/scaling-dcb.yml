@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, axonserver, py-eventsourcing]
+        store: [umadb, axonserver, postgres-dcb-ttcte]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
@@ -82,7 +82,7 @@ jobs:
         run: chmod +x target/release/es-bench
 
       - name: Start Postgres
-        if: ${{ matrix.store == 'py-eventsourcing' }}
+        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql postgresql-contrib
@@ -107,10 +107,10 @@ jobs:
           sudo -u postgres psql -tAc "SELECT current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int AS usable_non_superuser_slots;"
 
       - name: Create tables for PyEventsourcing
-        if: ${{ matrix.store == 'py-eventsourcing' }}
+        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
-          pgrep -o -x postgres > $GITHUB_WORKSPACE/py-eventsourcing.pid
-          ./target/release/es-bench create-py-eventsourcing-tables
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
+          ./target/release/es-bench create-postgres-dcb-ttcte-tables
 
       - name: Install and start Axon Server
         if: ${{ matrix.store == 'axonserver' }}

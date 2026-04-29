@@ -25,7 +25,7 @@ axonserver-adapter = { path = "../adapters/axonserver" }
 eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb" }
 fact-adapter = { path = "../adapters/fact" }
 marten-adapter = { path = "../adapters/marten" }
-py-eventsourcing-adapter = { path = "../adapters/py-eventsourcing" }
+postgres-dcb-ttcte-adapter = { path = "../adapters/postgres-dcb-ttcte" }
 marten-rs = { path = "../marten-rs" }
-py-eventsourcing = { path = "../py-eventsourcing" }
+postgres-dcb-ttcte = { path = "../postgres-dcb-ttcte" }
 tokio-postgres = "0.7"

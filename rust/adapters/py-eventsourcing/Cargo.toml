@@ -1,5 +1,5 @@
 [package]
-name = "py-eventsourcing-adapter"
+name = "postgres-dcb-ttcte-adapter"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ anyhow = "1"
 async-trait = "0.1"
 bench-core = { path = "../../bench-core" }
 bench-testcontainers = { path = "../../testcontainers" }
-py-eventsourcing = { path = "../../py-eventsourcing" }
+postgres-dcb-ttcte = { path = "../../postgres-dcb-ttcte" }
 tokio-postgres = "0.7"
 serde_json = "1"
 testcontainers = "0.27"

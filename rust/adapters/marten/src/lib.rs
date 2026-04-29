@@ -95,7 +95,7 @@ impl MartenStoreManager {
             uri: Self::format_uri(POSTGRES_PORT.as_u16()),
             container: None,
             use_docker,
-            data_dir: StoreDataDir::new(data_dir, "marten"),
+            data_dir: StoreDataDir::new(data_dir, "postgres-dcb-marten"),
             client: None,
             memory_limit_mb: None,
             docker_platform: None,
@@ -186,7 +186,7 @@ impl StoreManager for MartenStoreManager {
     }
 
     fn name(&self) -> &'static str {
-        "marten"
+        "postgres-dcb-marten"
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
@@ -318,7 +318,7 @@ pub struct MartenFactory;
 
 impl StoreManagerFactory for MartenFactory {
     fn name(&self) -> &'static str {
-        "marten"
+        "postgres-dcb-marten"
     }
 
     fn create_store_manager(

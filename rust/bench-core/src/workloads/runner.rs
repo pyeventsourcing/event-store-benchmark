@@ -25,7 +25,7 @@ pub enum WorkloadRunner {
 
 impl WorkloadRunner {
     fn monitor_scope_for_store(store_name: &str) -> MonitoringScope {
-        if matches!(store_name, "marten" | "py-eventsourcing") {
+        if matches!(store_name, "postgres-dcb-marten" | "postgres-dcb-ttcte") {
             if cfg!(target_os = "linux") {
                 MonitoringScope::LinuxCgroupOfRoot
             } else {
@@ -38,7 +38,7 @@ impl WorkloadRunner {
 
     fn expected_process_name_for_store(store_name: &str) -> Option<&'static str> {
         match store_name {
-            "marten" | "py-eventsourcing" => Some("postgres"),
+            "postgres-dcb-marten" | "postgres-dcb-ttcte" => Some("postgres"),
             "umadb" => Some("umadb"),
             _ => None,
         }

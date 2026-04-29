@@ -54,14 +54,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [marten, py-eventsourcing, umadb]
+        store: [postgres-dcb-marten, postgres-dcb-ttcte, umadb]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
     steps:
       - name: Setup database
-        if: ${{ matrix.store == 'marten' || matrix.store == 'py-eventsourcing' }}
+        if: ${{ matrix.store == 'postgres-dcb-marten' || matrix.store == 'postgres-dcb-ttcte' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql postgresql-contrib
@@ -107,16 +107,16 @@ jobs:
           path: .
 
       - name: Create tables for Marten
-        if: ${{ matrix.store == 'marten' }}
+        if: ${{ matrix.store == 'postgres-dcb-marten' }}
         run: |
-          pgrep -o -x postgres > $GITHUB_WORKSPACE/marten.pid
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-marten.pid
           ./target/release/es-bench create-marten-tables
 
       - name: Create tables for PyEventsourcing
-        if: ${{ matrix.store == 'py-eventsourcing' }}
+        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
-          pgrep -o -x postgres > $GITHUB_WORKSPACE/py-eventsourcing.pid
-          ./target/release/es-bench create-py-eventsourcing-tables
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
+          ./target/release/es-bench create-postgres-dcb-ttcte-tables
 
       - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
