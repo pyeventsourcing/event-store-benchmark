@@ -1658,6 +1658,8 @@ def _select_best_worker_count_metrics_by_workload(
     worker_scores_by_workload: dict[str, dict[int, float]] = {}
 
     for workload in workloads:
+        if "warmup" in workload.workload_name.strip().lower():
+            continue
         runs = [run_report.run for run_report in workload.runs]
         worker_scores: dict[int, list[float]] = defaultdict(list)
 
@@ -1713,6 +1715,8 @@ def _select_best_worker_count_metrics_by_workload(
     p99_by_workload: dict[str, dict[str, float]] = {}
 
     for workload in workloads:
+        if workload.workload_name.strip().lower() == "warmup":
+            continue
         runs = [run_report.run for run_report in workload.runs]
 
         adapter_throughput: dict[str, list[float]] = defaultdict(list)
