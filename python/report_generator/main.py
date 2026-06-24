@@ -31,8 +31,8 @@ def main() -> None:
         sessions_to_process = all_session_ids
     else:
         for session_id in all_session_ids:
-            if not (published_base / session_id / "index.html").exists():
-                sessions_to_process.append(session_id)
+            # if not (published_base / session_id / "index.html").exists():
+            sessions_to_process.append(session_id)
 
     if not sessions_to_process:
         print(f"No new sessions to process in {raw_base}")

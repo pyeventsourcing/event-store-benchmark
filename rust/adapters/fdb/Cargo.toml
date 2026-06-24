@@ -1,0 +1,16 @@
+[package]
+name = "fdb-adapter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dcb-layer = "0.1.0"
+anyhow = "1"
+bytes = "1"
+async-trait = "0.1"
+bench-core = { path = "../../bench-core" }
+bench-testcontainers = { path = "../../testcontainers" }
+foundationdb = { version = "0.10", features = ["embedded-fdb-include", "fdb-7_4"] }
+testcontainers = "0.27"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3"
