@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 bench-core = { path = "../bench-core" }
+bench-testcontainers = { path = "../testcontainers" }
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

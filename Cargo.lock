@@ -1016,6 +1016,7 @@ dependencies = [
  "anyhow",
  "axonserver-adapter",
  "bench-core",
+ "bench-testcontainers",
  "chrono",
  "clap",
  "dummy-adapter",

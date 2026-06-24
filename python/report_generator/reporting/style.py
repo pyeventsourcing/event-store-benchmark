@@ -17,7 +17,7 @@ FONT_SIZE_TICK = 10
 FONT_SIZE_LEGEND = 10
 
 adapters = [
-    'fdb',
+    'foundationdb-dcb',
     'umadb',
     'kurrentdb',
     'axonserver',

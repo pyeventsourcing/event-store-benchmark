@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bench_core::{collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionInfo, StoreManagerFactory, WorkloadRunner};
+use bench_testcontainers::detect_docker_host;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use rand::random;
@@ -69,6 +70,9 @@ fn main() -> Result<()> {
             EnvFilter::new(&cli.log).add_directive("kurrentdb::grpc=off".parse()?),
         )
         .init();
+
+    // Must run before Runtime::new() — set_var is unsound under concurrent env reads.
+    detect_docker_host();
 
     let rt = Runtime::new()?;
     let cancel_token = CancellationToken::new();

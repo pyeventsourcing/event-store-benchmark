@@ -326,6 +326,7 @@ impl WorkloadRunner {
                     eprintln!("Failed to truncate server log file {}: {}", log_file, e);
                 }
             }
+            store.stop().await?;
         }
 
 
