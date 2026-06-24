@@ -2,22 +2,30 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::Image;
 
 pub const FDB_IMAGE_NAME: &str = "foundationdb/foundationdb";
-pub const FDB_IMAGE_TAG: &str = "7.4.5-arm";
+const FDB_IMAGE_VERSION: &str = "7.4.5";
 
 pub const FDB_PORT: ContainerPort = ContainerPort::Tcp(4500);
 
+pub fn fdb_image_tag() -> String {
+    if std::env::consts::ARCH == "aarch64" {
+        format!("{}-arm", FDB_IMAGE_VERSION)
+    } else {
+        FDB_IMAGE_VERSION.to_string()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FoundationDb {
+    tag: String,
     env_vars: Vec<(&'static str, &'static str)>,
 }
 
 impl Default for FoundationDb {
     fn default() -> Self {
         Self {
-            // FDB_NETWORKING_MODE=host makes the server advertise 127.0.0.1 as its
-            // public address instead of the container IP (unreachable from macOS).
-            // This must be paired with a fixed 4500:4500 port mapping so that
-            // 127.0.0.1:4500 resolves correctly both inside and outside the container.
+            tag: fdb_image_tag(),
+            // FDB_NETWORKING_MODE=host makes fdbserver advertise 127.0.0.1 as its
+            // coordinator address instead of the container IP (unreachable from macOS).
             env_vars: vec![("FDB_NETWORKING_MODE", "host")],
         }
     }
@@ -29,7 +37,7 @@ impl Image for FoundationDb {
     }
 
     fn tag(&self) -> &str {
-        FDB_IMAGE_TAG
+        &self.tag
     }
 
     fn ready_conditions(&self) -> Vec<WaitFor> {

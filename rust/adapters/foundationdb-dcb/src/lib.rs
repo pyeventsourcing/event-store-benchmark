@@ -194,6 +194,30 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// Docker host detection — points at Colima socket when DOCKER_HOST is unset
+// ---------------------------------------------------------------------------
+
+fn detect_docker_host() {
+    if std::env::var_os("DOCKER_HOST").is_some() {
+        return;
+    }
+    let home = match std::env::var_os("HOME") {
+        Some(h) => std::path::PathBuf::from(h),
+        None => return,
+    };
+    let candidates = [
+        home.join(".colima/default/docker.sock"),
+        home.join(".docker/run/docker.sock"),
+    ];
+    for path in &candidates {
+        if path.exists() {
+            let _ = std::env::set_var("DOCKER_HOST", format!("unix://{}", path.display()));
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FDB network — boot once per process
 // ---------------------------------------------------------------------------
 
@@ -262,6 +286,7 @@ impl StoreManager for FoundationDbDcbStoreManager {
     }
 
     async fn start(&mut self) -> Result<()> {
+        detect_docker_host();
         self.data_dir.setup()?;
 
         if self.use_docker {
@@ -295,6 +320,18 @@ impl StoreManager for FoundationDbDcbStoreManager {
                 String::from_utf8_lossy(&out.stderr)
             );
 
+            // Wait until FDB storage is ready to serve reads.
+            for attempt in 0..60u32 {
+                let s = Command::new("docker")
+                    .args(["exec", &container_id, "fdbcli", "--exec", "status minimal"])
+                    .output()?;
+                if String::from_utf8_lossy(&s.stdout).contains("available") {
+                    break;
+                }
+                anyhow::ensure!(attempt < 59, "FDB did not become available in time");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+
             // Write a cluster file the host process can use.
             let mut cluster_file = tempfile::NamedTempFile::new()?;
             write!(cluster_file, "docker:docker@127.0.0.1:4500")?;
@@ -314,7 +351,7 @@ impl StoreManager for FoundationDbDcbStoreManager {
 
     async fn pull(&mut self) -> Result<()> {
         // Skip pull if the image already exists locally (e.g. custom-built ARM image).
-        let image_ref = format!("{}:{}", bench_testcontainers::foundationdb_dcb::FDB_IMAGE_NAME, bench_testcontainers::foundationdb_dcb::FDB_IMAGE_TAG);
+        let image_ref = format!("{}:{}", bench_testcontainers::foundationdb_dcb::FDB_IMAGE_NAME, bench_testcontainers::foundationdb_dcb::fdb_image_tag());
         let exists = Command::new("docker")
             .args(["image", "inspect", &image_ref])
             .output()
