@@ -13,10 +13,10 @@ performance:
       append_condition: one_tag_one_type
 
   stores:
-    - fdb
     - umadb
     - axonserver
     - postgres-dcb-ttcte
+    - foundationdb-dcb
 ---
 performance:
   name: warmup-read-one-tag-one-type
@@ -38,7 +38,7 @@ performance:
     - umadb
     - axonserver
     - postgres-dcb-ttcte
-    - fdb
+    - foundationdb-dcb
 ---
 performance:
   name: write-one-tag-one-type
@@ -58,7 +58,7 @@ performance:
     - umadb
     - axonserver
     - postgres-dcb-ttcte
-    - fdb
+    - foundationdb-dcb
 ---
 performance:
   name: read-one-tag-one-type
@@ -81,4 +81,4 @@ performance:
     - umadb
     - axonserver
     - postgres-dcb-ttcte
-    - fdb
+    - foundationdb-dcb

@@ -5,7 +5,7 @@ use bench_core::adapter::{
     StoreManager, StoreManagerFactory,
 };
 use bench_core::wait_for_ready;
-use bench_testcontainers::fdb::{FoundationDb, FDB_PORT};
+use bench_testcontainers::foundationdb_dcb::{FoundationDb, FDB_PORT};
 use dcb_layer::{AppendCondition, Event, FdbStore, Query, QueryItem, ReadOptions, Versionstamp};
 use foundationdb::Database;
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ unsafe impl Sync for FdbSharedState {}
 // Adapter
 // ---------------------------------------------------------------------------
 
-pub struct FdbAdapter {
+pub struct FoundationDbDcbAdapter {
     state: Arc<FdbSharedState>,
     // Per-adapter registry: no cross-adapter lock contention.
     vs_registry: std::sync::Mutex<VsRegistry>,
@@ -90,7 +90,7 @@ fn condition_after(registry: &VsRegistry, id: Option<u64>) -> Option<Versionstam
 }
 
 #[async_trait]
-impl EventStoreAdapter for FdbAdapter {
+impl EventStoreAdapter for FoundationDbDcbAdapter {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -197,7 +197,7 @@ impl EventStoreAdapter for FdbAdapter {
 // FDB network — boot once per process
 // ---------------------------------------------------------------------------
 
-fn ensure_fdb_network() {
+fn ensure_foundationdb_dcb_network() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let _ = ManuallyDrop::new(unsafe { foundationdb::boot() });
@@ -208,7 +208,7 @@ fn ensure_fdb_network() {
 // Store manager
 // ---------------------------------------------------------------------------
 
-pub struct FdbStoreManager {
+pub struct FoundationDbDcbStoreManager {
     container: Option<ContainerAsync<FoundationDb>>,
     cluster_file: Option<tempfile::NamedTempFile>,
     shared_state: Option<Arc<FdbSharedState>>,
@@ -218,21 +218,21 @@ pub struct FdbStoreManager {
     docker_platform: Option<String>,
 }
 
-impl FdbStoreManager {
+impl FoundationDbDcbStoreManager {
     pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             container: None,
             cluster_file: None,
             shared_state: None,
             use_docker,
-            data_dir: StoreDataDir::new(data_dir, "fdb"),
+            data_dir: StoreDataDir::new(data_dir, "foundationdb-dcb"),
             memory_limit_mb: None,
             docker_platform: None,
         }
     }
 
     async fn init_from_cluster_file(&mut self, cluster_path: &str) -> Result<()> {
-        ensure_fdb_network();
+        ensure_foundationdb_dcb_network();
 
         let cluster_path = cluster_path.to_string();
         wait_for_ready(
@@ -256,7 +256,7 @@ impl FdbStoreManager {
 }
 
 #[async_trait]
-impl StoreManager for FdbStoreManager {
+impl StoreManager for FoundationDbDcbStoreManager {
     fn use_docker(&self) -> bool {
         self.use_docker
     }
@@ -314,7 +314,7 @@ impl StoreManager for FdbStoreManager {
 
     async fn pull(&mut self) -> Result<()> {
         // Skip pull if the image already exists locally (e.g. custom-built ARM image).
-        let image_ref = format!("{}:{}", bench_testcontainers::fdb::FDB_IMAGE_NAME, bench_testcontainers::fdb::FDB_IMAGE_TAG);
+        let image_ref = format!("{}:{}", bench_testcontainers::foundationdb_dcb::FDB_IMAGE_NAME, bench_testcontainers::foundationdb_dcb::FDB_IMAGE_TAG);
         let exists = Command::new("docker")
             .args(["image", "inspect", &image_ref])
             .output()
@@ -353,16 +353,16 @@ impl StoreManager for FdbStoreManager {
     }
 
     fn name(&self) -> &'static str {
-        "fdb"
+        "foundationdb-dcb"
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
         let state = self
             .shared_state
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("FdbStoreManager not started"))?
+            .ok_or_else(|| anyhow::anyhow!("FoundationDbDcbStoreManager not started"))?
             .clone();
-        Ok(Arc::new(FdbAdapter {
+        Ok(Arc::new(FoundationDbDcbAdapter {
             state,
             vs_registry: std::sync::Mutex::new(VsRegistry::new()),
         }))
@@ -388,11 +388,11 @@ impl StoreManager for FdbStoreManager {
 // Factory
 // ---------------------------------------------------------------------------
 
-pub struct FdbFactory;
+pub struct FoundationDbDcbFactory;
 
-impl StoreManagerFactory for FdbFactory {
+impl StoreManagerFactory for FoundationDbDcbFactory {
     fn name(&self) -> &'static str {
-        "fdb"
+        "foundationdb-dcb"
     }
 
     fn create_store_manager(
@@ -400,6 +400,6 @@ impl StoreManagerFactory for FdbFactory {
         data_dir: Option<String>,
         use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(FdbStoreManager::new(data_dir, use_docker)))
+        Ok(Box::new(FoundationDbDcbStoreManager::new(data_dir, use_docker)))
     }
 }

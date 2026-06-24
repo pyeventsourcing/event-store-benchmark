@@ -13,7 +13,7 @@ members = [
     "rust/marten-rs",
     "rust/py-eventsourcing",
     "rust/adapters/py-eventsourcing",
-    "rust/adapters/fdb",
+    "rust/adapters/foundationdb-dcb",
 ]
 resolver = "2"
 

@@ -1021,7 +1021,7 @@ dependencies = [
  "dummy-adapter",
  "eventsourcingdb-adapter",
  "fact-adapter",
- "fdb-adapter",
+ "foundationdb-dcb-adapter",
  "kurrentdb-adapter",
  "marten-adapter",
  "py-eventsourcing-adapter",
@@ -1145,22 +1145,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
-name = "fdb-adapter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bench-core",
- "bench-testcontainers",
- "bytes",
- "dcb-layer",
- "foundationdb",
- "tempfile",
- "testcontainers",
- "tokio",
-]
-
-[[package]]
 name = "ferroid"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1261,6 +1245,22 @@ dependencies = [
  "serde_json",
  "static_assertions",
  "uuid",
+]
+
+[[package]]
+name = "foundationdb-dcb-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bench-core",
+ "bench-testcontainers",
+ "bytes",
+ "dcb-layer",
+ "foundationdb",
+ "tempfile",
+ "testcontainers",
+ "tokio",
 ]
 
 [[package]]
