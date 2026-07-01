@@ -93,6 +93,14 @@ jobs:
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
+      - name: Install FoundationDB Client (libfdb_c.so is needed by the benchmark tool)
+        run: |
+          # 1. Download the client packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 2. Install the client
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
