@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   setup:
@@ -24,6 +27,14 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install FoundationDB Client
+        run: |
+          # 1. Download the client packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 2. Install the client
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
 
       - name: Build benchmark tool
         run: make build
@@ -54,11 +65,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, axonserver, postgres-dcb-ttcte]
+        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
+      FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
     steps:
       - name: Download Makefile
         uses: actions/download-artifact@v8
@@ -159,6 +171,22 @@ jobs:
           cat $GITHUB_WORKSPACE/umadb.log
           echo "UmaDB failed to start after 60 seconds"
           exit 1
+
+      - name: Install FoundationDB Client and Server
+        if: ${{ matrix.store == 'foundationdb-dcb' }}
+        run: |
+          # 1. Download both the client and the server packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-server_7.4.5-1_amd64.deb
+          
+          # 2. Install the client FIRST (the server depends on it)
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 3. Install the server
+          sudo dpkg -i foundationdb-server_7.4.5-1_amd64.deb
+          
+          # 4. Fix permissions so the workload runner can read the file
+          sudo chmod 644 /etc/foundationdb/fdb.cluster
 
       - name: Run scaling DCB workload
         run: |
