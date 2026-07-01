@@ -185,6 +185,7 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
                 type_name: evt.event_type.to_string(),
                 data: evt.payload.to_vec(),
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+                uuid: "".to_string(),
             }
         }).collect();
 
@@ -220,6 +221,7 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
                 type_name: evt.event_type.to_string(),
                 data: evt.payload.to_vec(),
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+                uuid: "".to_string(),
             }
         }).collect();
 
