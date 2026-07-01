@@ -32,11 +32,18 @@ jobs:
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      - name: Install FoundationDB Client
+      - name: Install FoundationDB Client and Server
         run: |
-          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
-          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
-
+            # 1. Download both the client and the server packages
+            wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+            wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-server_7.4.5-1_amd64.deb
+            
+            # 2. Install the client FIRST (the server depends on it)
+            sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+            
+            # 3. Install the server
+            sudo dpkg -i foundationdb-server_7.4.5-1_amd64.deb
+          
       - name: Build benchmark tool
         run: make build
 

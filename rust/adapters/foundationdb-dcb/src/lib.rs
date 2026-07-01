@@ -258,13 +258,7 @@ impl FoundationDbDcbStoreManager {
 #[async_trait]
 impl StoreManager for FoundationDbDcbStoreManager {
     fn use_docker(&self) -> bool {
-        // I'm sorry, I couldn't get it running locally, it was working
-        // and then it wasn't so resorting to Docker. --JohnB
-        if !self.use_docker {
-            println!("Using Docker for FoundationDbDcbStoreManager anyway...")
-        }
-        // self.use_docker
-        true
+        self.use_docker
     }
 
     async fn start(&mut self) -> Result<()> {
