@@ -153,6 +153,7 @@ impl UmaDbAdapter {
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 data: evt.payload.to_vec(),
                 uuid: None,
+                metadata: Vec::new(),
             })
             .collect()
     }
@@ -218,7 +219,6 @@ impl EventStoreAdapter for UmaDbAdapter {
                 req.from_offset,
                 false,
                 req.limit.map(|l| l as u32),
-                false,
             )
             .await?;
         let mut out = Vec::new();
