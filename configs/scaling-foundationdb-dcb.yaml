@@ -1,11 +1,12 @@
 performance:
   name: warmup-write-one-tag-one-type
   mode: write
-  warmup_seconds: 1
-  duration_seconds: 60
+#  use_docker: true
+  warmup_seconds: 0
+  duration_seconds: 3
   samples_per_second: 2
   concurrency:
-    writers: [4]
+    writers: [1]
   operations:
     write:
       event_size_bytes: 256
@@ -13,16 +14,14 @@ performance:
       append_condition: one_tag_one_type
 
   stores:
-    - umadb
-    - axonserver
-    - postgres-dcb-ttcte
-#    - foundationdb-dcb
+    - foundationdb-dcb
 ---
 performance:
   name: warmup-read-one-tag-one-type
   mode: read
+#  use_docker: true
   warmup_seconds: 1
-  duration_seconds: 60
+  duration_seconds: 3
   samples_per_second: 2
   concurrency:
     readers: [4]
@@ -32,22 +31,21 @@ performance:
     read:
       dcb_query: one_tag_one_type
   setup:
-    prepopulate_events: 50000
-    prepopulate_streams: 5000
+    prepopulate_events: 50
+    prepopulate_streams: 5
   stores:
-    - umadb
-    - axonserver
-    - postgres-dcb-ttcte
     - foundationdb-dcb
 ---
 performance:
   name: write-one-tag-one-type
   mode: write
+#  use_docker: true
   warmup_seconds: 1
-  duration_seconds: 30
+  duration_seconds: 3
   samples_per_second: 2
   concurrency:
-    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+#    writers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    writers: [1, 2, 4]
   operations:
     write:
       event_size_bytes: 256
@@ -55,30 +53,26 @@ performance:
       append_condition: one_tag_one_type
 
   stores:
-    - umadb
-    - axonserver
-    - postgres-dcb-ttcte
     - foundationdb-dcb
 ---
 performance:
   name: read-one-tag-one-type
   mode: read
+#  use_docker: true
   warmup_seconds: 1
-  duration_seconds: 30
+  duration_seconds: 3
   samples_per_second: 2
   concurrency:
-    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+#    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    readers: [1, 2, 4]
   operations:
     write:
       event_size_bytes: 256
     read:
       dcb_query: one_tag_one_type
   setup:
-    prepopulate_events: 50000
-    prepopulate_streams: 5000
+    prepopulate_events: 50
+    prepopulate_streams: 5
 
   stores:
-    - umadb
-    - axonserver
-    - postgres-dcb-ttcte
     - foundationdb-dcb

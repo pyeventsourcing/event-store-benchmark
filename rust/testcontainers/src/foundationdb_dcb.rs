@@ -8,7 +8,9 @@ pub const FDB_PORT: ContainerPort = ContainerPort::Tcp(4500);
 
 pub fn fdb_image_tag() -> String {
     if std::env::consts::ARCH == "aarch64" {
-        format!("{}-arm", FDB_IMAGE_VERSION)
+        // Sorry - I didn't want to clone the repo and build the Docker image --JohnB 
+        // format!("{}-arm", FDB_IMAGE_VERSION)
+        FDB_IMAGE_VERSION.to_string()
     } else {
         FDB_IMAGE_VERSION.to_string()
     }

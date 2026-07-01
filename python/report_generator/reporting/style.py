@@ -17,13 +17,12 @@ FONT_SIZE_TICK = 10
 FONT_SIZE_LEGEND = 10
 
 adapters = [
-    'foundationdb-dcb',
     'umadb',
     'kurrentdb',
     'axonserver',
     'postgres-dcb-marten',
     'postgres-dcb-ttcte',
-    '',
+    'foundationdb-dcb',
     'eventsourcingdb',
     'fact',
     'dummy',

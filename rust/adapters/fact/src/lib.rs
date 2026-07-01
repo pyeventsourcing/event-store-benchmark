@@ -50,47 +50,49 @@ impl StoreManager for FactStoreManager {
     }
 
     async fn start(&mut self) -> Result<()> {
-        let mount_path = self.data_dir.setup()?;
-        let mut image: ContainerRequest<_> = FactDb::new(mount_path).into();
+        if self.use_docker {
+            let mount_path = self.data_dir.setup()?;
+            let mut image: ContainerRequest<_> = FactDb::new(mount_path).into();
 
-        if let Some(ref platform) = self.docker_platform {
-            image = image.with_platform(platform);
-        }
+            if let Some(ref platform) = self.docker_platform {
+                image = image.with_platform(platform);
+            }
 
-        if let Some(limit_mb) = self.memory_limit_mb {
-            let bytes = limit_mb * 1024 * 1024;
-            image = image.with_host_config_modifier(move |host_config| {
-                host_config.memory = Some(bytes as i64);
-            });
-        }
+            if let Some(limit_mb) = self.memory_limit_mb {
+                let bytes = limit_mb * 1024 * 1024;
+                image = image.with_host_config_modifier(move |host_config| {
+                    host_config.memory = Some(bytes as i64);
+                });
+            }
 
-        let container = image.start().await?;
+            let container = image.start().await?;
 
-        let host_port = container.get_host_port_ipv4(FACT_PORT).await?;
-        self.uri = Self::format_uri(host_port);
-        self.container = Some(container);
+            let host_port = container.get_host_port_ipv4(FACT_PORT).await?;
+            self.uri = Self::format_uri(host_port);
+            self.container = Some(container);
 
-        let uri = self.uri.clone();
-        wait_for_ready(
-            "Fact",
-            || {
-                let uri = uri.clone();
-                async move {
-                    let mut client = FactBenchClient::connect(uri).await?;
-                    let resp = client
-                        .healthz(proto::HealthzRequest {})
-                        .await?
-                        .into_inner();
-                    if resp.status == "ok" {
-                        Ok(())
-                    } else {
-                        anyhow::bail!("not ready (status: {})", resp.status)
+            let uri = self.uri.clone();
+            wait_for_ready(
+                "Fact",
+                || {
+                    let uri = uri.clone();
+                    async move {
+                        let mut client = FactBenchClient::connect(uri).await?;
+                        let resp = client
+                            .healthz(proto::HealthzRequest {})
+                            .await?
+                            .into_inner();
+                        if resp.status == "ok" {
+                            Ok(())
+                        } else {
+                            anyhow::bail!("not ready (status: {})", resp.status)
+                        }
                     }
-                }
-            },
-            Duration::from_secs(60),
-        )
-        .await?;
+                },
+                Duration::from_secs(60),
+            )
+                .await?;
+        }
 
         Ok(())
     }
