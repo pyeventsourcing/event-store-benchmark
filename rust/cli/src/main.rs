@@ -95,7 +95,7 @@ fn main() -> Result<()> {
         Commands::CreatePyEventsourcingTables => {
             rt.block_on(async {
                 let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
-                let mut manager = factory.create_store_manager(None, true)?;
+                let mut manager = factory.create_store_manager(None, false)?;
                 let adapter = manager.create_adapter().await?;
                 // We know it's a PyEventsourcingAdapter
                 let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
@@ -109,7 +109,7 @@ fn main() -> Result<()> {
         Commands::DropPyEventsourcingTables => {
             rt.block_on(async {
                 let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
-                let mut manager = factory.create_store_manager(None, true)?;
+                let mut manager = factory.create_store_manager(None, false)?;
                 let adapter = manager.create_adapter().await?;
                 // We know it's a PyEventsourcingAdapter
                 let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
@@ -123,7 +123,7 @@ fn main() -> Result<()> {
         Commands::CreateMartenTables => {
             rt.block_on(async {
                 let factory = marten_adapter::MartenFactory {};
-                let mut manager = factory.create_store_manager(None, true)?;
+                let mut manager = factory.create_store_manager(None, false)?;
                 let adapter = manager.create_adapter().await?;
                 // We know it's a MartenAdapter
                 let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
@@ -140,7 +140,7 @@ fn main() -> Result<()> {
         Commands::DropMartenTables => {
             rt.block_on(async {
                 let factory = marten_adapter::MartenFactory {};
-                let mut manager = factory.create_store_manager(None, true)?;
+                let mut manager = factory.create_store_manager(None, false)?;
                 let adapter = manager.create_adapter().await?;
                 // We know it's a MartenAdapter
                 let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()

@@ -65,9 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-#        Exclude postgres-dcb-ttcte for now, because I'm not sure it runs in Docker?
-#        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
-        store: [umadb, axonserver, foundationdb-dcb]
+        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
@@ -104,37 +102,6 @@ jobs:
           
           # 2. Install the client
           sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
-
-#      - name: Start Postgres
-#        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
-#        run: |
-#          sudo apt-get update
-#          sudo apt-get install -y postgresql postgresql-contrib
-#          sudo mkdir -p /etc/systemd/system/postgresql.service.d
-#          sudo tee /etc/systemd/system/postgresql.service.d/override.conf >/dev/null <<'EOF'
-#          [Service]
-#          CPUAffinity=0 1 2
-#          EOF
-#          sudo systemctl daemon-reload
-#          sudo systemctl restart postgresql
-#          sudo systemctl status postgresql
-#          systemctl show postgresql -p CPUAffinity
-#
-#          pgrep -x postgres | xargs -I{} taskset -cp {}
-#
-#          sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
-#          sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
-#          sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
-#
-#          sudo -u postgres psql -tAc "SHOW max_connections;"
-#          sudo -u postgres psql -tAc "SHOW superuser_reserved_connections;"
-#          sudo -u postgres psql -tAc "SELECT current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int AS usable_non_superuser_slots;"
-#
-#      - name: Create tables for PyEventsourcing
-#        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
-#        run: |
-#          pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
-#          ./target/release/es-bench create-py-eventsourcing-tables
 
       - name: Run scaling DCB workload
         run: |
