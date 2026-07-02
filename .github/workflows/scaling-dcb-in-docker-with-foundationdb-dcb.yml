@@ -71,7 +71,7 @@ jobs:
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
       FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
-      ESB_MAX_CONCURRENT_WORKERS: 128  # low number because foundationdb-dcb tends to hang for some reason
+#      ESB_MAX_CONCURRENT_WORKERS: 128  # low number because foundationdb-dcb tends to hang for some reason
       ESB_USE_DOCKER: true  # New environment variable, which should make some workload configs redundant?
     steps:
       - name: Download Makefile
