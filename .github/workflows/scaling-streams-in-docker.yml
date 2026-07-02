@@ -94,7 +94,7 @@ jobs:
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
-      - name: Run scaling workload  # sudo otherwise Axon Server files can't be deleted
+      - name: Run scaling workload  # sudo otherwise sometimes Docker data files can't be deleted
         run: |
           sudo -E make run-scaling-streams-in-docker
           sudo chown -R $(id -u):$(id -g) ./results

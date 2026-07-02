@@ -32,7 +32,7 @@ jobs:
       - name: Build benchmark tool
         run: make build
 
-      - name: Run smoke-test workload  # sudo otherwise Axon Server files can't be deleted
+      - name: Run smoke-test workload   # sudo otherwise sometimes Docker data files can't be deleted
         run: |
           sudo -E make run-smoke-test
           sudo chown -R $(id -u):$(id -g) ./results

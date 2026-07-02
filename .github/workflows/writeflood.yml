@@ -164,7 +164,7 @@ jobs:
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
 
-      - name: Run writeflood workload  # sudo otherwise Axon Server files can't be deleted
+      - name: Run writeflood workload
         run: |
           taskset -c "$TASKSET_BENCH_CPUS" make run-writeflood
 

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use anyhow::Context;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionParams {
@@ -226,7 +227,8 @@ impl StoreDataDir {
     pub fn cleanup(&mut self) -> anyhow::Result<()> {
         if let Some(path) = self.active_path.take() {
             if path.exists() {
-                std::fs::remove_dir_all(&path)?;
+                std::fs::remove_dir_all(&path)
+                    .with_context(|| format!("Failed to clean up the data dir at {:?}", path))?;
             }
         }
         Ok(())

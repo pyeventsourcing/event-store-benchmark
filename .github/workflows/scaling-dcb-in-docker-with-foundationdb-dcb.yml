@@ -103,9 +103,10 @@ jobs:
           # 2. Install the client
           sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
 
-      - name: Run scaling DCB workload
+      - name: Run scaling DCB workload   # sudo otherwise sometimes Docker data files can't be deleted
         run: |
-          taskset -c 3 make run-scaling-dcb
+          sudo -E make run-scaling-dcb
+          sudo chown -R $(id -u):$(id -g) ./results
 
       - name: Upload scaling results
         uses: actions/upload-artifact@v6
