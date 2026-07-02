@@ -54,6 +54,12 @@ impl StoreManager for PyEventsourcingStoreManager {
             let mount_path = self.data_dir.setup()?;
             let mut image: ContainerRequest<_> = PyEventsourcingPostgres::new(mount_path).into();
 
+            // Inject the environment variables to create the role and database
+            image = image
+                .with_env_var("POSTGRES_USER", "eventsourcing")
+                .with_env_var("POSTGRES_PASSWORD", "eventsourcing")
+                .with_env_var("POSTGRES_DB", "eventsourcing");
+
             if let Some(ref platform) = self.docker_platform {
                 image = image.with_platform(platform);
             }
