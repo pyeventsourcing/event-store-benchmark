@@ -115,8 +115,7 @@ jobs:
           sudo chmod 644 /etc/foundationdb/fdb.cluster
           
           # 6. Configure FoundationDB to use the disk. Force the migration from the default 'memory' engine to 'ssd'
-          fdbcli --exec "storage_migration_type=aggressive"
-          fdbcli --exec "configure single ssd"
+          fdbcli --exec "configure single ssd storage_migration_type=aggressive"
 
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
