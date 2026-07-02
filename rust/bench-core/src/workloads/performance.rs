@@ -53,8 +53,17 @@ impl PerformanceConfig {
         let readers_vec = self.concurrency.readers.as_vec();
 
         let mut configs = Vec::new();
+        let max_concurrent_workers: Option<usize> = std::env::var("ESB_MAX_CONCURRENT_WORKERS")
+            .ok()                            // Converts Result<String, VarError> into Option<String>
+            .and_then(|val| val.parse().ok()); // Parses String to usize, turning Result into Option
         for &writers in &writers_vec {
+            if max_concurrent_workers.is_some_and(|max| writers > max) {
+                continue;
+            }
             for &readers in &readers_vec {
+                if max_concurrent_workers.is_some_and(|max| writers > max) {
+                    continue;
+                }
                 for store in self.stores.as_vec() {
                     let mut new_config = self.clone();
                     new_config.concurrency.writers = ConcurrencyValue::Single(writers);
