@@ -71,7 +71,7 @@ jobs:
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
       FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
-      ESB_MAX_CONCURRENT_WORKERS: 128  # foundationdb-dcb tends to hang for some reason
+#      ESB_MAX_CONCURRENT_WORKERS: 128  # foundationdb-dcb tends to hang for some reason
     steps:
       - name: Download Makefile
         uses: actions/download-artifact@v8
@@ -113,6 +113,9 @@ jobs:
           
           # 5. Fix permissions so the workload runner can read the file
           sudo chmod 644 /etc/foundationdb/fdb.cluster
+          
+          # 6. Configure FoundationDB to use the disk.
+          fdbcli --exec "configure new single ssd"
 
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
