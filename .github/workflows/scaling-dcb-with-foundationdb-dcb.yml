@@ -114,8 +114,8 @@ jobs:
           # 5. Fix permissions so the workload runner can read the file
           sudo chmod 644 /etc/foundationdb/fdb.cluster
           
-          # 6. Configure FoundationDB to use the disk.
-          fdbcli --exec "configure single ssd"
+          # 6. Configure FoundationDB to use the disk. Force the migration from the default 'memory' engine to 'ssd'
+          fdbcli --exec "configure single ssd storage_migration_type=aggressive"
 
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
