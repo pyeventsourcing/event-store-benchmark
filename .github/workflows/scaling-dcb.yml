@@ -2,9 +2,12 @@ name: Scaling DCB
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+#    branches:
+#      - main
 
 jobs:
   setup:
@@ -24,6 +27,14 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install FoundationDB Client
+        run: |
+          # 1. Download the client packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 2. Install the client
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
 
       - name: Build benchmark tool
         run: make build
@@ -54,11 +65,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+#        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
         store: [umadb, axonserver, postgres-dcb-ttcte]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
       ESB_GIT_VERSION: ${{ github.sha }}
+      FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
     steps:
       - name: Download Makefile
         uses: actions/download-artifact@v8
@@ -80,6 +93,26 @@ jobs:
 
       - name: Make benchmark tool executable
         run: chmod +x target/release/es-bench
+
+      - name: Install FoundationDB Client (libfdb_c.so is needed by the benchmark tool)
+        run: |
+          # 1. Download the client packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 2. Install the client
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+
+      - name: Install FoundationDB Server
+        if: ${{ matrix.store == 'foundationdb-dcb' }}
+        run: |
+          # 3. Download the server package
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-server_7.4.5-1_amd64.deb
+          
+          # 4. Install the server
+          sudo dpkg -i foundationdb-server_7.4.5-1_amd64.deb
+          
+          # 5. Fix permissions so the workload runner can read the file
+          sudo chmod 644 /etc/foundationdb/fdb.cluster
 
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}

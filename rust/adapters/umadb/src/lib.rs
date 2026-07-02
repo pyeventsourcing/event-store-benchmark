@@ -44,33 +44,34 @@ impl StoreManager for UmaDbStoreManager {
     fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
-        let mount_path = self.data_dir.setup()?;
-        let mut image: ContainerRequest<_> = UmaDb::new(mount_path).into();
+        if self.use_docker {
+            let mount_path = self.data_dir.setup()?;
+            let mut image: ContainerRequest<_> = UmaDb::new(mount_path).into();
 
-        if let Some(ref platform) = self.docker_platform {
-            image = image.with_platform(platform);
+            if let Some(ref platform) = self.docker_platform {
+                image = image.with_platform(platform);
+            }
+
+            if let Some(limit_mb) = self.memory_limit_mb {
+                let bytes = limit_mb * 1024 * 1024;
+                image = image.with_host_config_modifier(move |host_config| {
+                    host_config.memory = Some(bytes as i64);
+                });
+            }
+
+            let container = image.start().await?;
+
+            let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
+            self.uri = Self::format_uri(host_port);
+            self.container = Some(container);
+
+            // Wait for container to be ready
+            wait_for_ready("UmaDb", || async {
+                let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
+                client.head().await?;
+                Ok(())
+            }, Duration::from_secs(60)).await?;
         }
-
-        if let Some(limit_mb) = self.memory_limit_mb {
-            let bytes = limit_mb * 1024 * 1024;
-            image = image.with_host_config_modifier(move |host_config| {
-                host_config.memory = Some(bytes as i64);
-            });
-        }
-
-        let container = image.start().await?;
-
-        let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
-        self.uri = Self::format_uri(host_port);
-        self.container = Some(container);
-
-        // Wait for container to be ready
-        wait_for_ready("UmaDb", || async {
-            let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
-            client.head().await?;
-            Ok(())
-        }, Duration::from_secs(60)).await?;
-
         Ok(())
     }
 
@@ -86,12 +87,12 @@ impl StoreManager for UmaDbStoreManager {
     }
 
     async fn stop(&mut self) -> Result<()> {
-        println!("Stopping container");
         if let Some(container) = self.container.take() {
+            println!("Stopping container");
             container.stop().await?;
+            println!("Stopped container");
         }
         self.data_dir.cleanup()?;
-        println!("Stopped container");
         Ok(())
     }
 

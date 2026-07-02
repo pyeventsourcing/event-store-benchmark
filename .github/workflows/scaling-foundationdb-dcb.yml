@@ -1,0 +1,74 @@
+name: Scaling FoundationDB DCB (Simple)
+
+on:
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+#    branches:
+#      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      ESB_WORKLOAD_STORES: foundationdb-dcb
+      ESB_GIT_VERSION: ${{ github.sha }}
+      FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
+    steps:
+      - name: Generate Session ID
+        run: echo "ESB_SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_ENV
+
+      - name: Verify Session ID
+        run: |
+          echo "The session ID injected into the environment is: $ESB_SESSION_ID"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install FoundationDB Client and Server
+        run: |
+            # 1. Download both the client and the server packages
+            wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+            wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-server_7.4.5-1_amd64.deb
+            
+            # 2. Install the client FIRST (the server depends on it)
+            sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+            
+            # 3. Install the server
+            sudo dpkg -i foundationdb-server_7.4.5-1_amd64.deb
+          
+            # 4. Fix permissions so the GitHub runner can read the file
+            sudo chmod 644 /etc/foundationdb/fdb.cluster
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Run scaling DCB workload
+        run: make ./configs/scaling-foundationdb-dcb.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python/requirements.txt'
+
+      - name: Create Python virtual environment for reporting
+        run: make venv
+
+      - name: Generate report
+        run: make report
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: results/

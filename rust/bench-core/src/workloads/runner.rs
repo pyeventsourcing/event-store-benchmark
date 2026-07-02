@@ -191,6 +191,7 @@ impl WorkloadRunner {
             };
             (monitor, Some(startup_time_s))
         } else {
+            store.start().await?;
             let pid_file = format!("{}.pid", store_name);
             let monitor_scope = Self::monitor_scope_for_store(store_name);
             let monitor = if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
@@ -325,6 +326,7 @@ impl WorkloadRunner {
                     eprintln!("Failed to truncate server log file {}: {}", log_file, e);
                 }
             }
+            store.stop().await?;
         }
 
 

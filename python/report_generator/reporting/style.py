@@ -22,7 +22,7 @@ adapters = [
     'axonserver',
     'postgres-dcb-marten',
     'postgres-dcb-ttcte',
-    '',
+    'foundationdb-dcb',
     'eventsourcingdb',
     'fact',
     'dummy',
