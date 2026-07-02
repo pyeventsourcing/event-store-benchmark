@@ -2,12 +2,12 @@ name: Scaling DCB
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+#    branches:
+#      - main
 
 jobs:
   setup:
@@ -65,7 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
+#        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
+        store: [umadb, axonserver, postgres-dcb-ttcte]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}

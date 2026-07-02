@@ -1,13 +1,13 @@
-name: Scaling FoundationDB DCB
+name: Scaling FoundationDB DCB (Simple)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+#    branches:
+#      - main
 
 jobs:
   setup:
