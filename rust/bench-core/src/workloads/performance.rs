@@ -61,7 +61,7 @@ impl PerformanceConfig {
                 continue;
             }
             for &readers in &readers_vec {
-                if max_concurrent_workers.is_some_and(|max| writers > max) {
+                if max_concurrent_workers.is_some_and(|max| readers > max) {
                     continue;
                 }
                 for store in self.stores.as_vec() {
