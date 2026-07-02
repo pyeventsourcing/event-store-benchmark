@@ -253,7 +253,9 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             break;
         }
 
-        let use_docker = workload_run_config.use_docker;
+        let use_docker = std::env::var("ESB_USE_DOCKER")
+            .map(|val| matches!(val.to_lowercase().as_str(), "true" | "1"))
+            .unwrap_or(workload_run_config.use_docker);
         let workload_runner = WorkloadRunner::Performance(PerformanceWorkload::from_config(workload_run_config, actual_seed)?);
         let workload_run_name = workload_runner.name()?.to_string();
 
