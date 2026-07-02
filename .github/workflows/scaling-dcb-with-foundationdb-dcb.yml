@@ -115,7 +115,7 @@ jobs:
           sudo chmod 644 /etc/foundationdb/fdb.cluster
           
           # 6. Configure FoundationDB to use the disk.
-          fdbcli --exec "configure new single ssd"
+          fdbcli --exec "configure single ssd"
 
       - name: Start Postgres
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
