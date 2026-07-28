@@ -14,6 +14,46 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use crate::EventStoreAdapter;
 
+use std::num::ParseIntError;
+use std::sync::OnceLock;
+
+// The global baseline for our process-local monotonic clock
+static BASE_INSTANT: OnceLock<Instant> = OnceLock::new();
+
+#[inline]
+fn base_instant() -> Instant {
+    *BASE_INSTANT.get_or_init(Instant::now)
+}
+
+/// Generates a high-precision, monotonic timestamp as a String.
+/// Call this on the WRITER side.
+pub fn generate_monotonic_timestamp() -> String {
+    Instant::now()
+        .duration_since(base_instant())
+        .as_nanos()
+        .to_string()
+}
+
+/// Calculates the duration elapsed since the timestamp was generated.
+/// Call this on the RECEIVER side.
+pub fn calculate_transit_duration(timestamp_str: &str) -> Result<Duration, ParseIntError> {
+    // Parse the writer's nanosecond offset
+    let write_nanos = timestamp_str.parse::<u128>()?;
+
+    // Get the receiver's current nanosecond offset
+    let recv_nanos = Instant::now()
+        .duration_since(base_instant())
+        .as_nanos();
+
+    // Calculate the difference safely
+    let diff_nanos = recv_nanos.saturating_sub(write_nanos);
+
+    // Convert back to a standard Rust Duration.
+    // Casting to u64 is perfectly safe here: a u64 can hold up to 
+    // ~584 years of nanoseconds, which is more than enough for a duration difference.
+    Ok(Duration::from_nanos(diff_nanos as u64))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkloadConfig {
     #[serde(default)]
@@ -95,6 +135,7 @@ pub enum PerformanceMode {
     Write,
     Writeflood,
     Read,
+    Subscribe,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,6 +332,18 @@ impl PerformanceWorkload {
                     ));
                 }
             }
+            PerformanceMode::Subscribe => {
+                if config.concurrency.readers.first() == 0 {
+                    return Err(anyhow::anyhow!(
+                        "Read mode requires readers > 0 in concurrency config"
+                    ));
+                }
+                if config.concurrency.writers.len() != 1 {
+                    return Err(anyhow::anyhow!(
+                        "Read mode requires exactly one writers value"
+                    ));
+                }
+            }
         }
 
         let stream_prefix = format!("stream-{}-", Uuid::new_v4());
@@ -356,6 +409,7 @@ impl PerformanceWorkload {
                     activate_metrics,
                     ready_barrier.clone(),
                     sampling_config_rx.clone(),
+                    false,
                 ),
                 PerformanceMode::Writeflood => Self::spawn_writer_flood_task(
                     store.name().to_string(),
@@ -368,6 +422,16 @@ impl PerformanceWorkload {
                     sampling_config_rx.clone(),
                 ),
                 PerformanceMode::Read => {}
+                PerformanceMode::Subscribe => Self::spawn_write_task(
+                    &mut worker_tasks,
+                    adapter,
+                    self.config.operations.write.clone(),
+                    cancel_token.clone(),
+                    activate_metrics,
+                    ready_barrier.clone(),
+                    sampling_config_rx.clone(),
+                    true,
+                ),
             }
         }
 
@@ -378,19 +442,34 @@ impl PerformanceWorkload {
         }
 
         for (i, adapter) in reader_adapters.into_iter().enumerate() {
-            let activate_metrics = matches!(self.config.mode, PerformanceMode::Read);
-            Self::spawn_read_task(
-                &mut worker_tasks,
-                adapter,
-                self.config.operations.read.clone(),
-                self.seed + (i as u64),
-                cancel_token.clone(),
-                self.stream_prefix.clone(),
-                prepopulated_streams,
-                activate_metrics,
-                ready_barrier.clone(),
-                sampling_config_rx.clone(),
-            );
+            if matches!(self.config.mode, PerformanceMode::Subscribe) {
+                Self::spawn_subscribe_task(
+                    &mut worker_tasks,
+                    adapter,
+                    self.config.operations.read.clone(),
+                    self.seed + (i as u64),
+                    cancel_token.clone(),
+                    self.stream_prefix.clone(),
+                    prepopulated_streams,
+                    true,
+                    ready_barrier.clone(),
+                    sampling_config_rx.clone(),
+                );
+
+            } else {
+                Self::spawn_read_task(
+                    &mut worker_tasks,
+                    adapter,
+                    self.config.operations.read.clone(),
+                    self.seed + (i as u64),
+                    cancel_token.clone(),
+                    self.stream_prefix.clone(),
+                    prepopulated_streams,
+                    matches!(self.config.mode, PerformanceMode::Read),
+                    ready_barrier.clone(),
+                    sampling_config_rx.clone(),
+                );
+            }
         }
 
         // Wait for all workers to be spawned and ready
@@ -536,6 +615,7 @@ impl PerformanceWorkload {
         activate_metrics: bool,
         ready_barrier: Arc<Barrier>,
         mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+        activate_timestamps: bool,
     ) {
         worker_tasks.spawn(async move {
             ready_barrier.wait().await;
@@ -569,7 +649,7 @@ impl PerformanceWorkload {
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
             let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
-            let metadata: Arc<[(String, String)]> = Arc::from(vec![]);
+            let null_metadata: Arc<[(String, String)]> = Arc::from(vec![]);
             let stream_len = 10;
             let mut stream_position = 0;
             let mut global_position = 0;
@@ -591,7 +671,11 @@ impl PerformanceWorkload {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
                     tags: tags.clone(),
-                    metadata: metadata.clone(),
+                    metadata: if activate_timestamps {
+                        Arc::from(vec![("timestamp".to_string(), generate_monotonic_timestamp())])
+                    } else {
+                        null_metadata.clone()
+                    },
                 };
 
                 operation_started = Instant::now();
@@ -759,6 +843,118 @@ impl PerformanceWorkload {
 
                 tool_latencies.record(loop_started.elapsed() - operation_duration);
                 loop_started = Instant::now();
+            }
+            if activate_metrics {
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
+            } else {
+                None
+            }
+        });
+    }
+
+    fn spawn_subscribe_task(
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        adapter: Arc<dyn EventStoreAdapter>,
+        read_cfg: ReadOpConfig,
+        _seed: u64,
+        cancel_token: CancellationToken,
+        _stream_prefix: String,
+        _prepopulated_streams: u64,
+        activate_metrics: bool,
+        ready_barrier: Arc<Barrier>,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+    ) {
+        worker_tasks.spawn(async move {
+            ready_barrier.wait().await;
+
+            loop {
+                if sampling_config_rx.borrow().is_some() {
+                    break;
+                }
+                if sampling_config_rx.changed().await.is_err() {
+                    return None;
+                }
+            }
+
+            let msg = sampling_config_rx.borrow().unwrap();
+            let start_time = msg.start_time;
+            let samples_per_second = msg.samples_per_second;
+            let duration_seconds = msg.duration_seconds;
+
+            let mut out_of_time = false;
+
+            // Sampling for metrics measurement
+            let num_intervals = (duration_seconds * samples_per_second) as usize;
+            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut operation_error_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut store_latencies = LatencyRecorder::new_for_store_latencies();
+            let tool_latencies = LatencyRecorder::new_for_tool_latencies();
+
+            let event_type = match read_cfg.dcb_query {
+                DcbQueryValue::OneTagOneType => Some("setup".to_string()),
+                DcbQueryValue::None => None,
+            };
+
+            // Open a single live subscription for the whole benchmark. An empty
+            // tag means "no tag filter" so we receive events from every writer.
+            let req = ReadRequest {
+                tag: String::new(),
+                event_type,
+                from_offset: None,
+                limit: None,
+            };
+            let mut subscription = match adapter.subscribe(req, true).await {
+                Ok(sub) => sub,
+                Err(e) => {
+                    eprintln!("Failed to open subscription: {:#}", e);
+                    return None;
+                }
+            };
+
+            let benchmark_end = start_time + Duration::from_secs(duration_seconds + 1);
+
+            while !out_of_time && !cancel_token.is_cancelled() {
+                // Await the next event, but wake up to re-check the deadline /
+                // cancellation if the stream goes quiet.
+                let next = tokio::select! {
+                    _ = cancel_token.cancelled() => break,
+                    _ = sleep(Duration::from_millis(100)) => { out_of_time = benchmark_end < Instant::now(); continue; }
+                    result = subscription.next_event() => result,
+                };
+
+                let received_at = Instant::now();
+                out_of_time = benchmark_end < received_at;
+
+                match next {
+                    Ok(Some(event)) => {
+                        // Only measure events carrying a writer timestamp; these
+                        // are the live events produced by the subscribe workload's
+                        // writers. Events without one (e.g. prepopulated setup
+                        // events) are ignored.
+                        let timestamp = event
+                            .metadata
+                            .iter()
+                            .find(|(k, _)| k == "timestamp")
+                            .map(|(_, v)| v);
+                        if let Some(timestamp) = timestamp {
+                            if let Ok(latency) = calculate_transit_duration(timestamp) {
+                                if activate_metrics
+                                    && throughput_recorder.record(received_at, 1) == RecordingStatus::During
+                                {
+                                    store_latencies.record(latency);
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => break, // subscription ended
+                    Err(e) => {
+                        if activate_metrics {
+                            operation_error_recorder.record(received_at, 1);
+                        }
+                        eprintln!("Subscription failed: {:#}", e);
+                        sleep(Duration::from_secs(1)).await;
+                    }
+                }
             }
             if activate_metrics {
                 Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))

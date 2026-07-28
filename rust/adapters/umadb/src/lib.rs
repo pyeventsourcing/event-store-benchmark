@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
@@ -10,7 +10,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use umadb_client::UmaDbClient;
-use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem};
+use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbSubscriptionAsync};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
@@ -250,11 +250,56 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(out)
     }
 
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> anyhow::Result<Box<dyn EventSubscription>> {
+        // Build a query from whichever of event_type / tag is set. An empty tag
+        // and no event type means "no filter" (subscribe to all events).
+        let mut item = DcbQueryItem { types: vec![], tags: vec![] };
+        if let Some(event_type) = req.event_type {
+            item.types.push(event_type);
+        }
+        if !req.tag.is_empty() {
+            item.tags.push(req.tag);
+        }
+        let query = if item.types.is_empty() && item.tags.is_empty() {
+            None
+        } else {
+            Some(DcbQuery { items: vec![item] })
+        };
+        let after = if from_end {
+            self.client.head().await?
+        } else {
+            None
+        };
+        let stream = self.client.subscribe(query, after).await?;
+        Ok(Box::new(UmaDbSubscription { stream }))
+    }
+
     // async fn ping(&self) -> Result<Duration> {
     //     let t0 = std::time::Instant::now();
     //     let _ = self.client.head().await?;
     //     Ok(t0.elapsed())
     // }
+}
+
+/// Live subscription backed by UmaDB's async gRPC event stream.
+struct UmaDbSubscription {
+    stream: Box<dyn DcbSubscriptionAsync + Send + 'static>,
+}
+
+#[async_trait]
+impl EventSubscription for UmaDbSubscription {
+    async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
+        match self.stream.next().await {
+            Some(Ok(se)) => Ok(Some(ReadEvent {
+                offset: se.position,
+                event_type: se.event.event_type,
+                payload: se.event.data,
+                metadata: se.event.metadata,
+            })),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
 }
 
 pub struct UmaDbFactory;

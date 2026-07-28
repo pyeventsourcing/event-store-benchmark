@@ -41,3 +41,21 @@ performance:
     - axonserver
     - postgres-dcb-ttcte
     - foundationdb-dcb
+---
+performance:
+  name: subscribe-all
+  mode: subscribe
+  warmup_seconds: 0
+  duration_seconds: 2
+  samples_per_second: 2
+  concurrency:
+    readers: [2]
+    writers: 1
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - umadb
+    - axonserver
+    - postgres-dcb-ttcte
+    - foundationdb-dcb

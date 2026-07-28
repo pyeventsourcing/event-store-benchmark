@@ -1,9 +1,9 @@
 use anyhow::{Result};
 use async_trait::async_trait;
-use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition};
+use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition, StreamEventsResponse};
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
@@ -295,12 +295,69 @@ impl EventStoreAdapter for AxonServerAdapter {
         Ok(out)
     }
 
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn EventSubscription>> {
+        // Build criteria from whichever of event_type / tag is set. No tag and no
+        // event type means "no filter" (stream all events).
+        let mut tags = Vec::new();
+        if !req.tag.is_empty() {
+            tags.push(Tag {
+                key: req.tag.as_bytes().to_vec().into(),
+                value: Vec::new().into(),
+            });
+        }
+        let names = if let Some(event_type) = req.event_type {
+            vec![event_type]
+        } else {
+            vec![]
+        };
+        let criteria = if tags.is_empty() && names.is_empty() {
+            vec![]
+        } else {
+            vec![Criterion {
+                tags_and_names: Some(TagsAndNamesCriterion { name: names, tag: tags }),
+            }]
+        };
+
+        let from = if from_end {
+            self.client.get_head().await?
+        } else {
+            0
+        };
+        
+        let stream = self.client.stream(from, criteria).await?;
+        Ok(Box::new(AxonServerSubscription { stream }))
+    }
+
     // async fn ping(&self) -> Result<Duration> {
     //     let mut client = self.client.clone();
     //     let t0 = std::time::Instant::now();
     //     client.get_head().await?;
     //     Ok(t0.elapsed())
     // }
+}
+
+/// Live subscription backed by Axon Server's infinite `Stream` RPC.
+struct AxonServerSubscription {
+    stream: axonserver_client::tonic::Streaming<StreamEventsResponse>,
+}
+
+#[async_trait]
+impl EventSubscription for AxonServerSubscription {
+    async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
+        while let Some(resp) = self.stream.message().await? {
+            if let Some(seq_evt) = resp.event {
+                if let Some(evt) = seq_evt.event {
+                    return Ok(Some(ReadEvent {
+                        offset: seq_evt.sequence as u64,
+                        event_type: evt.name,
+                        payload: evt.payload,
+                        metadata: evt.metadata.into_iter().collect(),
+                    }));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 pub struct AxonServerFactory;

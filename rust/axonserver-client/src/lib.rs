@@ -11,10 +11,15 @@ pub mod proto {
     pub use event::dcb;
 }
 
+// Re-export tonic so downstream crates can name types like `Streaming` without
+// taking their own (possibly mismatched) tonic dependency.
+pub use tonic;
+
 use anyhow::Result;
 use proto::dcb::{
     dcb_event_store_client::DcbEventStoreClient, AppendEventsRequest, Event, GetHeadRequest,
-    SourceEventsRequest, SourceEventsResponse, Tag, TaggedEvent,
+    SourceEventsRequest, SourceEventsResponse, StreamEventsRequest, StreamEventsResponse, Tag,
+    TaggedEvent,
 };
 use std::time::Duration;
 use tokio_stream::once;
@@ -99,6 +104,22 @@ impl AxonServerClient {
             results.push(resp);
         }
         Ok(results)
+    }
+
+    /// Open an infinite stream (subscription) of events matching criteria from a
+    /// given sequence. The returned stream yields events as they are appended.
+    pub async fn stream(
+        &self,
+        from_sequence: i64,
+        criteria: Vec<proto::dcb::Criterion>,
+    ) -> Result<tonic::Streaming<StreamEventsResponse>> {
+        let mut inner = self.inner.clone();
+        let req = StreamEventsRequest {
+            from_sequence,
+            criterion: criteria,
+        };
+        let stream = inner.stream(req).await?.into_inner();
+        Ok(stream)
     }
 
     /// Get the current head sequence of the event store.
