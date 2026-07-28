@@ -1,4 +1,22 @@
 performance:
+  name: subscribe-all
+  mode: subscribe
+  warmup_seconds: 1
+  duration_seconds: 30
+  samples_per_second: 2
+  concurrency:
+    readers: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    writers: 2
+  operations:
+    write:
+      event_size_bytes: 256
+  stores:
+    - umadb
+    - axonserver
+    - postgres-dcb-ttcte
+    - foundationdb-dcb
+---
+performance:
   name: warmup-write-one-tag-one-type
   mode: write
   warmup_seconds: 1
