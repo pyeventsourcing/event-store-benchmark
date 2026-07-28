@@ -1,7 +1,7 @@
 use tokio_postgres::NoTls;
 use deadpool_postgres::{Pool, Runtime, GenericClient, Manager, ManagerConfig, RecyclingMethod, Timeouts};
 use tokio::time::Duration;
-use postgres_types::{ToSql, FromSql};
+use postgres_types::{ToSql, FromSql, Json};
 use anyhow::{Result, anyhow};
 
 #[derive(Debug, ToSql, FromSql)]
@@ -12,6 +12,7 @@ pub struct DcbEventTt {
     pub data: Option<Vec<u8>>,
     pub tags: Vec<String>,
     pub uuid: String,
+    pub metadata: Json<Vec<(String, String)>>,
 }
 
 #[derive(Debug, ToSql, FromSql)]
@@ -27,6 +28,7 @@ pub struct DcbEvent {
     pub data: Vec<u8>,
     pub tags: Vec<String>,
     pub uuid: String,
+    pub metadata: Vec<(String, String)>,
 }
 
 pub struct DcbSequencedEvent {
@@ -113,7 +115,8 @@ impl PostgresDCBRecorderTT {
                         type text,
                         data bytea,
                         tags text[],
-                        uuid text
+                        uuid text,
+                        metadata jsonb
                     );
                 END IF;
                 IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid WHERE t.typname = '{query_item_type}' AND n.nspname = '{schema}') THEN
@@ -130,7 +133,8 @@ impl PostgresDCBRecorderTT {
                 type text NOT NULL,
                 data bytea,
                 tags text[] NOT NULL,
-                uuid text NOT NULL
+                uuid text NOT NULL,
+                metadata jsonb
             );
             CREATE UNIQUE INDEX IF NOT EXISTS {events_table}_idx_id_type ON {schema}.{events_table} (id) INCLUDE (type);
             CREATE TABLE IF NOT EXISTS {schema}.{tags_table} (
@@ -149,8 +153,8 @@ impl PostgresDCBRecorderTT {
                     SELECT * FROM unnest(new_events)
                 ),
                 inserted AS (
-                    INSERT INTO {schema}.{events_table} (type, data, tags, uuid)
-                    SELECT type, data, tags, uuid
+                    INSERT INTO {schema}.{events_table} (type, data, tags, uuid, metadata)
+                    SELECT type, data, tags, uuid, metadata
                     FROM new_data
                     RETURNING id, tags
                 ),
@@ -232,8 +236,8 @@ impl PostgresDCBRecorderTT {
                         SELECT * FROM unnest(new_events)
                     ),
                     inserted AS (
-                        INSERT INTO {schema}.{events_table} (type, data, tags, uuid)
-                        SELECT type, data, tags, uuid
+                        INSERT INTO {schema}.{events_table} (type, data, tags, uuid, metadata)
+                        SELECT type, data, tags, uuid, metadata
                         FROM new_data
                         RETURNING id, tags
                     ),
@@ -297,6 +301,7 @@ impl PostgresDCBRecorderTT {
                 data: Some(e.data),
                 tags: e.tags,
                 uuid: e.uuid,
+                metadata: Json(e.metadata),
             }).collect();
 
             if let Some(cond) = condition {
@@ -440,12 +445,14 @@ impl PostgresDCBRecorderTT {
 
         let mut events = Vec::new();
         for row in rows {
+            let Json(metadata) = row.get("metadata");
             events.push(DcbSequencedEvent {
                 event: DcbEvent {
                     type_name: row.get("type"),
                     data: row.get("data"),
                     tags: row.get("tags"),
                     uuid: row.get("uuid"),
+                    metadata,
                 },
                 position: row.get("id"),
             });
@@ -478,12 +485,14 @@ mod tests {
                 data: vec![1, 2, 3],
                 tags: vec!["tag1".to_string(), "tag2".to_string()],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             },
             DcbEvent {
                 type_name: "Type2".to_string(),
                 data: vec![4, 5, 6],
                 tags: vec!["tag2".to_string()],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             },
         ];
 
@@ -511,6 +520,7 @@ mod tests {
                 data: vec![],
                 tags: vec!["tag1".to_string()],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             }
         ], None).await?;
 
@@ -530,6 +540,7 @@ mod tests {
                 data: vec![],
                 tags: vec!["tag2".to_string()],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             }
         ], Some(cond1)).await?;
 
@@ -549,6 +560,7 @@ mod tests {
                 data: vec![],
                 tags: vec!["tag3".to_string()],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             }
         ], Some(cond2)).await;
 
@@ -566,9 +578,9 @@ mod tests {
         let recorder = setup().await?;
 
         recorder.append(vec![
-            DcbEvent { type_name: "T1".to_string(), data: vec![], tags: vec!["A".to_string()], uuid: "some-id".to_string() },
-            DcbEvent { type_name: "T2".to_string(), data: vec![], tags: vec!["B".to_string()], uuid: "some-id".to_string() },
-            DcbEvent { type_name: "T3".to_string(), data: vec![], tags: vec!["A".to_string(), "B".to_string()], uuid: "some-id".to_string() },
+            DcbEvent { type_name: "T1".to_string(), data: vec![], tags: vec!["A".to_string()], uuid: "some-id".to_string(), metadata: vec![("a".to_string(), "b".to_string())]},
+            DcbEvent { type_name: "T2".to_string(), data: vec![], tags: vec!["B".to_string()], uuid: "some-id".to_string(), metadata: vec![("a".to_string(), "b".to_string())] },
+            DcbEvent { type_name: "T3".to_string(), data: vec![], tags: vec!["A".to_string(), "B".to_string()], uuid: "some-id".to_string(), metadata: vec![("a".to_string(), "b".to_string())] },
         ], None).await?;
 
         let query = DcbQuery {
@@ -599,6 +611,7 @@ mod tests {
                 data: vec![0; 100],
                 tags: vec![format!("tag{}", i)],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             }; events_per_append];
             recorder.append(events, None).await?;
         }
@@ -623,6 +636,7 @@ mod tests {
             data: vec![],
             tags: vec!["initial".to_string()],
             uuid: "some-id".to_string(),
+            metadata: vec![("a".to_string(), "b".to_string())],
         }], None).await?;
 
         let start = std::time::Instant::now();
@@ -632,6 +646,7 @@ mod tests {
                 data: vec![0; 100],
                 tags: vec![format!("tag_new_{}", i)],
                 uuid: "some-id".to_string(),
+                metadata: vec![("a".to_string(), "b".to_string())],
             }; events_per_append];
 
             // Condition that never matches (checking for a tag that doesn't exist in the new events)

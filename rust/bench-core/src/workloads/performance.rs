@@ -499,11 +499,14 @@ impl PerformanceWorkload {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
                     let tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
                     let mut events = Vec::with_capacity(events_per_stream as usize);
+                    let metadata: Arc<[(String, String)]> = Arc::from(vec![]);
+
                     for _ in 0..events_per_stream {
                         events.push(EventData {
                             payload: payload.clone(),
                             event_type: event_type.clone(),
                             tags: tags.clone(),
+                            metadata: metadata.clone(),
                         });
                     }
                     adapter.append_to_stream(&events, None, None).await?;
@@ -566,6 +569,7 @@ impl PerformanceWorkload {
             // Tight loop with minimal overhead
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
             let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
+            let metadata: Arc<[(String, String)]> = Arc::from(vec![]);
             let stream_len = 10;
             let mut stream_position = 0;
             let mut global_position = 0;
@@ -587,6 +591,7 @@ impl PerformanceWorkload {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
                     tags: tags.clone(),
+                    metadata: metadata.clone(),
                 };
 
                 operation_started = Instant::now();
@@ -813,6 +818,7 @@ impl PerformanceWorkload {
                 let event_type = format!("{}-{}", event_type_prefix, i);
                 event_types.push(Arc::from(event_type));
             }
+            let metadata: Arc<[(String, String)]> = Arc::from(vec![]);
 
             let mut pending = FuturesUnordered::new();
 
@@ -845,6 +851,7 @@ impl PerformanceWorkload {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
                     tags: tags.clone(),
+                    metadata: metadata.clone(),
                 };
 
                 let adapter_clone = adapter.clone();

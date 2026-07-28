@@ -17,6 +17,8 @@ pub struct EventData {
     pub event_type: Arc<str>,
     #[serde(default)]
     pub tags: Arc<[Arc<str>]>,
+    #[serde(default)]
+    pub metadata: Arc<[(String, String)]>,
 }
 
 /// Represents a query item for filtering events

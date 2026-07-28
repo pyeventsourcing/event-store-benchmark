@@ -194,6 +194,7 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
                 data: evt.payload.to_vec(),
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 uuid: "".to_string(),
+                metadata: evt.metadata.to_vec(),
             }
         }).collect();
 
@@ -230,6 +231,7 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
                 data: evt.payload.to_vec(),
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 uuid: "".to_string(),
+                metadata: evt.metadata.to_vec(),
             }
         }).collect();
 

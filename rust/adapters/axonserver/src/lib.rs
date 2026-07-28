@@ -179,7 +179,7 @@ impl AxonServerAdapter {
                     name: evt.event_type.to_string(),
                     version: String::new(),
                     payload: evt.payload.to_vec().into(),
-                    metadata: Default::default(),
+                    metadata: evt.metadata.iter().cloned().collect(),
                 };
 
                 TaggedEvent {
