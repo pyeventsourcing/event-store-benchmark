@@ -12,6 +12,8 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    env:
+      ESB_FEATURES: umadb,axonserver,postgres-dcb-ttcte,foundationdb-dcb
     outputs:
       session_id: ${{ steps.session.outputs.session_id }}
     steps:

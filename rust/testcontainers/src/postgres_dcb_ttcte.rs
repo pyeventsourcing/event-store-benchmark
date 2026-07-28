@@ -9,12 +9,12 @@ const TAG: &str = "16-alpine";
 pub const POSTGRES_PORT: ContainerPort = ContainerPort::Tcp(5432);
 
 #[derive(Debug, Clone)]
-pub struct PyEventsourcingPostgres {
+pub struct PostgresDcbTtctePostgres {
     env_vars: Vec<(&'static str, &'static str)>,
     mounts: Vec<Mount>,
 }
 
-impl PyEventsourcingPostgres {
+impl PostgresDcbTtctePostgres {
     pub fn new(data_dir: Option<String>) -> Self {
         let mount = match data_dir {
             Some(path) => Mount::bind_mount(path, "/var/lib/postgresql/data"),
@@ -31,13 +31,13 @@ impl PyEventsourcingPostgres {
     }
 }
 
-impl Default for PyEventsourcingPostgres {
+impl Default for PostgresDcbTtctePostgres {
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl Image for PyEventsourcingPostgres {
+impl Image for PostgresDcbTtctePostgres {
     fn name(&self) -> &str {
         NAME
     }

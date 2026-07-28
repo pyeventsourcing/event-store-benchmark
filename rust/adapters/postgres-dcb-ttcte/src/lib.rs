@@ -2,10 +2,10 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
-use bench_testcontainers::py_eventsourcing::{
-    PyEventsourcingPostgres, POSTGRES_PORT,
+use bench_testcontainers::postgres_dcb_ttcte::{
+    PostgresDcbTtctePostgres, POSTGRES_PORT,
 };
-use py_eventsourcing::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem};
+use postgres_dcb_ttcte::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem};
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
@@ -13,9 +13,9 @@ use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
 // Store manager - handles lifecycle and adapter creation
-pub struct PyEventsourcingStoreManager {
+pub struct PostgresDcbTtcteStoreManager {
     uri: String,
-    container: Option<ContainerAsync<PyEventsourcingPostgres>>,
+    container: Option<ContainerAsync<PostgresDcbTtctePostgres>>,
     use_docker: bool,
     data_dir: StoreDataDir,
     recorder: Option<PostgresDCBRecorderTT>,
@@ -23,7 +23,7 @@ pub struct PyEventsourcingStoreManager {
     docker_platform: Option<String>,
 }
 
-impl PyEventsourcingStoreManager {
+impl PostgresDcbTtcteStoreManager {
     pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
             uri: Self::format_uri(POSTGRES_PORT.as_u16()),
@@ -46,13 +46,13 @@ impl PyEventsourcingStoreManager {
 }
 
 #[async_trait]
-impl StoreManager for PyEventsourcingStoreManager {
+impl StoreManager for PostgresDcbTtcteStoreManager {
     fn use_docker(&self) -> bool { self.use_docker }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
             let mount_path = self.data_dir.setup()?;
-            let mut image: ContainerRequest<_> = PyEventsourcingPostgres::new(mount_path).into();
+            let mut image: ContainerRequest<_> = PostgresDcbTtctePostgres::new(mount_path).into();
 
             // Inject the environment variables to create the role and database
             image = image
@@ -79,7 +79,7 @@ impl StoreManager for PyEventsourcingStoreManager {
 
             let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
 
-            wait_for_ready("PyEventsourcingPostgres", || async {
+            wait_for_ready("PostgresDcbTtctePostgres", || async {
                 let client = recorder.pool.get().await?;
                 client.execute("SELECT 1", &[]).await.map(|_| ()).map_err(|e| anyhow::anyhow!(e))
             }, Duration::from_secs(60)).await?;
@@ -93,7 +93,7 @@ impl StoreManager for PyEventsourcingStoreManager {
     }
 
     async fn pull(&mut self) -> Result<()> {
-        let mut image: ContainerRequest<_> = PyEventsourcingPostgres::new(None).into();
+        let mut image: ContainerRequest<_> = PostgresDcbTtctePostgres::new(None).into();
         if let Some(ref platform) = self.docker_platform {
             image = image.with_platform(platform);
         }
@@ -132,7 +132,7 @@ impl StoreManager for PyEventsourcingStoreManager {
             self.recorder = Some(recorder);
         }
         let recorder = self.recorder.as_ref().expect("recorder initialized").clone();
-        Ok(Arc::new(PyEventsourcingAdapter::with_recorder(recorder)))    }
+        Ok(Arc::new(PostgresDcbTtcteAdapter::with_recorder(recorder)))    }
 
     async fn logs(&self) -> Result<String> {
         if let Some(container) = &self.container {
@@ -151,11 +151,11 @@ impl StoreManager for PyEventsourcingStoreManager {
 }
 
 // Lightweight adapter - just wraps a client
-pub struct PyEventsourcingAdapter {
+pub struct PostgresDcbTtcteAdapter {
     recorder: PostgresDCBRecorderTT,
 }
 
-impl PyEventsourcingAdapter {
+impl PostgresDcbTtcteAdapter {
     pub async fn new(uri: &str) -> Result<Self> {
         let recorder = PostgresDCBRecorderTT::connect(uri, "public").await?;
         Ok(Self { recorder })
@@ -171,7 +171,7 @@ impl PyEventsourcingAdapter {
 }
 
 #[async_trait]
-impl EventStoreAdapter for PyEventsourcingAdapter {
+impl EventStoreAdapter for PostgresDcbTtcteAdapter {
     fn as_any(&self) -> &dyn std::any::Any { self }
 
     async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
@@ -201,7 +201,7 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             .recorder
             .append(pg_events, append_condition)
             .await
-            .context("PyEventsourcing append failed")?;
+            .context("PostgresDcbTtcte append failed")?;
         Ok(Some(pos as u64))    }
 
     async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
@@ -237,14 +237,14 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
             .recorder
             .append(pg_events, append_condition)
             .await
-            .context("PyEventsourcing append failed")?;
+            .context("PostgresDcbTtcte append failed")?;
         Ok(Some(pos as u64))
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
         let stream = req.tag.clone();
-        let query = Some(py_eventsourcing::DcbQuery {
-            items: vec![py_eventsourcing::DcbQueryItem {
+        let query = Some(postgres_dcb_ttcte::DcbQuery {
+            items: vec![postgres_dcb_ttcte::DcbQueryItem {
                 types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
                 tags: vec![req.tag],
             }],
@@ -258,7 +258,7 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
                 req.limit.map(|l| l as i64),
             )
             .await
-            .with_context(|| format!("PyEventsourcing read failed for stream '{}'", stream))?;
+            .with_context(|| format!("PostgresDcbTtcte read failed for stream '{}'", stream))?;
 
         Ok(events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
@@ -271,14 +271,14 @@ impl EventStoreAdapter for PyEventsourcingAdapter {
     }
 }
 
-pub struct PyEventsourcingFactory;
+pub struct PostgresDcbTtcteFactory;
 
-impl StoreManagerFactory for PyEventsourcingFactory {
+impl StoreManagerFactory for PostgresDcbTtcteFactory {
     fn name(&self) -> &'static str {
         "postgres-dcb-ttcte"
     }
 
     fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(PyEventsourcingStoreManager::new(data_dir, use_docker)))
+        Ok(Box::new(PostgresDcbTtcteStoreManager::new(data_dir, use_docker)))
     }
 }

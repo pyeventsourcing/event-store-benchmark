@@ -38,9 +38,9 @@ enum Commands {
     /// List available store adapters
     ListStores,
     /// Create tables for postgres-dcb-ttcte adapter
-    CreatePyEventsourcingTables,
+    CreatePostgresDcbTtcteTables,
     /// Drop tables for postgres-dcb-ttcte adapter
-    DropPyEventsourcingTables,
+    DropPostgresDcbTtcteTables,
     /// Create tables for marten adapter
     CreateMartenTables,
     /// Drop tables for marten adapter
@@ -48,17 +48,50 @@ enum Commands {
 }
 
 fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
-    vec![
-        Box::new(dummy_adapter::DummyFactory),
-        Box::new(umadb_adapter::UmaDbFactory),
-        Box::new(kurrentdb_adapter::KurrentDbFactory),
-        Box::new(axonserver_adapter::AxonServerFactory),
-        Box::new(eventsourcingdb_adapter::EventsourcingDbFactory),
-        Box::new(fact_adapter::FactFactory),
-        Box::new(marten_adapter::MartenFactory),
-        Box::new(py_eventsourcing_adapter::PyEventsourcingFactory),
-        Box::new(foundationdb_dcb_adapter::FoundationDbDcbFactory),
-    ]
+    let mut factories: Vec<Box<dyn StoreManagerFactory>> = vec![];
+    factories.push(Box::new(dummy_adapter::DummyFactory));
+
+    #[cfg(feature = "umadb")]
+    {
+        factories.push(Box::new(umadb_adapter::UmaDbFactory));
+    }
+
+    #[cfg(feature = "kurrentdb")]
+    {
+        factories.push(Box::new(kurrentdb_adapter::KurrentDbFactory));
+    }
+
+    #[cfg(feature = "axonserver")]
+    {
+        factories.push(Box::new(axonserver_adapter::AxonServerFactory));
+    }
+
+    #[cfg(feature = "eventsourcingdb")]
+    {
+        factories.push(Box::new(eventsourcingdb_adapter::EventsourcingDbFactory));
+    }
+
+    #[cfg(feature = "fact")]
+    {
+        factories.push(Box::new(fact_adapter::FactFactory));
+    }
+
+    #[cfg(feature = "marten")]
+    {
+        factories.push(Box::new(marten_adapter::MartenFactory));
+    }
+
+    #[cfg(feature = "postgres-dcb-ttcte")]
+    {
+        factories.push(Box::new(postgres_dcb_ttcte_adapter::PostgresDcbTtcteFactory));
+    }
+
+    #[cfg(feature = "foundationdb-dcb")]
+    {
+        factories.push(Box::new(foundationdb_dcb_adapter::FoundationDbDcbFactory));
+    }
+
+    factories
 }
 
 fn main() -> Result<()> {
@@ -92,66 +125,78 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::CreatePyEventsourcingTables => {
-            rt.block_on(async {
-                let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
-                let mut manager = factory.create_store_manager(None, false)?;
-                let adapter = manager.create_adapter().await?;
-                // We know it's a PyEventsourcingAdapter
-                let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
-                    .expect("Adapter should be PyEventsourcingAdapter");
-                adapter.recorder().create_tables().await?;
-                println!("postgres-dcb-ttcte tables created successfully");
-                Ok::<(), anyhow::Error>(())
-            })?;
+        Commands::CreatePostgresDcbTtcteTables => {
+            #[cfg(feature = "postgres-dcb-ttcte")]
+            {
+                rt.block_on(async {
+                    let factory = postgres_dcb_ttcte_adapter::PostgresDcbTtcteFactory {};
+                    let mut manager = factory.create_store_manager(None, false)?;
+                    let adapter = manager.create_adapter().await?;
+                    // We know it's a PostgresDcbTtcteAdapter
+                    let adapter = adapter.as_any().downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
+                        .expect("Adapter should be PostgresDcbTtcteAdapter");
+                    adapter.recorder().create_tables().await?;
+                    println!("postgres-dcb-ttcte tables created successfully");
+                    Ok::<(), anyhow::Error>(())
+                })?;
+            }
             Ok(())
         }
-        Commands::DropPyEventsourcingTables => {
-            rt.block_on(async {
-                let factory = py_eventsourcing_adapter::PyEventsourcingFactory {};
-                let mut manager = factory.create_store_manager(None, false)?;
-                let adapter = manager.create_adapter().await?;
-                // We know it's a PyEventsourcingAdapter
-                let adapter = adapter.as_any().downcast_ref::<py_eventsourcing_adapter::PyEventsourcingAdapter>()
-                    .expect("Adapter should be PyEventsourcingAdapter");
-                adapter.recorder().drop_tables().await?;
-                println!("postgres-dcb-ttcte tables dropped successfully");
-                Ok::<(), anyhow::Error>(())
-            })?;
+        Commands::DropPostgresDcbTtcteTables => {
+            #[cfg(feature = "postgres-dcb-ttcte")]
+            {
+                rt.block_on(async {
+                    let factory = postgres_dcb_ttcte_adapter::PostgresDcbTtcteFactory {};
+                    let mut manager = factory.create_store_manager(None, false)?;
+                    let adapter = manager.create_adapter().await?;
+                    // We know it's a PostgresDcbTtcteAdapter
+                    let adapter = adapter.as_any().downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
+                        .expect("Adapter should be PostgresDcbTtcteAdapter");
+                    adapter.recorder().drop_tables().await?;
+                    println!("postgres-dcb-ttcte tables dropped successfully");
+                    Ok::<(), anyhow::Error>(())
+                })?;
+            }
             Ok(())
         }
         Commands::CreateMartenTables => {
-            rt.block_on(async {
-                let factory = marten_adapter::MartenFactory {};
-                let mut manager = factory.create_store_manager(None, false)?;
-                let adapter = manager.create_adapter().await?;
-                // We know it's a MartenAdapter
-                let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
-                    .expect("Adapter should be MartenAdapter");
-                // We need a way to use the client. Marten is not Clone easily if it has a client.
-                // Actually, let's just use the connect if we can.
-                adapter.client().create_tables().await?;
+            #[cfg(feature = "marten")]
+            {
+                rt.block_on(async {
+                    let factory = marten_adapter::MartenFactory {};
+                    let mut manager = factory.create_store_manager(None, false)?;
+                    let adapter = manager.create_adapter().await?;
+                    // We know it's a MartenAdapter
+                    let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                        .expect("Adapter should be MartenAdapter");
+                    // We need a way to use the client. Marten is not Clone easily if it has a client.
+                    // Actually, let's just use the connect if we can.
+                    adapter.client().create_tables().await?;
 
-                println!("marten tables created successfully");
-                Ok::<(), anyhow::Error>(())
-            })?;
+                    println!("marten tables created successfully");
+                    Ok::<(), anyhow::Error>(())
+                })?;
+            }
             Ok(())
         }
         Commands::DropMartenTables => {
-            rt.block_on(async {
-                let factory = marten_adapter::MartenFactory {};
-                let mut manager = factory.create_store_manager(None, false)?;
-                let adapter = manager.create_adapter().await?;
-                // We know it's a MartenAdapter
-                let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
-                    .expect("Adapter should be MartenAdapter");
-                // We need a way to use the client. Marten is not Clone easily if it has a client.
-                // Actually, let's just use the connect if we can.
-                adapter.client().drop_tables().await?;
+            #[cfg(feature = "marten")]
+            {
+                rt.block_on(async {
+                    let factory = marten_adapter::MartenFactory {};
+                    let mut manager = factory.create_store_manager(None, false)?;
+                    let adapter = manager.create_adapter().await?;
+                    // We know it's a MartenAdapter
+                    let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                        .expect("Adapter should be MartenAdapter");
+                    // We need a way to use the client. Marten is not Clone easily if it has a client.
+                    // Actually, let's just use the connect if we can.
+                    adapter.client().drop_tables().await?;
 
-                println!("marten tables dropped successfully");
-                Ok::<(), anyhow::Error>(())
-            })?;
+                    println!("marten tables dropped successfully");
+                    Ok::<(), anyhow::Error>(())
+                })?;
+            }
             Ok(())
         }
         Commands::Run { config, seed, data_dir } => {

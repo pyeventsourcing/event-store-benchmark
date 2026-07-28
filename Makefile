@@ -9,6 +9,13 @@ else
 	CARGO_RELEASE_FLAG :=
 endif
 
+ifneq ($(strip $(ESB_FEATURES)),)
+	CARGO_FEATURE_FLAG := --features $(ESB_FEATURES)
+else
+	CARGO_FEATURE_FLAG :=
+endif
+
+
 .PHONY: build
 .PHONY: venv
 .PHONY: report
@@ -38,7 +45,7 @@ help:
 
 # Build the es-bench binary
 build:
-	cargo build $(CARGO_RELEASE_FLAG)
+	cargo build -p es-bench $(CARGO_RELEASE_FLAG) $(CARGO_FEATURE_FLAG)
 
 # Create Python virtual environment and install dependencies
 venv:

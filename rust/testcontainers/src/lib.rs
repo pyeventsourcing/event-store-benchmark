@@ -6,7 +6,7 @@ pub mod kurrentdb;
 pub mod marten;
 pub mod umadb;
 
-pub mod py_eventsourcing;
+pub mod postgres_dcb_ttcte;
 
 /// Point DOCKER_HOST at a local socket (Colima or Docker Desktop) when it is
 /// unset. Must be called on the main thread before any multi-threaded runtime

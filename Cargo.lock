@@ -1027,7 +1027,7 @@ dependencies = [
  "foundationdb-dcb-adapter",
  "kurrentdb-adapter",
  "marten-adapter",
- "py-eventsourcing-adapter",
+ "postgres-dcb-ttcte-adapter",
  "rand 0.10.1",
  "serde",
  "serde_json",
@@ -2570,6 +2570,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
 
 [[package]]
+name = "postgres-dcb-ttcte"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deadpool-postgres",
+ "postgres-types",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
+name = "postgres-dcb-ttcte-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bench-core",
+ "bench-testcontainers",
+ "postgres-dcb-ttcte",
+ "serde_json",
+ "testcontainers",
+ "tokio",
+ "tokio-postgres",
+ "url",
+]
+
+[[package]]
 name = "postgres-derive"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2729,38 +2761,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50793def1b900256624a709439404384204a5dc3a6ec580281bfaac35e882e90"
 dependencies = [
  "pulldown-cmark",
-]
-
-[[package]]
-name = "py-eventsourcing"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deadpool-postgres",
- "postgres-types",
- "serde",
- "serde_json",
- "serial_test",
- "tokio",
- "tokio-postgres",
- "uuid",
-]
-
-[[package]]
-name = "py-eventsourcing-adapter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bench-core",
- "bench-testcontainers",
- "py-eventsourcing",
- "serde_json",
- "testcontainers",
- "tokio",
- "tokio-postgres",
- "url",
 ]
 
 [[package]]

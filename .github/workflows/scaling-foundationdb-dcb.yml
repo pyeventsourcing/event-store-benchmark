@@ -13,6 +13,7 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     env:
+      ESB_FEATURES: foundationdb-dcb
       ESB_WORKLOAD_STORES: foundationdb-dcb
       ESB_GIT_VERSION: ${{ github.sha }}
       FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster

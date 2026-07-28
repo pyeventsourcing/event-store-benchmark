@@ -11,8 +11,8 @@ members = [
     "rust/cli",
     "rust/kurrentdb-benchmark",
     "rust/marten-rs",
-    "rust/py-eventsourcing",
-    "rust/adapters/py-eventsourcing",
+    "rust/postgres-dcb-ttcte",
+    "rust/adapters/postgres-dcb-ttcte",
     "rust/adapters/foundationdb-dcb",
 ]
 resolver = "2"

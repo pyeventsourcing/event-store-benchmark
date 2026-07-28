@@ -3,6 +3,18 @@ name = "es-bench"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Do NOT include "foundationdb" in the default list
+default = []
+umadb = ["dep:umadb-adapter"]
+kurrentdb = ["dep:kurrentdb-adapter"]
+axonserver = ["dep:axonserver-adapter"]
+eventsourcingdb = ["dep:eventsourcingdb-adapter"]
+fact = ["dep:fact-adapter"]
+marten = ["dep:marten-adapter"]
+postgres-dcb-ttcte = ["dep:postgres-dcb-ttcte-adapter"]
+foundationdb-dcb = ["dep:foundationdb-dcb-adapter"]
+
 [dependencies]
 anyhow = "1"
 bench-core = { path = "../bench-core" }
@@ -20,14 +32,14 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # Adapters
 dummy-adapter = { path = "../adapters/dummy" }
-umadb-adapter = { path = "../adapters/umadb" }
-kurrentdb-adapter = { path = "../adapters/kurrentdb" }
-axonserver-adapter = { path = "../adapters/axonserver" }
-eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb" }
-fact-adapter = { path = "../adapters/fact" }
-marten-adapter = { path = "../adapters/marten" }
-py-eventsourcing-adapter = { path = "../adapters/py-eventsourcing" }
-foundationdb-dcb-adapter = { path = "../adapters/foundationdb-dcb" }
+umadb-adapter = { path = "../adapters/umadb", optional = true }
+kurrentdb-adapter = { path = "../adapters/kurrentdb", optional = true }
+axonserver-adapter = { path = "../adapters/axonserver", optional = true }
+eventsourcingdb-adapter = { path = "../adapters/eventsourcingdb", optional = true }
+fact-adapter = { path = "../adapters/fact", optional = true }
+marten-adapter = { path = "../adapters/marten", optional = true }
+postgres-dcb-ttcte-adapter = { path = "../adapters/postgres-dcb-ttcte", optional = true }
+foundationdb-dcb-adapter = { path = "../adapters/foundationdb-dcb", optional = true }
 #marten-rs = { path = "../marten-rs" }
-#py-eventsourcing = { path = "../py-eventsourcing" }
+#postgres-dcb-ttcte = { path = "../postgres-dcb-ttcte" }
 #tokio-postgres = "0.7"

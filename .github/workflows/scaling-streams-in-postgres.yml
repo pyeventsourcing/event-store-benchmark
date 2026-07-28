@@ -12,6 +12,8 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    env:
+      ESB_FEATURES: postgres-dcb-marten,postgres-dcb-ttcte,umadb
     outputs:
       session_id: ${{ steps.session.outputs.session_id }}
     steps:
@@ -27,11 +29,6 @@ jobs:
 
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - name: Install FoundationDB Client
-        run: |
-          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
-          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
 
       - name: Build benchmark tool
         run: make build
@@ -99,11 +96,6 @@ jobs:
           name: es-bench
           path: target/release/
 
-      - name: Install FoundationDB Client
-        run: |
-          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
-          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
-
       - name: Download configs
         uses: actions/download-artifact@v8
         with:
@@ -125,11 +117,11 @@ jobs:
           pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-marten.pid
           ./target/release/es-bench create-marten-tables
 
-      - name: Create tables for PyEventsourcing
+      - name: Create tables for PostgresDcbTtcte
         if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
         run: |
           pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
-          ./target/release/es-bench create-py-eventsourcing-tables
+          ./target/release/es-bench create-postgres-dcb-ttcte-tables
 
       - name: Install and start UmaDB
         if: ${{ matrix.store == 'umadb' }}
