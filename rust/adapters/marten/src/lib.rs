@@ -310,6 +310,7 @@ impl EventStoreAdapter for MartenAdapter {
                 offset: se.seq_id as u64,
                 event_type: se.event_type,
                 payload: serde_json::to_vec(&se.data)?,
+                metadata: vec![],
             });
         }
         Ok(out)

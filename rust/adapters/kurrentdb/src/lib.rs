@@ -197,19 +197,25 @@ impl EventStoreAdapter for KurrentDbAdapter {
             let mut met_limit = false;
             if let Some(lim) = req.limit {
                 if (out.len() as u64) < lim {
+                    let mut metadata = Vec::with_capacity(recorded.metadata.len());
+                    metadata.extend(recorded.metadata.iter().map(|(k, v)| (k.clone(), v.clone())));
                     out.push(ReadEvent {
                         offset: recorded.revision,
                         event_type: recorded.event_type.clone(),
                         payload: recorded.data.to_vec(),
+                        metadata,
                     });
                 } else {
                     met_limit = true;
                 }
             } else {
+                let mut metadata = Vec::with_capacity(recorded.metadata.len());
+                metadata.extend(recorded.metadata.iter().map(|(k, v)| (k.clone(), v.clone())));
                 out.push(ReadEvent {
                     offset: recorded.revision,
                     event_type: recorded.event_type.clone(),
                     payload: recorded.data.to_vec(),
+                    metadata,
                 });
             }
             if met_limit {

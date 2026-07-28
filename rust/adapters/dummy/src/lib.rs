@@ -159,6 +159,7 @@ impl EventStoreAdapter for DummyAdapter {
                 offset: 0,
                 event_type: "DummyEvent".to_string(),
                 payload: vec![],
+                metadata: vec![],
             })
             .collect())
     }

@@ -205,6 +205,7 @@ impl EventStoreAdapter for FactAdapter {
                 offset: evt.offset,
                 event_type: evt.event_type,
                 payload: evt.payload,
+                metadata: vec![],
             })
             .collect())
     }

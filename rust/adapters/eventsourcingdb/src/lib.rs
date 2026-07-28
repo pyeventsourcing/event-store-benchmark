@@ -222,6 +222,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                     offset: current_offset,
                     event_type: event.ty().to_string(),
                     payload: payload.into(),
+                    metadata: vec![],
                 });
             }
         }

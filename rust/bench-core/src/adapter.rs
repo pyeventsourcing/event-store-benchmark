@@ -138,6 +138,7 @@ pub struct ReadEvent {
     pub offset: u64,
     pub event_type: String,
     pub payload: Vec<u8>,
+    pub metadata: Vec<(String, String)>,
 }
 
 /// Lightweight adapter - just wraps a client connection

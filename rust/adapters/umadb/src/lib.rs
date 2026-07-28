@@ -232,6 +232,7 @@ impl EventStoreAdapter for UmaDbAdapter {
                                 offset: se.position,
                                 event_type: se.event.event_type,
                                 payload: se.event.data,
+                                metadata: se.event.metadata,
                             });
                         }
                     } else {
@@ -239,6 +240,7 @@ impl EventStoreAdapter for UmaDbAdapter {
                             offset: se.position,
                             event_type: se.event.event_type,
                             payload: se.event.data,
+                            metadata: se.event.metadata,
                         });
                     }
                 }

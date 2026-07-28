@@ -267,6 +267,7 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
                 offset: e.position as u64,
                 event_type: e.event.type_name,
                 payload: e.event.data,
+                metadata: e.event.metadata,
             }
         }).collect())
     }

@@ -279,6 +279,7 @@ impl EventStoreAdapter for AxonServerAdapter {
                                 offset: seq_evt.sequence as u64,
                                 event_type: evt.name,
                                 payload: evt.payload,
+                                metadata: evt.metadata.into_iter().collect(),
                             });
                         }
                         if let Some(lim) = req.limit {

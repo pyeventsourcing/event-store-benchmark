@@ -184,7 +184,8 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
                 ReadEvent {
                     offset: id,
                     event_type: se.event.type_name,
-                    payload:se.event.data.into(),
+                    payload: se.event.data.into(),
+                    metadata: vec![],
                 }
             })
             .collect();
