@@ -185,7 +185,6 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
                     offset: id,
                     event_type: Arc::from(se.event.type_name.as_ref()),
                     payload: Arc::from(se.event.data.as_ref()),
-                    timestamp_ms: 0,
                 }
             })
             .collect();

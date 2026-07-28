@@ -310,7 +310,6 @@ impl EventStoreAdapter for MartenAdapter {
                 offset: se.seq_id as u64,
                 event_type: se.event_type.into(),
                 payload: serde_json::to_vec(&se.data)?.into(),
-                timestamp_ms: 0, // MartenEvent doesn't seem to have timestamp in read::MartenEvent based on what I saw
             });
         }
         Ok(out)

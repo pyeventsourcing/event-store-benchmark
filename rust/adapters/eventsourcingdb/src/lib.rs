@@ -218,12 +218,10 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                     }
                 }
                 let payload = serde_json::to_vec(event.data())?;
-                let timestamp_ms = event.time().timestamp_millis() as u64;
                 out.push(ReadEvent {
                     offset: current_offset,
                     event_type: event.ty().to_string().into(),
                     payload: payload.into(),
-                    timestamp_ms,
                 });
             }
         }

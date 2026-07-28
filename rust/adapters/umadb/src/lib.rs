@@ -232,7 +232,6 @@ impl EventStoreAdapter for UmaDbAdapter {
                                 offset: se.position,
                                 event_type: Arc::from(se.event.event_type.as_str()),
                                 payload: Arc::from(se.event.data.as_slice()),
-                                timestamp_ms: 0,
                             });
                         }
                     } else {
@@ -240,7 +239,6 @@ impl EventStoreAdapter for UmaDbAdapter {
                             offset: se.position,
                             event_type: Arc::from(se.event.event_type.as_str()),
                             payload: Arc::from(se.event.data.as_slice()),
-                            timestamp_ms: 0,
                         });
                     }
                 }

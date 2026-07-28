@@ -201,7 +201,6 @@ impl EventStoreAdapter for KurrentDbAdapter {
                         offset: recorded.revision,
                         event_type: Arc::from(recorded.event_type.as_str()),
                         payload: Arc::from(recorded.data.as_ref()),
-                        timestamp_ms: recorded.created.timestamp_millis() as u64,
                     });
                 } else {
                     met_limit = true;
@@ -211,7 +210,6 @@ impl EventStoreAdapter for KurrentDbAdapter {
                     offset: recorded.revision,
                     event_type: Arc::from(recorded.event_type.as_str()),
                     payload: Arc::from(recorded.data.as_ref()),
-                    timestamp_ms: recorded.created.timestamp_millis() as u64,
                 });
             }
             if met_limit {

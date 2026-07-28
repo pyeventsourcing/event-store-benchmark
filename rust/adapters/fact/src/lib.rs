@@ -205,7 +205,6 @@ impl EventStoreAdapter for FactAdapter {
                 offset: evt.offset,
                 event_type: Arc::from(evt.event_type.as_str()),
                 payload: Arc::from(evt.payload.as_slice()),
-                timestamp_ms: evt.timestamp_ms,
             })
             .collect())
     }

@@ -159,7 +159,6 @@ impl EventStoreAdapter for DummyAdapter {
                 offset: 0,
                 event_type: Arc::from("DummyEvent"),
                 payload: Arc::from(vec![].as_slice()),
-                timestamp_ms: 0,
             })
             .collect())
     }
