@@ -1,0 +1,210 @@
+name: Scaling DCB - Not CPU Pinned
+
+on:
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - main
+#  pull_request:
+#    branches:
+#      - main
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      session_id: ${{ steps.session.outputs.session_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Generate Session ID
+        id: session
+        run: echo "session_id=$(date +'%Y-%m-%dT%H-%M-%S')" >> $GITHUB_OUTPUT
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install FoundationDB Client
+        run: |
+          # 1. Download the client packages
+          wget https://github.com/apple/foundationdb/releases/download/7.4.5/foundationdb-clients_7.4.5-1_amd64.deb
+          
+          # 2. Install the client
+          sudo dpkg -i foundationdb-clients_7.4.5-1_amd64.deb
+
+      - name: Build benchmark tool
+        run: make build
+
+      - name: Upload benchmark tool
+        uses: actions/upload-artifact@v6
+        with:
+          name: es-bench
+          path: target/release/es-bench
+          retention-days: 1
+
+      - name: Upload configs
+        uses: actions/upload-artifact@v6
+        with:
+          name: configs
+          path: configs/
+          retention-days: 1
+
+      - name: Upload Makefile
+        uses: actions/upload-artifact@v6
+        with:
+          name: Makefile
+          path: Makefile
+          retention-days: 1
+
+  run-scaling-dcb:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+#        store: [umadb, axonserver, postgres-dcb-ttcte, foundationdb-dcb]
+        store: [umadb, axonserver, postgres-dcb-ttcte]
+    env:
+      ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
+      ESB_WORKLOAD_STORES: ${{ matrix.store }}
+      ESB_GIT_VERSION: ${{ github.sha }}
+      FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
+    steps:
+      - name: Download Makefile
+        uses: actions/download-artifact@v8
+        with:
+          name: Makefile
+          path: .
+
+      - name: Download benchmark tool
+        uses: actions/download-artifact@v8
+        with:
+          name: es-bench
+          path: target/release/
+
+      - name: Download configs
+        uses: actions/download-artifact@v8
+        with:
+          name: configs
+          path: configs/
+
+      - name: Make benchmark tool executable
+        run: chmod +x target/release/es-bench
+
+      - name: Start Postgres
+        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql postgresql-contrib
+          sudo systemctl restart postgresql
+          sudo systemctl status postgresql
+
+          sudo -u postgres psql -c 'CREATE DATABASE eventsourcing;'
+          sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';"
+          sudo -u postgres psql -c "ALTER DATABASE eventsourcing OWNER TO eventsourcing;"
+          
+          sudo -u postgres psql -tAc "SHOW max_connections;"
+          sudo -u postgres psql -tAc "SHOW superuser_reserved_connections;"
+          sudo -u postgres psql -tAc "SELECT current_setting('max_connections')::int - current_setting('superuser_reserved_connections')::int AS usable_non_superuser_slots;"
+
+      - name: Create tables for PyEventsourcing
+        if: ${{ matrix.store == 'postgres-dcb-ttcte' }}
+        run: |
+          pgrep -o -x postgres > $GITHUB_WORKSPACE/postgres-dcb-ttcte.pid
+          ./target/release/es-bench create-py-eventsourcing-tables
+
+      - name: Set up Java
+        if: ${{ matrix.store == 'axonserver' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install and start Axon Server
+        if: ${{ matrix.store == 'axonserver' }}
+        run: |
+          curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.0.zip -o axonserver.zip
+          unzip axonserver.zip
+          cd AxonServer-2026.0.0
+          AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/axonserver.pid
+          for i in {1..60}; do
+            if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
+              cat $GITHUB_WORKSPACE/axonserver.log
+              echo "Axon Server is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/axonserver.log
+          echo "Axon Server failed to start after 60 seconds"
+          exit 1
+
+      - name: Install and start UmaDB
+        if: ${{ matrix.store == 'umadb' }}
+        run: |
+          curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.6.0/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+          tar -xzf umadb.tar.gz
+          chmod +x umadb
+          sudo mv umadb /usr/local/bin/umadb
+          UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=2000 nohup umadb > $GITHUB_WORKSPACE/umadb.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/umadb.pid
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 50051; then
+              cat $GITHUB_WORKSPACE/umadb.log
+              echo "UmaDB is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/umadb.log
+          echo "UmaDB failed to start after 60 seconds"
+          exit 1
+
+      - name: Run scaling DCB workload
+        run: |
+          make run-scaling-dcb
+
+      - name: Upload scaling results
+        uses: actions/upload-artifact@v6
+        with:
+          name: results-scaling-${{ matrix.store }}
+          path: results/
+          retention-days: 1
+
+  report:
+    needs: [setup, run-scaling-dcb]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python/requirements.txt'
+
+      - name: Create Python virtual environment for reporting
+        run: make venv
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: results/
+          merge-multiple: true
+
+      - name: Generate report
+        run: make report
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-report
+          path: results/
