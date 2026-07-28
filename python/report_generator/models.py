@@ -120,10 +120,11 @@ class PerformanceSetupConfig(BaseModel):
     prepopulate_events: int = 0
     prepopulate_streams: int = 0
 
+ConfigModeLiteral = Literal["write", "writeflood", "read", "subscribe"]
 
 class PerformanceWorkloadConfig(BaseModel):
     name: str
-    mode: Literal["write", "writeflood", "read"]
+    mode: ConfigModeLiteral
     warmup_seconds: int = 0
     duration_seconds: int
     samples_per_second: int = 1

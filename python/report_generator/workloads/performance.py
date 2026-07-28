@@ -42,8 +42,8 @@ class PerformanceWorkloadRun(BaseWorkloadRun):
         else:
             self.readers = readers if readers is not None else 0
 
-        self.worker_count = self.writers if self.writers > 0 else self.readers
-        self.is_read_workload = self.config.mode == "read"
+        self.is_read_workload = self.config.mode in ("read", "subscribe")
+        self.worker_count = self.readers if self.is_read_workload else self.writers
 
     def _process_results(self) -> None:
         """Processes raw result data into structured formats and summary metrics."""

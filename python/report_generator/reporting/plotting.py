@@ -7,6 +7,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.ticker import LogLocator, NullFormatter, FuncFormatter
 
+from ..models import ConfigModeLiteral
 from .style import (
     ADAPTER_COLORS, get_adapter_color, PLOT_WIDTH, PLOT_HEIGHT, PLOT_DPI,
     FONT_SIZE_TITLE, FONT_SIZE_LABEL, FONT_SIZE_TICK, FONT_SIZE_LEGEND
@@ -643,7 +644,7 @@ def plot_throughput_by_workers(runs: List[PerformanceWorkloadRun], out_path: str
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Throughput by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -727,7 +728,7 @@ def plot_operation_errors_by_workers(runs: List[PerformanceWorkloadRun], out_pat
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Operation Errors by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -783,7 +784,7 @@ def plot_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, g
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Latency by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -881,7 +882,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: s
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -977,7 +978,7 @@ def plot_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_s
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1055,7 +1056,7 @@ def plot_tool_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, 
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1135,7 +1136,7 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1191,6 +1192,20 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
     plt.close()
 
 
+def xlabel_from_config_mode(first_run: PerformanceWorkloadRun | None) -> str:
+    xlabels: dict[ConfigModeLiteral, str] = {
+        "write": "Writers",
+        "writeflood": "Writers",
+        "read": "Readers",
+        "subscribe": "Subscribers",
+    }
+    assert first_run is not None
+    config = first_run.config
+    if config.mode not in xlabels:
+        print("Warning: Config mode not found in xlabels dict:", config.mode)
+    return xlabels.get(config.mode, config.mode)
+
+
 def plot_tool_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_store_rank: Optional[Callable[[str], int]] = None) -> None:
     """Plot average and peak benchmark memory usage vs worker count using overlaid bar charts."""
     data: Dict[int, Dict[str, Dict[str, float]]] = defaultdict(lambda: defaultdict(dict))
@@ -1213,7 +1228,7 @@ def plot_tool_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: st
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
     first_run = runs[0] if runs else None
-    xlabel = ("Readers" if first_run.is_read_workload else "Writers") if first_run else "Workers"
+    xlabel = xlabel_from_config_mode(first_run)
     title = f"Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
