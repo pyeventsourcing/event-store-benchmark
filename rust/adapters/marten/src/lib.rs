@@ -308,8 +308,8 @@ impl EventStoreAdapter for MartenAdapter {
             }
             out.push(ReadEvent {
                 offset: se.seq_id as u64,
-                event_type: se.event_type.into(),
-                payload: serde_json::to_vec(&se.data)?.into(),
+                event_type: se.event_type,
+                payload: serde_json::to_vec(&se.data)?,
             });
         }
         Ok(out)

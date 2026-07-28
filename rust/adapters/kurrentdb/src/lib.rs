@@ -199,8 +199,8 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 if (out.len() as u64) < lim {
                     out.push(ReadEvent {
                         offset: recorded.revision,
-                        event_type: Arc::from(recorded.event_type.as_str()),
-                        payload: Arc::from(recorded.data.as_ref()),
+                        event_type: recorded.event_type.clone(),
+                        payload: recorded.data.to_vec(),
                     });
                 } else {
                     met_limit = true;
@@ -208,8 +208,8 @@ impl EventStoreAdapter for KurrentDbAdapter {
             } else {
                 out.push(ReadEvent {
                     offset: recorded.revision,
-                    event_type: Arc::from(recorded.event_type.as_str()),
-                    payload: Arc::from(recorded.data.as_ref()),
+                    event_type: recorded.event_type.clone(),
+                    payload: recorded.data.to_vec(),
                 });
             }
             if met_limit {

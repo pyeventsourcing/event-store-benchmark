@@ -220,7 +220,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                 let payload = serde_json::to_vec(event.data())?;
                 out.push(ReadEvent {
                     offset: current_offset,
-                    event_type: event.ty().to_string().into(),
+                    event_type: event.ty().to_string(),
                     payload: payload.into(),
                 });
             }

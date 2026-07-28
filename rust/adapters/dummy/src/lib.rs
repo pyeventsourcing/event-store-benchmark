@@ -157,8 +157,8 @@ impl EventStoreAdapter for DummyAdapter {
         Ok((0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {
                 offset: 0,
-                event_type: Arc::from("DummyEvent"),
-                payload: Arc::from(vec![].as_slice()),
+                event_type: "DummyEvent".to_string(),
+                payload: vec![],
             })
             .collect())
     }

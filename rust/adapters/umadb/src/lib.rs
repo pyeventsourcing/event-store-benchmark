@@ -230,15 +230,15 @@ impl EventStoreAdapter for UmaDbAdapter {
                         if (out.len() as u64) < lim {
                             out.push(ReadEvent {
                                 offset: se.position,
-                                event_type: Arc::from(se.event.event_type.as_str()),
-                                payload: Arc::from(se.event.data.as_slice()),
+                                event_type: se.event.event_type,
+                                payload: se.event.data,
                             });
                         }
                     } else {
                         out.push(ReadEvent {
                             offset: se.position,
-                            event_type: Arc::from(se.event.event_type.as_str()),
-                            payload: Arc::from(se.event.data.as_slice()),
+                            event_type: se.event.event_type,
+                            payload: se.event.data,
                         });
                     }
                 }

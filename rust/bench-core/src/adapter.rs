@@ -136,8 +136,8 @@ pub struct ReadRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadEvent {
     pub offset: u64,
-    pub event_type: Arc<str>,
-    pub payload: Arc<[u8]>,
+    pub event_type: String,
+    pub payload: Vec<u8>,
 }
 
 /// Lightweight adapter - just wraps a client connection

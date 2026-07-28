@@ -265,8 +265,8 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         Ok(events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
                 offset: e.position as u64,
-                event_type: e.event.type_name.into(),
-                payload: e.event.data.into(),
+                event_type: e.event.type_name,
+                payload: e.event.data,
             }
         }).collect())
     }

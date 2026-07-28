@@ -277,8 +277,8 @@ impl EventStoreAdapter for AxonServerAdapter {
                         if let Some(evt) = seq_evt.event {
                             out.push(ReadEvent {
                                 offset: seq_evt.sequence as u64,
-                                event_type: evt.name.into(),
-                                payload: evt.payload.to_vec().into(),
+                                event_type: evt.name,
+                                payload: evt.payload,
                             });
                         }
                         if let Some(lim) = req.limit {

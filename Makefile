@@ -16,6 +16,7 @@ else
 endif
 
 
+.PHONY: check
 .PHONY: build
 .PHONY: venv
 .PHONY: report
@@ -33,6 +34,7 @@ endif
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  check                 - Check all the code"
 	@echo "  build                 - Build the es-bench executable"
 	@echo "  venv                  - Create a Python virtual environment and install dependencies"
 	@echo "  report                - Run the Python report generator"
@@ -42,6 +44,9 @@ help:
 	@echo "  run-kurrentdb-bench-python - Run the Python KurrentDB benchmark"
 	@echo "  run-kurrentdb-bench-rust   - Run the Rust KurrentDB benchmark"
 	@echo "  configs/%.yaml        - Run a workload defined by the specified configuration file"
+
+check:
+	cargo check --workspace --all-targets --all-features
 
 # Build the es-bench binary
 build:

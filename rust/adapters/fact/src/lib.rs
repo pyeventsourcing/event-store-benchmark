@@ -203,8 +203,8 @@ impl EventStoreAdapter for FactAdapter {
             .into_iter()
             .map(|evt| ReadEvent {
                 offset: evt.offset,
-                event_type: Arc::from(evt.event_type.as_str()),
-                payload: Arc::from(evt.payload.as_slice()),
+                event_type: evt.event_type,
+                payload: evt.payload,
             })
             .collect())
     }

@@ -183,8 +183,8 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
                 let id = registry.register(se.position);
                 ReadEvent {
                     offset: id,
-                    event_type: Arc::from(se.event.type_name.as_ref()),
-                    payload: Arc::from(se.event.data.as_ref()),
+                    event_type: se.event.type_name,
+                    payload:se.event.data.into(),
                 }
             })
             .collect();
