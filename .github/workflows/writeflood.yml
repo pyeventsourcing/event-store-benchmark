@@ -83,9 +83,9 @@ jobs:
       - name: Install and start Axon Server
         if: ${{ matrix.store == 'axonserver' }}
         run: |
-          curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.0.zip -o axonserver.zip
+          curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.5.zip -o axonserver.zip
           unzip axonserver.zip
-          cd AxonServer-2026.0.0
+          cd AxonServer-2026.0.5
           AXONIQ_AXONSERVER_STANDALONE_DCB=true taskset -c "$TASKSET_DB_CPUS" nohup java -jar axonserver.jar > $GITHUB_WORKSPACE/axonserver.log 2>&1 &
           echo $! > $GITHUB_WORKSPACE/axonserver.pid
           for i in {1..60}; do
