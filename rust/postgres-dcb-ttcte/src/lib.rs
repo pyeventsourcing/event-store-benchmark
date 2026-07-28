@@ -53,6 +53,7 @@ pub struct DcbAppendCondition {
 #[derive(Debug, Clone)]
 pub struct PostgresDCBRecorderTT {
     pub pool: Pool,
+    pub config: String,
     pub schema: String,
     pub events_table: String,
     pub tags_table: String,
@@ -60,6 +61,30 @@ pub struct PostgresDCBRecorderTT {
     pub query_item_type_name: String,
     pub unconditional_append_fn: String,
     pub conditional_append_fn: String,
+}
+
+/// A dedicated connection listening for append notifications.
+///
+/// Holds the `LISTEN`ing client and a background task (driving its connection)
+/// alive for as long as the listener exists; dropping it closes the connection
+/// and ends the task. Each received `()` means "one or more events were appended".
+pub struct NotificationListener {
+    _client: tokio_postgres::Client,
+    notify_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+}
+
+impl NotificationListener {
+    /// Waits for the next append notification. Returns `None` if the underlying
+    /// connection has been closed.
+    pub async fn recv(&mut self) -> Option<()> {
+        self.notify_rx.recv().await
+    }
+
+    /// Drains any additional pending notifications so a burst of appends is
+    /// coalesced into a single follow-up read.
+    pub fn drain(&mut self) {
+        while self.notify_rx.try_recv().is_ok() {}
+    }
 }
 
 impl PostgresDCBRecorderTT {
@@ -86,6 +111,7 @@ impl PostgresDCBRecorderTT {
 
         Ok(Self {
             pool,
+            config: config.to_string(),
             schema: schema.to_string(),
             events_table: "dcb_events_tt_main".to_string(),
             tags_table: "dcb_events_tt_tag".to_string(),
@@ -94,6 +120,52 @@ impl PostgresDCBRecorderTT {
             unconditional_append_fn: "dcb_unconditional_append_tt".to_string(),
             conditional_append_fn: "dcb_conditional_append_tt".to_string(),
         })
+    }
+
+    /// The `pg_notify` channel that the append functions signal on.
+    ///
+    /// Must match the channel name computed in [`create_tables`](Self::create_tables).
+    pub fn channel(&self) -> String {
+        format!("{}_{}", self.schema, self.events_table).replace('.', "_")
+    }
+
+    /// Returns the current head position (the largest event id), or 0 if empty.
+    /// A subscription can use this to start reading from the end of the log.
+    pub async fn head(&self) -> Result<i64> {
+        let client = self.pool.get().await?;
+        let sql = format!("SELECT COALESCE(MAX(id), 0) FROM {}.{}", self.schema, self.events_table);
+        let row = client.query_one(&sql, &[]).await?;
+        Ok(row.get(0))
+    }
+
+    /// Opens a dedicated connection that `LISTEN`s for append notifications.
+    ///
+    /// A background task drives the connection and forwards notifications; the
+    /// returned [`NotificationListener`] keeps both alive until dropped.
+    pub async fn open_listener(&self) -> Result<NotificationListener> {
+        let (client, mut connection) = tokio_postgres::connect(&self.config, NoTls).await?;
+        let (tx, notify_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        // Drive the connection, forwarding each notification as a wake-up signal.
+        tokio::spawn(async move {
+            loop {
+                match std::future::poll_fn(|cx| connection.poll_message(cx)).await {
+                    Some(Ok(tokio_postgres::AsyncMessage::Notification(_))) => {
+                        if tx.send(()).is_err() {
+                            break; // receiver dropped
+                        }
+                    }
+                    Some(Ok(_)) => {} // notice / other async messages
+                    Some(Err(_)) | None => break, // connection error or closed
+                }
+            }
+        });
+
+        client
+            .batch_execute(&format!("LISTEN \"{}\"", self.channel()))
+            .await?;
+
+        Ok(NotificationListener { _client: client, notify_rx })
     }
 
     pub async fn create_tables(&self) -> Result<()> {

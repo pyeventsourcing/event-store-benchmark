@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::postgres_dcb_ttcte::{
     PostgresDcbTtctePostgres, POSTGRES_PORT,
 };
-use postgres_dcb_ttcte::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem};
+use postgres_dcb_ttcte::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem, NotificationListener};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
@@ -270,6 +271,90 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
                 metadata: e.event.metadata,
             }
         }).collect())
+    }
+
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn EventSubscription>> {
+        // Start LISTENing before reading the head so no append is missed in the
+        // gap between establishing the baseline and receiving notifications.
+        let listener = self.recorder.open_listener().await?;
+        let last_position = if from_end {
+            self.recorder.head().await?
+        } else {
+            req.from_offset.map(|o| o as i64).unwrap_or(0)
+        };
+
+        Ok(Box::new(PostgresSubscription {
+            recorder: self.recorder.clone(),
+            listener,
+            event_type: req.event_type,
+            tag: req.tag,
+            last_position,
+            buffer: VecDeque::new(),
+        }))
+    }
+}
+
+/// Builds the read query for a subscription from its event_type / tag filters.
+/// Returns `None` (match everything) when neither filter is set.
+fn build_subscribe_query(event_type: &Option<String>, tag: &str) -> Option<DcbQuery> {
+    let types = event_type.clone().map(|t| vec![t]).unwrap_or_default();
+    let mut tags = Vec::new();
+    if !tag.is_empty() {
+        tags.push(tag.to_string());
+    }
+    if types.is_empty() && tags.is_empty() {
+        None
+    } else {
+        Some(DcbQuery { items: vec![DcbQueryItem { types, tags }] })
+    }
+}
+
+/// Live subscription backed by Postgres `LISTEN`/`NOTIFY`.
+///
+/// Each `NOTIFY` (emitted by the append functions) wakes the subscription, which
+/// then reads every event past its last position and yields them in order.
+struct PostgresSubscription {
+    recorder: PostgresDCBRecorderTT,
+    listener: NotificationListener,
+    event_type: Option<String>,
+    tag: String,
+    last_position: i64,
+    buffer: VecDeque<ReadEvent>,
+}
+
+#[async_trait]
+impl EventSubscription for PostgresSubscription {
+    async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
+        loop {
+            if let Some(event) = self.buffer.pop_front() {
+                return Ok(Some(event));
+            }
+
+            // Block until an append is signalled, then coalesce any burst.
+            match self.listener.recv().await {
+                Some(()) => self.listener.drain(),
+                None => return Ok(None), // connection closed
+            }
+
+            let query = build_subscribe_query(&self.event_type, &self.tag);
+            let events = self
+                .recorder
+                .read(query, Some(self.last_position), None)
+                .await
+                .context("PostgresDcbTtcte subscription read failed")?;
+
+            for e in events {
+                if e.position > self.last_position {
+                    self.last_position = e.position;
+                }
+                self.buffer.push_back(ReadEvent {
+                    offset: e.position as u64,
+                    event_type: e.event.type_name,
+                    payload: e.event.data,
+                    metadata: e.event.metadata,
+                });
+            }
+        }
     }
 }
 
