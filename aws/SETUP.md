@@ -56,10 +56,10 @@ After setting everything up, you are ready to launch the benchmark matrix.
 
     ./aws/lauch-matrix.sh
 
+## Fetch results
 
-## See instances
+Sync the results bucket locally (also runs `make report`).
 
-    aws ec2 describe-instances \
-    --filters "Name=instance-state-name,Values=pending,running" \
-    --query "Reservations[*].Instances[*].{InstanceID:InstanceId, State:State.Name, Name:Tags[?Key=='Name']|[0].Value, Launched:LaunchTime}" \
-    --output table
+    ./aws/fetch-results.sh
+
+Open `./results/index.html` in your browser.
