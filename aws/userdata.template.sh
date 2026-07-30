@@ -35,7 +35,7 @@ cleanup() {
   echo "Script exiting with code $EXIT_CODE. Syncing logs and shutting down..."
 
   # Copy the log file to S3 for debugging
-  aws s3 cp /var/log/benchmark.log "$S3_BUCKET/$SESSION_ID/$STORE/benchmark.log" || true
+  aws s3 cp /var/log/benchmark.log "$S3_BUCKET/$SESSION_ID/esb-$SESSION_ID/$STORE-benchmark.log" || true
 
   # Sync results folder if it exists
   if [ -d "results" ]; then
