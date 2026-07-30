@@ -12,6 +12,7 @@ from .models import (
     WorkerSliceImageKey,
     WorkerSliceSections,
 )
+from ...models import ConfigModeLiteral
 
 
 def build_run_dir_name(run: PerformanceWorkloadRun) -> str:
@@ -30,10 +31,19 @@ def worker_axis_from_runs(runs: list[PerformanceWorkloadRun]) -> WorkerAxis:
     return WorkerAxis.WRITERS
 
 
-def worker_labels(worker_axis: WorkerAxis) -> tuple[str, str, str]:
-    if worker_axis == WorkerAxis.READERS:
-        return "Reader", "Readers", "r"
-    return "Writer", "Writers", "w"
+def worker_labels_from_runs(runs: list[PerformanceWorkloadRun]) -> tuple[str, str, str]:
+    worker_labels: dict[ConfigModeLiteral, str] = {
+        "write": ("Writer", "Writers", "w"),
+        "writeflood": ("Writer", "Writers", "w"),
+        "read": ("Reader", "Readers", "r"),
+        "subscribe": ("Subscriber", "Subscribers", "s"),
+    }
+    assert len(runs) > 0
+    first_run = runs[0]
+    config = first_run.config
+    if config.mode not in worker_labels:
+        print("Warning: Config mode not found in worker_labels dict:", config.mode)
+    return worker_labels.get(config.mode, ("Worker", "Workers", "k"))
 
 
 def run_image_relpath(key: RunImageKey) -> str:

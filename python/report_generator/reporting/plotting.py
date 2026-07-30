@@ -643,8 +643,7 @@ def plot_throughput_by_workers(runs: List[PerformanceWorkloadRun], out_path: str
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Throughput by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -727,8 +726,7 @@ def plot_operation_errors_by_workers(runs: List[PerformanceWorkloadRun], out_pat
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Operation Errors by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -783,8 +781,7 @@ def plot_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, g
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Latency by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -881,8 +878,7 @@ def plot_tool_latency_by_workers(runs: List[PerformanceWorkloadRun], out_path: s
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Tool Latency by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -977,8 +973,7 @@ def plot_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, get_s
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1055,8 +1050,7 @@ def plot_tool_cpu_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, 
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Tool CPU Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1135,8 +1129,7 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()
@@ -1192,14 +1185,16 @@ def plot_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: str, ge
     plt.close()
 
 
-def xlabel_from_config_mode(first_run: PerformanceWorkloadRun | None) -> str:
+def xlabel_from_config_mode(runs: list[PerformanceWorkloadRun]) -> str:
     xlabels: dict[ConfigModeLiteral, str] = {
         "write": "Writers",
         "writeflood": "Writers",
         "read": "Readers",
         "subscribe": "Subscribers",
     }
-    assert first_run is not None
+
+    assert len(runs) > 0
+    first_run = runs[0]
     config = first_run.config
     if config.mode not in xlabels:
         print("Warning: Config mode not found in xlabels dict:", config.mode)
@@ -1227,8 +1222,7 @@ def plot_tool_memory_by_workers(runs: List[PerformanceWorkloadRun], out_path: st
     worker_counts = sorted(list(all_worker_counts))
     adapters = sorted(list(all_adapters), key=get_store_rank) if get_store_rank else sorted(list(all_adapters))
 
-    first_run = runs[0] if runs else None
-    xlabel = xlabel_from_config_mode(first_run)
+    xlabel = xlabel_from_config_mode(runs)
     title = f"Tool Memory Usage by {xlabel[:-1]} Count"
 
     plt.figure()

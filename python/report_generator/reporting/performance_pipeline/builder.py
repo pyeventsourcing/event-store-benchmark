@@ -21,8 +21,7 @@ from .spec import (
     scaling_sections_from_runs,
     sort_runs,
     worker_axis_from_runs,
-    worker_labels,
-    worker_slice_sections_from_runs,
+    worker_slice_sections_from_runs, worker_labels_from_runs,
 )
 
 
@@ -66,7 +65,7 @@ def build_workload_report(
     get_store_rank: Callable[[str], int] = lambda name: store_order_map.get(name, 999)
 
     worker_axis = worker_axis_from_runs(runs)
-    worker_label_singular, worker_label_plural, worker_suffix = worker_labels(worker_axis)
+    worker_label_singular, worker_label_plural, worker_suffix = worker_labels_from_runs(runs)
 
     sorted_runs = sort_runs(runs, get_store_rank)
     run_reports = [_build_run_report(run) for run in sorted_runs]
