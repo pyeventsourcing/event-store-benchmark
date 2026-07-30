@@ -56,10 +56,39 @@ After setting everything up, you are ready to launch the benchmark matrix.
 
     ./aws/lauch-matrix.sh
 
+Currently, this script is hard-coded to run the scaling-dcb workload (umadb, axonserver, postgres-dcb-ttcte).
+
+Instances on AWS are tagged with `Project=event-store-benchmark-suite`.
+
+Results from a benchmark instance are synced to S3 when on completion.
+
+Instances should self-terminate on completion.
+
+## Tail instance logs
+
+You can tail an instance's benchmark log. For example:
+
+    ./aws/tail-workload.sh umadb
+
 ## Fetch results
 
-Sync the results bucket locally (also runs `make report`).
+Sync the results bucket locally.
 
     ./aws/fetch-results.sh
 
-Open `./results/index.html` in your browser.
+This also runs `make report`. Open `./results/index.html` in your browser.
+
+## Describe running instances
+
+List the IDs of the running benchmark instances. This only lists instances tagged with
+`Project=event-store-benchmark-suite`, so other instances in your AWS account are ignored.
+
+    ./aws/describe-running-instances.sh
+
+## Terminate running instances
+
+Terminate the running benchmark instances. Like the describe script, this only affects instances
+tagged with `Project=event-store-benchmark-suite`, so other instances in your AWS account are left
+untouched.
+
+    ./aws/terminate-running-instances.sh
