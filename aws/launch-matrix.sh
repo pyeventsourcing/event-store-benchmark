@@ -55,7 +55,7 @@ for STORE in "${STORES[@]}"; do
         ]' \
         --user-data file://"$TMP_USERDATA" \
         --instance-initiated-shutdown-behavior terminate \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID},{Key=Project,Value=event-store-benchmark-suite}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
 
