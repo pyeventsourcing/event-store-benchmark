@@ -4359,9 +4359,9 @@ dependencies = [
 
 [[package]]
 name = "umadb-client"
-version = "0.6.12"
+version = "0.6.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af16bc2df99a453b89ad947d0831d23702c67164daa437472abe19fbf71437fd"
+checksum = "507d2d5af666aa77a1ff754f92752a3ee691a6c026754c364f961bf545d4f533"
 dependencies = [
  "async-trait",
  "futures",
@@ -4374,9 +4374,9 @@ dependencies = [
 
 [[package]]
 name = "umadb-dcb"
-version = "0.6.12"
+version = "0.6.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0cb12279bff45cf873eac37f19f21a652d73b93bd9bc25eb2eee9cd2ab95d6a"
+checksum = "b18af8cb90634c27e67fa8dbd2da084f36daa13b06900fbd44c8f6518dbd816e"
 dependencies = [
  "async-trait",
  "futures-core",
@@ -4387,9 +4387,9 @@ dependencies = [
 
 [[package]]
 name = "umadb-proto"
-version = "0.6.12"
+version = "0.6.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b62196d96bb1164c37bf0991b3af75e64d342b62b2265728a9a1a58f3a37569"
+checksum = "b5620b2a08dc83b68d8117ed3214be217443973b5d3d5463a9beb3c5a9a25158"
 dependencies = [
  "prost",
  "tonic",
