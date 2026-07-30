@@ -50,6 +50,28 @@ trap cleanup EXIT
 echo "Starting benchmark for $STORE in session $SESSION_ID"
 
 # 1. System Setup
+
+# Target file descriptor count for high performance / concurrency
+DESIRED_FD=65535
+
+# Check current hard limit
+HARD_FD=$(ulimit -Hn)
+
+# Automatically cap at the OS hard limit if it's lower than desired
+if [ "$HARD_FD" != "unlimited" ] && [ "$HARD_FD" -lt "$DESIRED_FD" ]; then
+    echo "[WARN] Operating system hard limit ($HARD_FD) is lower than recommended ($DESIRED_FD)."
+    echo "[WARN] Setting file descriptor limit to OS ceiling ($HARD_FD)."
+    echo "[WARN] To increase this further, update /etc/security/limits.conf or systemd service settings."
+    SET_FD=$HARD_FD
+else
+    SET_FD=$DESIRED_FD
+fi
+
+# Apply the new limit to this shell and any child processes
+ulimit -n "$SET_FD"
+
+echo "[INFO] Starting UmaDB with soft file descriptor limit set to $(ulimit -n)..."
+
 apt-get update
 apt-get install -y protobuf-compiler make build-essential git curl unzip
 
@@ -84,18 +106,66 @@ case $STORE in
   postgres-dcb-ttcte)
     apt-get install -y postgresql postgresql-contrib
 
-    # 1. Stop PostgreSQL to safely move data to NVMe
+    # --- CONFIGURATION ---
+    # Target NVMe directory
+    NEW_DIR="/opt/postgresql"
+    # Automatically detect the active PostgreSQL version
+    PG_VERSION=$(ls /etc/postgresql/ | head -n 1)
+    CONF_FILE="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
+    APPARMOR_FILE="/etc/apparmor.d/usr.sbin.postgresqld"
+
+    echo "=== Starting PostgreSQL migration to NVMe (Version: ${PG_VERSION}) ==="
+
+    # 1. Stop PostgreSQL
+    echo "Stopping PostgreSQL service..."
     systemctl stop postgresql
 
-    # 2. Move data directory to the local NVMe SSD on /opt
-    mkdir -p /opt/postgresql
-    rsync -av /var/lib/postgresql/ /opt/postgresql/
-    rm -rf /var/lib/postgresql
-    ln -s /opt/postgresql /var/lib/postgresql
+    # 2. Prepare the new directory structure and sync data
+    echo "Creating target directory and syncing data..."
+    mkdir -p "${NEW_DIR}"
+    # Sync only the data files, keeping the original folder layout intact
+    rsync -av "/var/lib/postgresql/${PG_VERSION}/main" "${NEW_DIR}/"
 
-    # 3. Restart PostgreSQL on NVMe storage
+    # 3. Correct file ownership and permissions
+    echo "Setting permissions for the postgres user..."
+    chown -R postgres:postgres "${NEW_DIR}"
+    chmod 700 "${NEW_DIR}/main"
+
+    # 4. Update the PostgreSQL configuration file
+    echo "Updating configuration file data_directory directive..."
+    # Backup the config file first
+    cp "${CONF_FILE}" "${CONF_FILE}.bak"
+    # Replace the old data_directory path with the new one
+    sed -i "s|^data_directory = .*|data_directory = '${NEW_DIR}/main'|" "${CONF_FILE}"
+
+    # 5. Inject rules into Ubuntu AppArmor security profile
+    if [ -f "${APPARMOR_FILE}" ]; then
+        echo "Updating AppArmor security policies..."
+        # Backup AppArmor config
+        cp "${APPARMOR_FILE}" "${APPARMOR_FILE}.bak"
+
+        # Insert the read/write paths right before the closing brace '}'
+        sed -i "/^[[:space:]]*}/i \  ${NEW_DIR}/ r,\n  ${NEW_DIR}/** rwk," "${APPARMOR_FILE}"
+
+        echo "Reloading AppArmor..."
+        systemctl reload apparmor
+    fi
+
+    # 6. Start PostgreSQL and verify
+    echo "Starting PostgreSQL service..."
     systemctl start postgresql
-    
+
+    echo "Verifying new data directory location..."
+    CURRENT_DIR=$(sudo -u postgres psql -t -A -c "SHOW data_directory;")
+
+    if [ "${CURRENT_DIR}" = "${NEW_DIR}/main" ]; then
+        echo "SUCCESS: PostgreSQL is running from ${CURRENT_DIR}"
+        echo "You can now safely delete the old data with: sudo rm -rf /var/lib/postgresql/${PG_VERSION}/main"
+    else
+        echo "ERROR: PostgreSQL started but is not using the new directory."
+        exit 1
+    fi
+
     # Create PostgreSQL user, database, and assign ownership
     sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" || true
     sudo -u postgres psql -c "CREATE DATABASE eventsourcing OWNER eventsourcing;" || true
@@ -128,9 +198,9 @@ case $STORE in
     ;;
 
   umadb)
-    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.6.13/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.6.14/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
-    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=2000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
+    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
 
     echo "Waiting 5 seconds for UmaDB to initialize..."
@@ -141,6 +211,7 @@ case $STORE in
     echo "========================="
     ;;
 esac
+
 
 # 4. Run Workload
 export ESB_SESSION_ID=$SESSION_ID
