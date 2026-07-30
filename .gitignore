@@ -33,3 +33,7 @@ container-data/
 vendor/
 
 .cargo
+/.last_session_id
+/axonserver.aws_instance_id
+/postgres-dcb-ttcte.aws_instance_id
+/umadb.aws_instance_id
