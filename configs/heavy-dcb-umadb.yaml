@@ -1,0 +1,24 @@
+performance:
+  name: read-and-write
+  mode: read
+#  mode: write
+  warmup_seconds: 0
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+#    writers: [512]
+    readers: [512]
+  operations:
+    write:
+      event_size_bytes: 256
+      concurrency_control: true
+      append_condition: one_tag_one_type
+      limit: 10
+    read:
+      dcb_query: one_tag_one_type
+      limit: 10
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+  stores:
+    - umadb

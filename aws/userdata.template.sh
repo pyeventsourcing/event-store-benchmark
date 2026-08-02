@@ -198,7 +198,7 @@ case $STORE in
     ;;
 
   umadb)
-    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.6.15/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.7.0/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
     UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
