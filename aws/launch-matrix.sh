@@ -19,9 +19,9 @@ STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
 INSTANCE_TYPE="c6id.2xlarge"  # NVMe 8x vCPU
 IAM_PROFILE="BenchmarkRunnerRole"
 
-# Fetch the latest official Canonical Ubuntu 24.04 LTS AMI for us-east-1
+# Fetch the latest official Amazon Linux 2023 AMI for us-east-1 (x86_64)
 AMI_ID=$(aws ssm get-parameter \
-  --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
+  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
   --query "Parameter.Value" \
   --output text)
 
@@ -50,7 +50,7 @@ for STORE in "${STORES[@]}"; do
         --instance-type $INSTANCE_TYPE \
         --iam-instance-profile Name=$IAM_PROFILE \
         --block-device-mappings '[
-          {"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
+          {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
           {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
         ]' \
         --user-data file://"$TMP_USERDATA" \

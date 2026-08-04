@@ -70,18 +70,14 @@ fi
 # Apply the new limit to this shell and any child processes
 ulimit -n "$SET_FD"
 
-echo "[INFO] Starting UmaDB with soft file descriptor limit set to $(ulimit -n)..."
+echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit -n)..."
 
-apt-get update
-apt-get install -y protobuf-compiler make build-essential git curl unzip
+# AL2023 System Package Installation
+dnf update -y
+dnf groupinstall -y "Development Tools"
+dnf install -y protobuf-compiler git curl unzip
 
-# Install AWS CLI v2 directly
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip -q awscliv2.zip
-./aws/install
-rm -rf awscliv2.zip aws/
-
-# Verify AWS CLI installation
+# Verify AWS CLI installation (Pre-installed on AL2023)
 aws --version
 
 # Install Rust toolchain
@@ -104,67 +100,21 @@ make build
 # 3. Store-specific Setup & PID capturing
 case $STORE in
   postgres-dcb-ttcte)
-    apt-get install -y postgresql postgresql-contrib
+    # Install PostgreSQL 15 on AL2023
+    dnf install -y postgresql15-server postgresql15
 
-    # --- CONFIGURATION ---
-    # Target NVMe directory
-    NEW_DIR="/opt/postgresql"
-    # Automatically detect the active PostgreSQL version
-    PG_VERSION=$(ls /etc/postgresql/ | head -n 1)
-    CONF_FILE="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
-    APPARMOR_FILE="/etc/apparmor.d/usr.sbin.postgresqld"
+    NEW_DIR="/opt/postgresql/data"
+    echo "=== Initializing PostgreSQL on NVMe ($NEW_DIR) ==="
 
-    echo "=== Starting PostgreSQL migration to NVMe (Version: ${PG_VERSION}) ==="
+    mkdir -p "$NEW_DIR"
+    chown -R postgres:postgres /opt/postgresql
 
-    # 1. Stop PostgreSQL
-    echo "Stopping PostgreSQL service..."
-    systemctl stop postgresql
+    # Initialize data directory directly on the NVMe volume
+    sudo -u postgres /usr/bin/postgresql-setup --datadir="$NEW_DIR" --initdb
 
-    # 2. Prepare the new directory structure and sync data
-    echo "Creating target directory and syncing data..."
-    mkdir -p "${NEW_DIR}"
-    # Sync only the data files, keeping the original folder layout intact
-    rsync -av "/var/lib/postgresql/${PG_VERSION}/main" "${NEW_DIR}/"
-
-    # 3. Correct file ownership and permissions
-    echo "Setting permissions for the postgres user..."
-    chown -R postgres:postgres "${NEW_DIR}"
-    chmod 700 "${NEW_DIR}/main"
-
-    # 4. Update the PostgreSQL configuration file
-    echo "Updating configuration file data_directory directive..."
-    # Backup the config file first
-    cp "${CONF_FILE}" "${CONF_FILE}.bak"
-    # Replace the old data_directory path with the new one
-    sed -i "s|^data_directory = .*|data_directory = '${NEW_DIR}/main'|" "${CONF_FILE}"
-
-    # 5. Inject rules into Ubuntu AppArmor security profile
-    if [ -f "${APPARMOR_FILE}" ]; then
-        echo "Updating AppArmor security policies..."
-        # Backup AppArmor config
-        cp "${APPARMOR_FILE}" "${APPARMOR_FILE}.bak"
-
-        # Insert the read/write paths right before the closing brace '}'
-        sed -i "/^[[:space:]]*}/i \  ${NEW_DIR}/ r,\n  ${NEW_DIR}/** rwk," "${APPARMOR_FILE}"
-
-        echo "Reloading AppArmor..."
-        systemctl reload apparmor
-    fi
-
-    # 6. Start PostgreSQL and verify
-    echo "Starting PostgreSQL service..."
+    # Start and enable PostgreSQL service
+    systemctl enable postgresql
     systemctl start postgresql
-
-    echo "Verifying new data directory location..."
-    CURRENT_DIR=$(sudo -u postgres psql -t -A -c "SHOW data_directory;")
-
-    if [ "${CURRENT_DIR}" = "${NEW_DIR}/main" ]; then
-        echo "SUCCESS: PostgreSQL is running from ${CURRENT_DIR}"
-        echo "You can now safely delete the old data with: sudo rm -rf /var/lib/postgresql/${PG_VERSION}/main"
-    else
-        echo "ERROR: PostgreSQL started but is not using the new directory."
-        exit 1
-    fi
 
     # Create PostgreSQL user, database, and assign ownership
     sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" || true
@@ -181,7 +131,7 @@ case $STORE in
     ;;
 
   axonserver)
-    apt-get install -y openjdk-21-jdk
+    dnf install -y java-21-amazon-corretto-devel
     curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.5.zip -o axonserver.zip
     unzip -q axonserver.zip
     cd AxonServer-2026.0.5
@@ -198,6 +148,7 @@ case $STORE in
     ;;
 
   umadb)
+    # Download native AL2023 binary built with zigbuild (glibc 2.34 linked)
     curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.7.1/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
     UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
@@ -217,4 +168,3 @@ esac
 export ESB_SESSION_ID=$SESSION_ID
 export ESB_WORKLOAD_STORES=$STORE
 make run-scaling-dcb
-#make ./configs/quick-scaling-dcb.yaml
