@@ -108,7 +108,7 @@ echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit 
 
 # AL2023 System Package Installation (No compiler tools required)
 dnf update -y
-dnf install -y git unzip
+dnf install -y git unzip make
 
 # Verify AWS CLI installation (Pre-installed on AL2023)
 aws --version

@@ -118,6 +118,7 @@ for STORE in "${STORES[@]}"; do
         --image-id "$AMI_ID" \
         --instance-type "$INSTANCE_TYPE" \
         --iam-instance-profile Name="$IAM_PROFILE" \
+        --credit-specification CpuCredits=unlimited \
         --block-device-mappings "$BLOCK_MAPPINGS" \
         --user-data file://"$TMP_USERDATA" \
         --instance-initiated-shutdown-behavior terminate \

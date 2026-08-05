@@ -66,6 +66,14 @@ EBS with baseline default (3,000 IOPS / 125 MB/s):
 
     ./aws/launch-matrix.sh --instance c7g.2xlarge
 
+EBS with umadb and axonserver:
+
+    ./aws/launch-matrix.sh --stores umadb,axonserver
+
+EBS with max concurrent workers:
+
+    ./aws/launch-matrix.sh --max-concurrent-workers 128
+
 EBS with high provisioned IOPS & throughput to test scaling:
 
     ./aws/launch-matrix.sh --instance c7g.2xlarge --iops 10000 --throughput 500
