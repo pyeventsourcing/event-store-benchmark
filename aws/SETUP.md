@@ -54,7 +54,7 @@ to match this new bucket name.
 
 After setting everything up, you are ready to launch the benchmark matrix.
 
-    ./aws/lauch-matrix.sh
+    ./aws/launch-matrix.sh
 
 Currently, this script defaults to launching `c6id.2xlarge` instances and running the scaling-dcb workload with umadb, axonserver, postgres-dcb-ttcte.
 
