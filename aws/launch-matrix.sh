@@ -32,6 +32,12 @@ REPO_URL=$(git config --get remote.origin.url)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
+# Get Git commit hash for binary caching
+GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
+if ! git -C "$REPO_ROOT" diff --quiet HEAD 2>/dev/null; then
+    GIT_HASH="${GIT_HASH}-dirty"
+fi
+
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 
 # Determine architecture based on instance family (e.g., c7g/c7gd = aarch64, c6i/c6id = x86_64)
@@ -78,11 +84,18 @@ echo "================================================="
 echo " Launching Session: $SESSION_ID"
 echo " Stores:           ${STORES[*]}"
 echo " Target Repository: $REPO_URL (Branch: $BRANCH)"
+echo " Git Commit Hash:   $GIT_HASH"
 echo " Instance Type:    $INSTANCE_TYPE ($ARCH)"
 echo " Block mappings:   ${BLOCK_MAPPINGS}"
 echo " AMI ID:           $AMI_ID"
 echo " IAM Profile:      $IAM_PROFILE"
 echo "================================================="
+
+# Pre-build and upload feature-flagged binaries for each store
+echo "Checking/Building S3 binary artifacts for target stores..."
+for STORE in "${STORES[@]}"; do
+    "$DIR/build-and-upload.sh" "$ARCH" "$STORE"
+done
 
 TEMPLATE_FILE="$DIR/userdata.template.sh"
 
@@ -95,6 +108,7 @@ for STORE in "${STORES[@]}"; do
         -e "s|{{REPO_URL}}|$REPO_URL|g" \
         -e "s|{{BRANCH}}|$BRANCH|g" \
         -e "s|{{ARCH}}|$ARCH|g" \
+        -e "s|{{GIT_HASH}}|$GIT_HASH|g" \
         "$TEMPLATE_FILE" > "$TMP_USERDATA"
 
     INSTANCE_ID=$(aws ec2 run-instances \

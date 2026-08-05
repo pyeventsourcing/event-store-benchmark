@@ -104,27 +104,36 @@ echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit 
 # AL2023 System Package Installation
 dnf update -y
 dnf groupinstall -y "Development Tools"
-dnf install -y protobuf-compiler git protobuf-devel unzip
+dnf install -y git unzip
 
 # Verify AWS CLI installation (Pre-installed on AL2023)
 aws --version
 
-# Install Rust toolchain
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# --- FETCH PRE-COMPILED BINARY FROM S3 ---
+BINARY_S3_PATH="$S3_BUCKET/binaries/$GIT_HASH/es-bench-$STORE-$ARCH"
+SHA_S3_PATH="$S3_BUCKET/binaries/$GIT_HASH/es-bench-$STORE-$ARCH.sha256"
 
-# Source Rust from explicit root path
-source /root/.cargo/env
-export PATH="/root/.cargo/bin:$PATH"
+echo "Downloading benchmark binary from $BINARY_S3_PATH..."
+aws s3 cp "$BINARY_S3_PATH" /opt/benchmark/es-bench
+aws s3 cp "$SHA_S3_PATH" /opt/benchmark/es-bench.sha256
 
-# Verify Rust & protoc versions
-cargo --version
-protoc --version
+chmod +x /opt/benchmark/es-bench
 
-# 2. Clone repository and build with correct features
-git clone -b $BRANCH $REPO_URL /opt/benchmark
-cd /opt/benchmark
-export ESB_FEATURES=$STORE
-make build
+# Verify integrity via SHA256
+echo "Verifying binary SHA256 checksum..."
+EXPECTED_SHA=$(cat /opt/benchmark/es-bench.sha256)
+ACTUAL_SHA=$(sha256sum /opt/benchmark/es-bench | awk '{print $1}')
+
+if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+    echo "[FATAL ERROR] SHA256 Mismatch!"
+    echo "Expected: $EXPECTED_SHA"
+    echo "Got:      $ACTUAL_SHA"
+    exit 1
+fi
+
+echo "[SUCCESS] Binary downloaded and verified successfully! (SHA256: $ACTUAL_SHA)"
+
+
 
 # 3. Store-specific Setup & PID capturing
 case $STORE in
