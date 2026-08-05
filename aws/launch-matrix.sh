@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Disable the AWS CLI pager so the script runs non-interactively
+export AWS_PAGER=""
+
 # Default settings (can be overridden via CLI flags)
 INSTANCE_TYPE="${INSTANCE_TYPE:-c6id.2xlarge}"
 STORES=("umadb" "axonserver" "postgres-dcb-ttcte")

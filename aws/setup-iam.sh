@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Disable the AWS CLI pager so the script runs non-interactively
+export AWS_PAGER=""
+
 ROLE_NAME="BenchmarkRunnerRole"
 S3_BUCKET="esb-benchmark-results"
 
@@ -27,20 +30,37 @@ else
     echo "Role $ROLE_NAME already exists."
 fi
 
-# 2. Create and attach S3 permissions
-cat <<EOF > /tmp/s3-policy.json
+# 2. Create and attach S3 and EC2 permissions
+cat <<EOF > /tmp/benchmark-policy.json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "S3BucketAccess",
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject"],
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject"
+      ],
       "Resource": "arn:aws:s3:::$S3_BUCKET/*"
     },
     {
+      "Sid": "S3BucketListing",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
       "Resource": "arn:aws:s3:::$S3_BUCKET"
+    },
+    {
+      "Sid": "EC2MetadataQueries",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVolumes",
+        "ec2:DescribeInstances"
+      ],
+      "Resource": "*"
     }
   ]
 }
@@ -48,8 +68,8 @@ EOF
 
 aws iam put-role-policy \
   --role-name $ROLE_NAME \
-  --policy-name BenchmarkS3BucketAccess \
-  --policy-document file:///tmp/s3-policy.json
+  --policy-name BenchmarkRunnerAccess \
+  --policy-document file:///tmp/benchmark-policy.json
 
 # 3. Create Instance Profile and attach Role
 if ! aws iam get-instance-profile --instance-profile-name $ROLE_NAME 2>/dev/null; then
@@ -64,5 +84,5 @@ aws iam attach-role-policy \
   --role-name $ROLE_NAME \
   --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
-rm /tmp/trust-policy.json /tmp/s3-policy.json
+rm /tmp/trust-policy.json /tmp/benchmark-policy.json
 echo "IAM setup complete!"
