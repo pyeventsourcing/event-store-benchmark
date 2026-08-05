@@ -1,36 +1,68 @@
 #!/bin/bash
 set -e
 
-# Find script directory and root repo directory safely
+# Default settings (can be overridden via CLI flags)
+INSTANCE_TYPE="${INSTANCE_TYPE:-c6id.2xlarge}"
+STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
+IAM_PROFILE="BenchmarkRunnerRole"
+
+# Parse CLI arguments (e.g., ./launch.sh --instance c7g.2xlarge --stores umadb)
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -i|--instance) INSTANCE_TYPE="$2"; shift 2 ;;
+    -s|--stores) IFS=',' read -r -a STORES <<< "$2"; shift 2 ;;
+    *) echo "Unknown option $1"; exit 1 ;;
+  esac
+done
+
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$DIR/.."
-
 REPO_URL=$(git config --get remote.origin.url)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
-# Safely write to root of the repository
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 
-STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
-#STORES=("postgres-dcb-ttcte")
+# Determine architecture based on instance family (e.g., c7g/m7g/a1 = aarch64, c6i/m6a = x86_64)
+if [[ "$INSTANCE_TYPE" =~ ^[a-z][0-9]g ]] || [[ "$INSTANCE_TYPE" =~ ^a1 ]]; then
+    ARCH="aarch64"
+    AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+else
+    ARCH="x86_64"
+    AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+fi
 
-#INSTANCE_TYPE="c6i.2xlarge"
-INSTANCE_TYPE="c6id.2xlarge"  # NVMe 8x vCPU
-IAM_PROFILE="BenchmarkRunnerRole"
+AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query "Parameter.Value" --output text)
 
-# Fetch the latest official Amazon Linux 2023 AMI for us-east-1 (x86_64)
-AMI_ID=$(aws ssm get-parameter \
-  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
-  --query "Parameter.Value" \
-  --output text)
+# Configure block devices (If 'd' is in instance type name, map ephemeral NVMe)
+if [[ "$INSTANCE_TYPE" =~ d\. ]]; then
+    BLOCK_MAPPINGS='[
+      {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
+      {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
+    ]'
+else
+    # EBS-only instances (e.g. c6i.2xlarge) - enlarge root volume for database storage
+    BLOCK_MAPPINGS='[
+      {
+        "DeviceName": "/dev/xvda",
+        "Ebs": {
+          "VolumeSize": 60,
+          "VolumeType": "gp3",
+          "Iops": 10000,
+          "Throughput": 500
+        }
+      }
+    ]'
+fi
 
-echo "Using Ubuntu 24.04 AMI: $AMI_ID"
+echo "================================================="
+echo " Launching Session: $SESSION_ID"
+echo " Instance Type:    $INSTANCE_TYPE ($ARCH)"
+echo " AMI ID:           $AMI_ID"
+echo " Stores:           ${STORES[*]}"
+echo "================================================="
 
 TEMPLATE_FILE="$DIR/userdata.template.sh"
-
-echo "Launching Session: $SESSION_ID"
-echo "Target Repository: $REPO_URL (Branch: $BRANCH)"
 
 for STORE in "${STORES[@]}"; do
     echo "Provisioning instance for $STORE..."
@@ -40,32 +72,24 @@ for STORE in "${STORES[@]}"; do
         -e "s|{{SESSION_ID}}|$SESSION_ID|g" \
         -e "s|{{REPO_URL}}|$REPO_URL|g" \
         -e "s|{{BRANCH}}|$BRANCH|g" \
+        -e "s|{{ARCH}}|$ARCH|g" \
         "$TEMPLATE_FILE" > "$TMP_USERDATA"
 
-#        Used this for c6i.2xlarge:
-#        --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":50,"VolumeType":"gp3"}}]' \
-
     INSTANCE_ID=$(aws ec2 run-instances \
-        --image-id $AMI_ID \
-        --instance-type $INSTANCE_TYPE \
-        --iam-instance-profile Name=$IAM_PROFILE \
-        --block-device-mappings '[
-          {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
-          {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
-        ]' \
+        --image-id "$AMI_ID" \
+        --instance-type "$INSTANCE_TYPE" \
+        --iam-instance-profile Name="$IAM_PROFILE" \
+        --block-device-mappings "$BLOCK_MAPPINGS" \
         --user-data file://"$TMP_USERDATA" \
         --instance-initiated-shutdown-behavior terminate \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID},{Key=Project,Value=event-store-benchmark-suite}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID},{Key=Project,Value=event-store-benchmark-suite},{Key=Arch,Value=$ARCH}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
 
-    echo "  -> Launched $INSTANCE_ID"
-    # Save the ID for the tail script
-    echo "$INSTANCE_ID" > "$DIR/../$STORE.aws_instance_id"
+    echo "  -> Launched $INSTANCE_ID ($STORE)"
+    echo "$INSTANCE_ID" > "$REPO_ROOT/$STORE.aws_instance_id"
     rm "$TMP_USERDATA"
-
-    echo "To monitor live, run: ./aws/tail-workload.sh $STORE"
 done
 
 echo ""
-echo "All instances launched!"
+echo "All instances launched! Monitor with: ./aws/tail-workload.sh <store>"
