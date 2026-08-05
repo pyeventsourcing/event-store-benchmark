@@ -2,6 +2,9 @@
 exec > >(tee /var/log/benchmark.log|logger -t user-data -s 2>/dev/console) 2>&1
 set -e
 
+# Just in case, disable the AWS CLI pager so the script runs non-interactively
+export AWS_PAGER=""
+
 # Explicitly set HOME for cloud-init background execution
 export HOME="/root"
 
@@ -181,7 +184,7 @@ EOF
     echo "=============================="
     ;;
 
-  umadb)
+umadb)
     ARCH="{{ARCH}}"
     VERSION="v0.7.3"
 
@@ -196,7 +199,16 @@ EOF
     curl -sSL "$BINARY_URL" -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
 
-    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
+    # --- DYNAMIC MEMORY ALLOCATION ---
+    # 1. Fetch total system memory in Kilobytes from the kernel
+    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    # 2. Convert to Megabytes and divide by 2 (bash automatically floors to a whole integer)
+    HALF_MEM_MB=$((TOTAL_MEM_KB / 1024 / 2))
+
+    echo "Detected $((TOTAL_MEM_KB / 1024)) MB total RAM. Setting UMADB_PAGE_CACHE_MAX_MB to $HALF_MEM_MB MB."
+    # ---------------------------------
+
+    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=$HALF_MEM_MB nohup umadb > /opt/benchmark/umadb.log 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
 
     echo "Waiting 5 seconds for UmaDB to initialize..."
