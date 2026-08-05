@@ -11,6 +11,32 @@ REPO_URL="{{REPO_URL}}"
 BRANCH="{{BRANCH}}"
 S3_BUCKET="s3://esb-benchmark-results"
 
+# Get IMDSv2 Token & Instance Info
+TOKEN=$(curl -s -S -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_TYPE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type)
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+AZ=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+REGION="${AZ%?}" # Trim last char to get region (e.g. us-east-1a -> us-east-1)
+
+echo "=========================================="
+echo "Benchmark Host Metadata"
+echo "Instance ID:   $INSTANCE_ID"
+echo "Instance Type: $INSTANCE_TYPE"
+echo "Region / AZ:   $AZ"
+echo "=========================================="
+echo "Local Storage Topology (lsblk):"
+lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
+echo "=========================================="
+
+# Query AWS API for exact EBS Volume configuration (IOPS, Throughput, VolumeType)
+echo "EBS Volume Provisioning Specs:"
+aws ec2 describe-volumes \
+    --region "$REGION" \
+    --filters Name=attachment.instance-id,Values="$INSTANCE_ID" \
+    --query 'Volumes[*].{VolumeId:VolumeId, VolumeType:VolumeType, Size:Size, Iops:Iops, Throughput:Throughput}' \
+    --output table || echo "[WARN] Failed to query AWS EC2 API for EBS details (Ensure IAM role has ec2:DescribeVolumes permission)."
+echo "=========================================="
+
 # --- MOUNT LOCAL NVMe SSD TO /opt ---
 echo "Searching for local NVMe SSD..."
 
@@ -156,9 +182,20 @@ EOF
     ;;
 
   umadb)
-    # Download native AL2023 binary built with zigbuild (glibc 2.34 linked)
-    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.7.3/umadb-x86_64-unknown-linux-gnu-v3.tar.gz -o umadb.tar.gz
+    ARCH="{{ARCH}}"
+    VERSION="v0.7.3"
+
+    if [ "$ARCH" = "aarch64" ]; then
+      BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-aarch64-unknown-linux-gnu.tar.gz"
+    else
+      # High-performance v3 binary for x86_64 AL2023 instances
+      BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-x86_64-unknown-linux-gnu-v3.tar.gz"
+    fi
+
+    echo "Downloading UmaDB binary for $ARCH from $BINARY_URL..."
+    curl -sSL "$BINARY_URL" -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
+
     UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
 
