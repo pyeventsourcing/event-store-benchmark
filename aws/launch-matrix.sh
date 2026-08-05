@@ -49,14 +49,14 @@ AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query "Parameter.Value" --o
 if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d.*\. ]]; then
     echo "Storage Mode: Local NVMe Instance Storage (Direct-attached SSD detected)"
     BLOCK_MAPPINGS='[
-      {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
+      {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3","DeleteOnTermination":true}},
       {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
     ]'
 else
     echo "Storage Mode: EBS gp3 Network Storage"
-    
+
     # Build dynamic EBS JSON block based on provided flags
-    EBS_CONFIG='"VolumeSize":60,"VolumeType":"gp3"'
+    EBS_CONFIG='"VolumeSize":60,"VolumeType":"gp3","DeleteOnTermination":true'
     if [ -n "$EBS_IOPS" ]; then
         EBS_CONFIG+=", \"Iops\": $EBS_IOPS"
         echo " -> Custom IOPS: $EBS_IOPS"
