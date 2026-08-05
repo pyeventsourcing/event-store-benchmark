@@ -258,4 +258,5 @@ esac
 # 4. Run Workload
 export ESB_SESSION_ID=$SESSION_ID
 export ESB_WORKLOAD_STORES=$STORE
+export ESB_MAX_CONCURRENT_WORKERS="{{ESB_MAX_CONCURRENT_WORKERS}}"
 make run-scaling-dcb
