@@ -6,7 +6,7 @@ INSTANCE_TYPE="${INSTANCE_TYPE:-c6id.2xlarge}"
 STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
 IAM_PROFILE="BenchmarkRunnerRole"
 
-# Parse CLI arguments (e.g., ./launch.sh --instance c7g.2xlarge --stores umadb)
+# Parse CLI arguments (e.g., ./launch.sh --instance c7gd.2xlarge --stores umadb)
 while [[ $# -gt 0 ]]; do
   case $1 in
     -i|--instance) INSTANCE_TYPE="$2"; shift 2 ;;
@@ -23,7 +23,7 @@ SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 
-# Determine architecture based on instance family (e.g., c7g/m7g/a1 = aarch64, c6i/m6a = x86_64)
+# Determine architecture based on instance family (e.g., c7g/m7g/c7gd = aarch64, c6i/c6id = x86_64)
 if [[ "$INSTANCE_TYPE" =~ ^[a-z][0-9]g ]] || [[ "$INSTANCE_TYPE" =~ ^a1 ]]; then
     ARCH="aarch64"
     AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
@@ -34,14 +34,16 @@ fi
 
 AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query "Parameter.Value" --output text)
 
-# Configure block devices (If 'd' is in instance type name, map ephemeral NVMe)
-if [[ "$INSTANCE_TYPE" =~ d\. ]]; then
+# Configure block devices
+if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d.*\. ]]; then
+    # Catch I-series (Storage Optimized) OR any instance with a 'd' in its suffix, e.g. c6id, c7gd
+    echo "Configuring for Instance Storage (Local NVMe SSD)..."
     BLOCK_MAPPINGS='[
       {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
       {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
     ]'
 else
-    # EBS-only instances (e.g. c6i.2xlarge) - enlarge root volume for database storage
+    echo "Configuring for EBS-only Storage (Baseline gp3)..."
     BLOCK_MAPPINGS='[
       {
         "DeviceName": "/dev/xvda",
@@ -57,9 +59,11 @@ fi
 
 echo "================================================="
 echo " Launching Session: $SESSION_ID"
+echo " Target Repository: $REPO_URL (Branch: $BRANCH)"
 echo " Instance Type:    $INSTANCE_TYPE ($ARCH)"
-echo " AMI ID:           $AMI_ID"
 echo " Stores:           ${STORES[*]}"
+echo " AMI ID:           $AMI_ID"
+echo " Block mappings:   ${BLOCK_MAPPINGS}"
 echo "================================================="
 
 TEMPLATE_FILE="$DIR/userdata.template.sh"
