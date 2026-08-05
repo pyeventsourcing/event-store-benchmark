@@ -2,7 +2,7 @@
 exec > >(tee /var/log/benchmark.log|logger -t user-data -s 2>/dev/console) 2>&1
 set -e
 
-# Just in case, disable the AWS CLI pager so the script runs non-interactively
+# Disable the AWS CLI pager so the script runs non-interactively
 export AWS_PAGER=""
 
 # Explicitly set HOME for cloud-init background execution
@@ -12,6 +12,8 @@ STORE="{{STORE}}"
 SESSION_ID="{{SESSION_ID}}"
 REPO_URL="{{REPO_URL}}"
 BRANCH="{{BRANCH}}"
+ARCH="{{ARCH}}"
+GIT_HASH="{{GIT_HASH}}"
 S3_BUCKET="s3://esb-benchmark-results"
 
 # Get IMDSv2 Token & Instance Info
@@ -26,6 +28,8 @@ echo "Benchmark Host Metadata"
 echo "Instance ID:   $INSTANCE_ID"
 echo "Instance Type: $INSTANCE_TYPE"
 echo "Region / AZ:   $AZ"
+echo "Git Commit:    $GIT_HASH"
+echo "Architecture:  $ARCH"
 echo "=========================================="
 echo "Local Storage Topology (lsblk):"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
@@ -101,28 +105,32 @@ ulimit -n "$SET_FD"
 
 echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit -n)..."
 
-# AL2023 System Package Installation
+# AL2023 System Package Installation (No compiler tools required)
 dnf update -y
-dnf groupinstall -y "Development Tools"
 dnf install -y git unzip
 
 # Verify AWS CLI installation (Pre-installed on AL2023)
 aws --version
 
-# --- FETCH PRE-COMPILED BINARY FROM S3 ---
+# 2. Clone repository & fetch pre-compiled binary from S3
+git clone -b $BRANCH $REPO_URL /opt/benchmark
+cd /opt/benchmark
+mkdir -p /opt/benchmark/target/release
+
 BINARY_S3_PATH="$S3_BUCKET/binaries/$GIT_HASH/es-bench-$STORE-$ARCH"
 SHA_S3_PATH="$S3_BUCKET/binaries/$GIT_HASH/es-bench-$STORE-$ARCH.sha256"
 
-echo "Downloading benchmark binary from $BINARY_S3_PATH..."
-aws s3 cp "$BINARY_S3_PATH" /opt/benchmark/es-bench
-aws s3 cp "$SHA_S3_PATH" /opt/benchmark/es-bench.sha256
+echo "Fetching pre-compiled binary for $STORE ($ARCH) at commit $GIT_HASH..."
+aws s3 cp "$BINARY_S3_PATH" /opt/benchmark/target/release/es-bench
+aws s3 cp "$SHA_S3_PATH" /opt/benchmark/target/release/es-bench.sha256
 
-chmod +x /opt/benchmark/es-bench
+chmod +x /opt/benchmark/target/release/es-bench
+ln -sf /opt/benchmark/target/release/es-bench /opt/benchmark/es-bench
 
-# Verify integrity via SHA256
-echo "Verifying binary SHA256 checksum..."
-EXPECTED_SHA=$(cat /opt/benchmark/es-bench.sha256)
-ACTUAL_SHA=$(sha256sum /opt/benchmark/es-bench | awk '{print $1}')
+# Verify binary integrity
+echo "Verifying binary checksum..."
+EXPECTED_SHA=$(cat /opt/benchmark/target/release/es-bench.sha256)
+ACTUAL_SHA=$(sha256sum /opt/benchmark/target/release/es-bench | awk '{print $1}')
 
 if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
     echo "[FATAL ERROR] SHA256 Mismatch!"
@@ -131,8 +139,7 @@ if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
     exit 1
 fi
 
-echo "[SUCCESS] Binary downloaded and verified successfully! (SHA256: $ACTUAL_SHA)"
-
+echo "[SUCCESS] Binary checksum verified! ($ACTUAL_SHA)"
 
 
 # 3. Store-specific Setup & PID capturing
@@ -213,14 +220,13 @@ EOF
     echo "=============================="
     ;;
 
-umadb)
+  umadb)
     ARCH="{{ARCH}}"
     VERSION="v0.7.3"
 
     if [ "$ARCH" = "aarch64" ]; then
       BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-aarch64-unknown-linux-gnu.tar.gz"
     else
-      # High-performance v3 binary for x86_64 AL2023 instances
       BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-x86_64-unknown-linux-gnu-v3.tar.gz"
     fi
 
@@ -229,9 +235,7 @@ umadb)
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
 
     # --- DYNAMIC MEMORY ALLOCATION ---
-    # 1. Fetch total system memory in Kilobytes from the kernel
     TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    # 2. Convert to Megabytes and divide by 2 (bash automatically floors to a whole integer)
     HALF_MEM_MB=$((TOTAL_MEM_KB / 1024 / 2))
 
     echo "Detected $((TOTAL_MEM_KB / 1024)) MB total RAM. Setting UMADB_PAGE_CACHE_MAX_MB to $HALF_MEM_MB MB."
