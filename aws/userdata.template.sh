@@ -213,8 +213,18 @@ EOF
     echo $! > /opt/benchmark/axonserver.pid
     cd /opt/benchmark
 
-    echo "Waiting 30 seconds for AxonServer to initialize..."
-    sleep 30
+    echo "Waiting for AxonServer gRPC port (8124) to accept connections..."
+    for i in {1..60}; do
+      if nc -z 127.0.0.1 8124; then
+        echo "AxonServer gRPC port 8124 is UP!"
+        break
+      fi
+      echo "Port 8124 not ready yet, waiting 2s... ($i/60)"
+      sleep 2
+    done
+
+    # Give an extra 3 seconds for gRPC context initialization
+    sleep 3
 
     echo "=== AxonServer Startup Log ==="
     cat /opt/benchmark/axonserver.log || true
