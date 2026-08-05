@@ -14,6 +14,7 @@ REPO_URL="{{REPO_URL}}"
 BRANCH="{{BRANCH}}"
 ARCH="{{ARCH}}"
 GIT_HASH="{{GIT_HASH}}"
+ESB_MAX_CONCURRENT_WORKERS="{{ESB_MAX_CONCURRENT_WORKERS}}"
 S3_BUCKET="s3://esb-benchmark-results"
 
 # Get IMDSv2 Token & Instance Info

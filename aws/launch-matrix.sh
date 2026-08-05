@@ -10,6 +10,7 @@ STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
 IAM_PROFILE="${IAM_PROFILE:-BenchmarkRunnerRole}"
 EBS_IOPS=""
 EBS_THROUGHPUT=""
+ESB_MAX_CONCURRENT_WORKERS="1024"
 
 # Parse CLI arguments
 # Example usage:
@@ -22,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --iops) EBS_IOPS="$2"; shift 2 ;;
     --throughput) EBS_THROUGHPUT="$2"; shift 2 ;;
     --iam-profile) IAM_PROFILE="$2"; shift 2 ;;
+    --max-concurrent-workers) ESB_MAX_CONCURRENT_WORKERS="$2"; shift 2 ;;
     *) echo "Unknown option $1"; exit 1 ;;
   esac
 done
@@ -109,6 +111,7 @@ for STORE in "${STORES[@]}"; do
         -e "s|{{BRANCH}}|$BRANCH|g" \
         -e "s|{{ARCH}}|$ARCH|g" \
         -e "s|{{GIT_HASH}}|$GIT_HASH|g" \
+        -e "s|{{ESB_MAX_CONCURRENT_WORKERS}}|$ESB_MAX_CONCURRENT_WORKERS|g" \
         "$TEMPLATE_FILE" > "$TMP_USERDATA"
 
     INSTANCE_ID=$(aws ec2 run-instances \
