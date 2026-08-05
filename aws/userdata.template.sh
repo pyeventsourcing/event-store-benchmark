@@ -172,7 +172,27 @@ EOF
     curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.5.zip -o axonserver.zip
     unzip -q axonserver.zip
     cd AxonServer-2026.0.5
-    AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java -jar axonserver.jar > /opt/benchmark/axonserver.log 2>&1 &
+
+    # --- DYNAMIC JVM MEMORY ALLOCATION ---
+    # Fetch total memory in MB
+    TOTAL_MEM_MB=$(($(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024))
+
+    # Allocate 40% of system RAM to the JVM Heap (leave rest for OS, native buffers, and es-bench)
+    # Minimum floor of 512m so it doesn't crash on very small instances
+    HEAP_MB=$((TOTAL_MEM_MB * 40 / 100))
+    if [ "$HEAP_MB" -lt 512 ]; then
+      HEAP_MB=512
+    fi
+
+    echo "Detected ${TOTAL_MEM_MB} MB RAM. Setting AxonServer JVM heap (-Xms/-Xmx) to ${HEAP_MB}m."
+    # -------------------------------------
+
+    AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java \
+      -Xms${HEAP_MB}m \
+      -Xmx${HEAP_MB}m \
+      -XX:+UseG1GC \
+      -jar axonserver.jar > /opt/benchmark/axonserver.log 2>&1 &
+
     echo $! > /opt/benchmark/axonserver.pid
     cd /opt/benchmark
 
