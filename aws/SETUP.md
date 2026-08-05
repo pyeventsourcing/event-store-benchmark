@@ -56,13 +56,25 @@ After setting everything up, you are ready to launch the benchmark matrix.
 
     ./aws/lauch-matrix.sh
 
-Currently, this script is hard-coded to run the scaling-dcb workload (umadb, axonserver, postgres-dcb-ttcte).
+Currently, this script defaults to launching `c6id.2xlarge` instances and running the scaling-dcb workload with umadb, axonserver, postgres-dcb-ttcte.
+
+Run on ARM (Graviton) rather than Intel CPUs:
+
+    ./aws/launch-matrix.sh --instance c7gd.2xlarge
+
+EBS with baseline default (3,000 IOPS / 125 MB/s):
+
+    ./aws/launch-matrix.sh --instance c7g.2xlarge
+
+EBS with high provisioned IOPS & throughput to test scaling:
+
+    ./aws/launch-matrix.sh --instance c7g.2xlarge --iops 10000 --throughput 500
 
 Instances on AWS are tagged with `Project=event-store-benchmark-suite`.
 
 Results from a benchmark instance are synced to S3 when on completion.
 
-Instances should self-terminate on completion.
+Instances and storage devices should self-terminate on completion.
 
 ## Tail instance logs
 
