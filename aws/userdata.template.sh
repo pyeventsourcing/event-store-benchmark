@@ -75,7 +75,7 @@ echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit 
 # AL2023 System Package Installation
 dnf update -y
 dnf groupinstall -y "Development Tools"
-dnf install -y protobuf-compiler git curl unzip
+dnf install -y protobuf-compiler git protobuf-devel unzip
 
 # Verify AWS CLI installation (Pre-installed on AL2023)
 aws --version
@@ -109,10 +109,18 @@ case $STORE in
     mkdir -p "$NEW_DIR"
     chown -R postgres:postgres /opt/postgresql
 
-    # Initialize data directory directly on the NVMe volume
-    sudo -u postgres /usr/bin/postgresql-setup --datadir="$NEW_DIR" --initdb
+    # 1. Initialize data directory directly on NVMe using initdb
+    sudo -u postgres initdb -D "$NEW_DIR"
 
-    # Start and enable PostgreSQL service
+    # 2. Tell systemd where the custom data directory is located
+    mkdir -p /etc/systemd/system/postgresql.service.d/
+    cat <<EOF > /etc/systemd/system/postgresql.service.d/override.conf
+[Service]
+Environment=PGDATA=$NEW_DIR
+EOF
+
+    # 3. Reload systemd units and start PostgreSQL
+    systemctl daemon-reload
     systemctl enable postgresql
     systemctl start postgresql
 
@@ -149,7 +157,7 @@ case $STORE in
 
   umadb)
     # Download native AL2023 binary built with zigbuild (glibc 2.34 linked)
-    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.7.1/umadb-x86_64-unknown-linux-gnu.tar.gz -o umadb.tar.gz
+    curl -sSL https://github.com/umadb-io/umadb/releases/download/v0.7.3/umadb-x86_64-unknown-linux-gnu-v3.tar.gz -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
     UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=6000 nohup umadb > /opt/benchmark/umadb.log 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
