@@ -4,13 +4,21 @@ set -e
 # Default settings (can be overridden via CLI flags)
 INSTANCE_TYPE="${INSTANCE_TYPE:-c6id.2xlarge}"
 STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
-IAM_PROFILE="BenchmarkRunnerRole"
+IAM_PROFILE="${IAM_PROFILE:-BenchmarkRunnerRole}"
+EBS_IOPS=""
+EBS_THROUGHPUT=""
 
-# Parse CLI arguments (e.g., ./launch.sh --instance c7gd.2xlarge --stores umadb)
+# Parse CLI arguments
+# Example usage:
+#   ./launch.sh --instance c7g.2xlarge --iops 10000 --throughput 500
+#   ./launch.sh --instance c7gd.2xlarge --stores umadb
 while [[ $# -gt 0 ]]; do
   case $1 in
     -i|--instance) INSTANCE_TYPE="$2"; shift 2 ;;
     -s|--stores) IFS=',' read -r -a STORES <<< "$2"; shift 2 ;;
+    --iops) EBS_IOPS="$2"; shift 2 ;;
+    --throughput) EBS_THROUGHPUT="$2"; shift 2 ;;
+    --iam-profile) IAM_PROFILE="$2"; shift 2 ;;
     *) echo "Unknown option $1"; exit 1 ;;
   esac
 done
@@ -23,7 +31,7 @@ SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 
-# Determine architecture based on instance family (e.g., c7g/m7g/c7gd = aarch64, c6i/c6id = x86_64)
+# Determine architecture based on instance family (e.g., c7g/c7gd = aarch64, c6i/c6id = x86_64)
 if [[ "$INSTANCE_TYPE" =~ ^[a-z][0-9]g ]] || [[ "$INSTANCE_TYPE" =~ ^a1 ]]; then
     ARCH="aarch64"
     AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
@@ -35,35 +43,43 @@ fi
 AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query "Parameter.Value" --output text)
 
 # Configure block devices
-if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d.*\. ]]; then
-    # Catch I-series (Storage Optimized) OR any instance with a 'd' in its suffix, e.g. c6id, c7gd
-    echo "Configuring for Instance Storage (Local NVMe SSD)..."
+# Regex matches any instance family ending in 'd' before the dot (e.g. c6id.2xlarge, c7gd.2xlarge)
+if [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d\. ]]; then
+    echo "Storage Mode: Local NVMe Instance Storage ('d' variant detected)"
     BLOCK_MAPPINGS='[
       {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}},
       {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
     ]'
 else
-    echo "Configuring for EBS-only Storage (Baseline gp3)..."
-    BLOCK_MAPPINGS='[
-      {
-        "DeviceName": "/dev/xvda",
-        "Ebs": {
-          "VolumeSize": 60,
-          "VolumeType": "gp3",
-          "Iops": 10000,
-          "Throughput": 500
-        }
-      }
-    ]'
+    echo "Storage Mode: EBS gp3 Network Storage"
+
+    # Build dynamic EBS JSON block based on provided flags
+    EBS_CONFIG='"VolumeSize":60,"VolumeType":"gp3"'
+    if [ -n "$EBS_IOPS" ]; then
+        EBS_CONFIG+=", \"Iops\": $EBS_IOPS"
+        echo " -> Custom IOPS: $EBS_IOPS"
+    else
+        echo " -> IOPS: 3000 (AWS baseline default)"
+    fi
+
+    if [ -n "$EBS_THROUGHPUT" ]; then
+        EBS_CONFIG+=", \"Throughput\": $EBS_THROUGHPUT"
+        echo " -> Custom Throughput: $EBS_THROUGHPUT MB/s"
+    else
+        echo " -> Throughput: 125 MB/s (AWS baseline default)"
+    fi
+
+    BLOCK_MAPPINGS="[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{$EBS_CONFIG}}]"
 fi
 
 echo "================================================="
 echo " Launching Session: $SESSION_ID"
+echo " Stores:           ${STORES[*]}"
 echo " Target Repository: $REPO_URL (Branch: $BRANCH)"
 echo " Instance Type:    $INSTANCE_TYPE ($ARCH)"
-echo " Stores:           ${STORES[*]}"
-echo " AMI ID:           $AMI_ID"
 echo " Block mappings:   ${BLOCK_MAPPINGS}"
+echo " AMI ID:           $AMI_ID"
+echo " IAM Profile:      $IAM_PROFILE"
 echo "================================================="
 
 TEMPLATE_FILE="$DIR/userdata.template.sh"
