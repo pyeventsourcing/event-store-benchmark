@@ -93,6 +93,12 @@ impl PerformanceConfig {
         let readers_vec = self.concurrency.readers.as_vec();
 
         let mut configs = Vec::new();
+
+        // TODO: Something about either limiting totol number of readers and writers,
+        //  or only limiting workers for the mode (ie readers is mode is subscribe)
+        //  while requiring we don't both have lists of readers and lists or writers?
+        //  This issue came up whilst trying to limit subscribers to 1 when writers=2,
+        //  which caused the workflow to be entirely disabled because writers > given max.
         let max_concurrent_workers: Option<usize> = std::env::var("ESB_MAX_CONCURRENT_WORKERS")
             .ok()                            // Converts Result<String, VarError> into Option<String>
             .and_then(|val| val.parse().ok()); // Parses String to usize, turning Result into Option

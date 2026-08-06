@@ -17,6 +17,10 @@ GIT_HASH="{{GIT_HASH}}"
 ESB_MAX_CONCURRENT_WORKERS="{{ESB_MAX_CONCURRENT_WORKERS}}"
 S3_BUCKET="s3://esb-benchmark-results"
 
+STORE_LOG="/var/log/$STORE-server.log"
+RESULTS_STORE_LOG="/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log"
+
+
 # Get IMDSv2 Token & Instance Info
 TOKEN=$(curl -s -S -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
 INSTANCE_TYPE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type)
@@ -75,21 +79,35 @@ cleanup() {
 
   # 1. Check for OOMs and append to the main execution log BEFORE we copy it
   if dmesg -T | grep -q -iE 'oom-killer|killed process'; then
-    echo -e "\n==========================================" >> /var/log/benchmark.log
-    echo "🚨 KERNEL OOM KILLER DETECTED 🚨" >> /var/log/benchmark.log
-    dmesg -T | grep -iE 'oom-killer|killed process' >> /var/log/benchmark.log
-    echo "==========================================" >> /var/log/benchmark.log
+    echo -e "\n=========================================="
+    echo "🚨 KERNEL OOM KILLER DETECTED 🚨"
+    dmesg -T | grep -iE 'oom-killer|killed process'
+    echo "=========================================="
   fi
 
   # 2. Ensure target directory exists before copying
   mkdir -p /opt/benchmark/results/esb-$SESSION_ID
 
+  # Flush pending disk writes from RAM
+  sync
+
   # 3. Capture store-specific background server logs if present
-  if [ -d "/var/log/postgresql" ]; then
-    # Concatenate or copy the latest Postgres log file
-    cat /var/log/postgresql/*.log > "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" 2>/dev/null || true
-  elif [ -f "/opt/benchmark/$STORE.log" ]; then
-    cp /opt/benchmark/$STORE.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" || true
+  if [[ $STORE =~ postgres ]]; then
+
+    echo "Dumping PostgreSQL logs from systemd journal..."
+    journalctl -u postgresql --no-pager > "$RESULTS_STORE_LOG" 2>/dev/null
+
+    echo "Appending physical PostgreSQL log files..."
+    # NB: /opt/postgresql/data/log/ is probably where they actually are...
+    ls -l "/opt/postgresql/data/log/" 2>/dev/null || echo "Failed to list logs in /opt/postgresql/data/log/"
+    cat /var/log/postgresql/*.log /var/lib/pgsql/data/log/*.log /opt/postgresql/data/log/*.log >> "$RESULTS_STORE_LOG" 2>/dev/null || true
+
+  else
+    echo "Listing $STORE log files:"
+    ls -l "$STORE_LOG" 2>/dev/null || echo "File $STORE_LOG not found."
+    if [ -f "$STORE_LOG" ]; then
+      cp -v "$STORE_LOG" "$RESULTS_STORE_LOG" || true
+    fi
   fi
 
   # 4. Ensure working directory is /opt/benchmark before syncing
@@ -106,6 +124,14 @@ cleanup() {
   shutdown -h now
 }
 trap cleanup EXIT
+
+
+# Force max CPU performance
+sudo cpupower frequency-set -g performance || true
+
+# Maximize max map count and file descriptors
+sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w fs.file-max=2097152
 
 
 echo "Starting benchmark for $STORE in session $SESSION_ID"
@@ -235,15 +261,15 @@ EOF
       -Xms${HEAP_MB}m \
       -Xmx${HEAP_MB}m \
       -XX:+UseG1GC \
-      -jar axonserver.jar > /opt/benchmark/axonserver.log 2>&1 &
+      -jar axonserver.jar > $STORE_LOG 2>&1 &
 
     echo $! > /opt/benchmark/axonserver.pid
     cd /opt/benchmark
 
     echo "Waiting for AxonServer gRPC port (8124) to accept connections..."
     for i in {1..60}; do
-      if nc -z 127.0.0.1 8124; then
-        echo "AxonServer gRPC port 8124 is UP!"
+      if timeout 1 bash -c '</dev/tcp/127.0.0.1/8124' 2>/dev/null; then
+        echo "Port 8124 is open! AxonServer is ready."
         break
       fi
       echo "Port 8124 not ready yet, waiting 2s... ($i/60)"
@@ -254,7 +280,7 @@ EOF
     sleep 3
 
     echo "=== AxonServer Startup Log ==="
-    cat /opt/benchmark/axonserver.log || true
+    cat $STORE_LOG || true
     echo "=============================="
     ;;
 
@@ -272,21 +298,30 @@ EOF
     curl -sSL "$BINARY_URL" -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
 
-    # --- DYNAMIC MEMORY ALLOCATION ---
-    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    HALF_MEM_MB=$((TOTAL_MEM_KB / 1024 / 2))
+    TOTAL_MEM_MB=$(($(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024))
 
-    echo "Detected $((TOTAL_MEM_KB / 1024)) MB total RAM. Setting UMADB_PAGE_CACHE_MAX_MB to $HALF_MEM_MB MB."
+    # Reserve 1000 MB for OS/es-bench, split the remainder 50/50
+    # between UmaDB deserialized cache and other things
+    RAW_CALC=$(( (TOTAL_MEM_MB - 1000) / 2 ))
+
+    # Enforce a 128 MB minimum floor for low-memory testing (t4g.micro / t4g.small)
+    if [ "$RAW_CALC" -lt 128 ]; then
+        UMADB_PAGE_CACHE_MAX_MB=128
+    else
+        UMADB_PAGE_CACHE_MAX_MB=$RAW_CALC
+    fi
+
+    echo "Total RAM: ${TOTAL_MEM_MB}MB | UmaDB Cache: ${UMADB_PAGE_CACHE_MAX_MB}MB | Free for OS & Kernel Cache: $((TOTAL_MEM_MB - UMADB_PAGE_CACHE_MAX_MB))MB"
     # ---------------------------------
 
-    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=$HALF_MEM_MB nohup umadb > /opt/benchmark/umadb.log 2>&1 &
+    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=$UMADB_PAGE_CACHE_MAX_MB nohup umadb > $STORE_LOG 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
 
     echo "Waiting 5 seconds for UmaDB to initialize..."
     sleep 5
 
     echo "=== UmaDB Startup Log ==="
-    cat /opt/benchmark/umadb.log || true
+    cat $STORE_LOG || true
     echo "========================="
     ;;
 esac

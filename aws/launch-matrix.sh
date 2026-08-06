@@ -36,9 +36,9 @@ SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
 # Get Git commit hash for binary caching
 GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
-if ! git -C "$REPO_ROOT" diff --quiet HEAD 2>/dev/null; then
-    GIT_HASH="${GIT_HASH}-dirty"
-fi
+#if ! git -C "$REPO_ROOT" diff --quiet HEAD 2>/dev/null; then
+#    GIT_HASH="${GIT_HASH}-dirty"
+#fi
 
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 

@@ -19,9 +19,11 @@ fi
 # Get Git commit hash
 GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
 if ! git -C "$REPO_ROOT" diff --quiet HEAD 2>/dev/null; then
-    GIT_HASH="${GIT_HASH}-dirty"
-    echo "[WARN] Uncommitted changes detected! Labeling binary as $GIT_HASH"
+    echo "[WARN] Uncommitted changes detected!"
+    #    GIT_HASH="${GIT_HASH}-dirty"
 fi
+
+echo "Labeling binary as $GIT_HASH"
 
 S3_PREFIX="s3://$S3_BUCKET/binaries/$GIT_HASH"
 S3_BINARY_URI="$S3_PREFIX/es-bench-$STORE-$ARCH"
