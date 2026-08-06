@@ -10,6 +10,7 @@ STORES=("umadb" "axonserver" "postgres-dcb-ttcte")
 IAM_PROFILE="${IAM_PROFILE:-BenchmarkRunnerRole}"
 EBS_IOPS=""
 EBS_THROUGHPUT=""
+EBS_VOLUME_TYPE="gp3" # Default to gp3
 ESB_MAX_CONCURRENT_WORKERS="1024"
 OS_CHOICE="al" # Default OS
 
@@ -17,11 +18,13 @@ OS_CHOICE="al" # Default OS
 # Example usage:
 #   ./launch.sh --instance c7g.2xlarge --os ubuntu
 #   ./launch.sh --instance c7gd.2xlarge --stores umadb --os al
+#   ./launch.sh --instance c7i.2xlarge --volume-type io2 --iops 15000
 while [[ $# -gt 0 ]]; do
   case $1 in
     -i|--instance) INSTANCE_TYPE="$2"; shift 2 ;;
     -s|--stores) IFS=',' read -r -a STORES <<< "$2"; shift 2 ;;
-    -o|--os) OS_CHOICE=$(echo "$2" | tr '[:upper:]' '[:lower:]'); shift 2 ;; # Converts to lowercase automatically
+    -o|--os) OS_CHOICE=$(echo "$2" | tr '[:upper:]' '[:lower:]'); shift 2 ;;
+    --volume-type) EBS_VOLUME_TYPE="$2"; shift 2 ;;
     --iops) EBS_IOPS="$2"; shift 2 ;;
     --throughput) EBS_THROUGHPUT="$2"; shift 2 ;;
     --iam-profile) IAM_PROFILE="$2"; shift 2 ;;
@@ -75,25 +78,39 @@ if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d
       {\"DeviceName\":\"/dev/sdb\",\"VirtualName\":\"ephemeral0\"}
     ]"
 else
-    echo "Storage Mode: EBS gp3 Network Storage (Dedicated Data Volume)"
+echo "Storage Mode: EBS $EBS_VOLUME_TYPE Network Storage (Dedicated Data Volume)"
 
     # Build dynamic EBS JSON block for secondary data disk (/dev/sdb)
-    EBS_CONFIG='"VolumeSize":60,"VolumeType":"gp3","DeleteOnTermination":true'
-    if [ -n "$EBS_IOPS" ]; then
+    EBS_CONFIG='"VolumeSize":60,"VolumeType":"'"$EBS_VOLUME_TYPE"'","DeleteOnTermination":true'
+
+    if [ "$EBS_VOLUME_TYPE" == "io2" ]; then
+        # io2 REQUIRES provisioned IOPS. Default to 3000 if user didn't specify.
+        EBS_IOPS=${EBS_IOPS:-3000}
         EBS_CONFIG+=", \"Iops\": $EBS_IOPS"
-        echo " -> Custom IOPS: $EBS_IOPS"
+        echo " -> IOPS: $EBS_IOPS (Required for io2)"
+
+        # AWS API rejects 'Throughput' param for io2 volumes.
+        if [ -n "$EBS_THROUGHPUT" ]; then
+            echo " -> [WARN] Ignoring --throughput (not supported by AWS API for io2)"
+        fi
     else
-        echo " -> IOPS: 3000 (AWS baseline default)"
+        # Standard gp3 logic
+        if [ -n "$EBS_IOPS" ]; then
+            EBS_CONFIG+=", \"Iops\": $EBS_IOPS"
+            echo " -> Custom IOPS: $EBS_IOPS"
+        else
+            echo " -> IOPS: 3000 (AWS baseline default)"
+        fi
+
+        if [ -n "$EBS_THROUGHPUT" ]; then
+            EBS_CONFIG+=", \"Throughput\": $EBS_THROUGHPUT"
+            echo " -> Custom Throughput: $EBS_THROUGHPUT MB/s"
+        else
+            echo " -> Throughput: 125 MB/s (AWS baseline default)"
+        fi
     fi
 
-    if [ -n "$EBS_THROUGHPUT" ]; then
-        EBS_CONFIG+=", \"Throughput\": $EBS_THROUGHPUT"
-        echo " -> Custom Throughput: $EBS_THROUGHPUT MB/s"
-    else
-        echo " -> Throughput: 125 MB/s (AWS baseline default)"
-    fi
-
-    # Root volume (20 GB OS) + Secondary volume (60 GB Data)
+    # Root volume (20 GB OS remains gp3) + Secondary volume (60 GB Data dynamic)
     BLOCK_MAPPINGS="[
       {\"DeviceName\":\"$ROOT_DEVICE\",\"Ebs\":{\"VolumeSize\":20,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}},
       {\"DeviceName\":\"/dev/sdb\",\"Ebs\":{$EBS_CONFIG}}
