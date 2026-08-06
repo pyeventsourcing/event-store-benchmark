@@ -133,11 +133,17 @@ for STORE in "${STORES[@]}"; do
         -e "s|{{ESB_MAX_CONCURRENT_WORKERS}}|$ESB_MAX_CONCURRENT_WORKERS|g" \
         "$TEMPLATE_FILE" > "$TMP_USERDATA"
 
+    # Only add CPU credit specification for burstable T-series instances
+    CREDIT_SPEC=""
+    if [[ "$INSTANCE_TYPE" =~ ^t[0-9] ]]; then
+        CREDIT_SPEC="--credit-specification CpuCredits=unlimited"
+    fi
+
     INSTANCE_ID=$(aws ec2 run-instances \
         --image-id "$AMI_ID" \
         --instance-type "$INSTANCE_TYPE" \
         --iam-instance-profile Name="$IAM_PROFILE" \
-        --credit-specification CpuCredits=unlimited \
+        $CREDIT_SPEC \
         --block-device-mappings "$BLOCK_MAPPINGS" \
         --user-data file://"$TMP_USERDATA" \
         --instance-initiated-shutdown-behavior terminate \

@@ -84,7 +84,7 @@ else
 fi
 
 # ==========================================
-# 3. HOST METADATA & STORAGE MOUNTING
+# 3. HOST METADATA
 # ==========================================
 # Get IMDSv2 Token & Instance Info
 TOKEN=$(curl -s -S -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
@@ -101,6 +101,73 @@ echo "Instance Type: $INSTANCE_TYPE"
 echo "Region / AZ:   $AZ"
 echo "Git Commit:    $GIT_HASH"
 echo "Architecture:  $ARCH"
+
+
+# ==========================================
+# 4. SYSTEM SETUP & PACKAGE INSTALLATION
+# ==========================================
+# Maximize max map count and file descriptors
+sudo sysctl -w vm.max_map_count=262144
+sudo sysctl -w fs.file-max=2097152
+
+DESIRED_FD=65535
+HARD_FD=$(ulimit -Hn)
+
+if [ "$HARD_FD" != "unlimited" ] && [ "$HARD_FD" -lt "$DESIRED_FD" ]; then
+    echo "[WARN] Operating system hard limit ($HARD_FD) is lower than recommended ($DESIRED_FD)."
+    SET_FD=$HARD_FD
+else
+    SET_FD=$DESIRED_FD
+fi
+
+ulimit -n "$SET_FD"
+echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit -n)..."
+
+# Install packages dynamically based on OS family
+if [ "$OS_FAMILY" = "ubuntu" ]; then
+    export DEBIAN_FRONTEND=noninteractive
+
+    # --- SPEED UP APT DOWNLOADS ---
+    # 1. Disable apt periodic timer updates that block dpkg locks on boot
+    systemctl stop apt-daily.service apt-daily-upgrade.service || true
+    systemctl disable apt-daily.service apt-daily-upgrade.service || true
+
+#    # 2. Swap standard mirrors to fast AWS EC2 Regional Mirrors
+#    if [ "$ARCH" = "x86_64" ]; then
+#        sed -i "s|http://archive.ubuntu.com|http://${REGION}.ec2.archive.ubuntu.com|g" /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+#        sed -i "s|http://security.ubuntu.com|http://${REGION}.ec2.archive.ubuntu.com|g" /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+#    fi
+
+#    # 3. Disable apt bandwidth throttling & ipv6 timeouts
+#    echo 'Acquire::ForceIPv4 "true";' > /etc/apt/apt.conf.d/99force-ipv4
+#    echo 'Acquire::Queue-Mode "host";' >> /etc/apt/apt.conf.d/99parallel
+#    # ------------------------------
+
+    echo "Updating Ubuntu packages..."
+    apt-get update -yq
+    apt-get install -yq git unzip make linux-tools-common linux-tools-generic
+
+    echo "Installing AWS CLI v2 for Ubuntu ($ARCH)..."
+    # Official AWS CLI v2 Installation (Architecture Aware)
+    if [ "$ARCH" = "aarch64" ]; then
+        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
+    else
+        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    fi
+
+    curl -sSL "$AWS_CLI_URL" -o "/tmp/awscliv2.zip"
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+else
+    dnf update -y
+    dnf install -y git unzip make kernel-tools
+fi
+
+# ==========================================
+# 5. STORAGE DETECTION AND MOUNTING
+# ==========================================
+
 echo "=========================================="
 echo "Local Storage Topology (lsblk):"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
@@ -138,48 +205,6 @@ else
 fi
 # ---------------------------------------
 
-# ==========================================
-# 4. SYSTEM SETUP & PACKAGE INSTALLATION
-# ==========================================
-# Maximize max map count and file descriptors
-sudo sysctl -w vm.max_map_count=262144
-sudo sysctl -w fs.file-max=2097152
-
-DESIRED_FD=65535
-HARD_FD=$(ulimit -Hn)
-
-if [ "$HARD_FD" != "unlimited" ] && [ "$HARD_FD" -lt "$DESIRED_FD" ]; then
-    echo "[WARN] Operating system hard limit ($HARD_FD) is lower than recommended ($DESIRED_FD)."
-    SET_FD=$HARD_FD
-else
-    SET_FD=$DESIRED_FD
-fi
-
-ulimit -n "$SET_FD"
-echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit -n)..."
-
-# Install packages dynamically based on OS family
-if [ "$OS_FAMILY" = "ubuntu" ]; then
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -yq
-    apt-get install -yq git unzip make linux-tools-common linux-tools-generic
-
-    # Official AWS CLI v2 Installation (Architecture Aware)
-    if [ "$ARCH" = "aarch64" ]; then
-        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
-    else
-        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
-    fi
-
-    echo "Installing AWS CLI v2 for Ubuntu ($ARCH)..."
-    curl -sSL "$AWS_CLI_URL" -o "/tmp/awscliv2.zip"
-    unzip -q /tmp/awscliv2.zip -d /tmp
-    /tmp/aws/install
-    rm -rf /tmp/awscliv2.zip /tmp/aws
-else
-    dnf update -y
-    dnf install -y git unzip make kernel-tools
-fi
 
 # Force max CPU performance if cpupower is installed
 if command -v cpupower &> /dev/null; then
@@ -187,7 +212,7 @@ if command -v cpupower &> /dev/null; then
 fi
 
 # ==========================================
-# 5. FETCH BINARY & CLONE REPO
+# 6. FETCH BINARY & CLONE REPO
 # ==========================================
 echo "Starting benchmark setup for $STORE in session $SESSION_ID"
 
@@ -220,7 +245,7 @@ fi
 echo "[SUCCESS] Binary checksum verified! ($ACTUAL_SHA)"
 
 # ==========================================
-# 6. STORE-SPECIFIC SETUP
+# 7. STORE-SPECIFIC SETUP
 # ==========================================
 case $STORE in
   postgres-dcb-ttcte)
@@ -306,6 +331,7 @@ EOF
         dnf install -y java-21-amazon-corretto-devel
     fi
 
+    echo "Downloading Axon Server..."
     curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.5.zip -o axonserver.zip
     unzip -q axonserver.zip
     cd AxonServer-2026.0.5
@@ -330,6 +356,7 @@ EOF
 
     echo "Waiting for AxonServer gRPC port (8124)..."
     for i in {1..60}; do
+      echo " - attempt $i/60"
       if timeout 1 bash -c '</dev/tcp/127.0.0.1/8124' 2>/dev/null; then
         echo "Port 8124 open!"
         break
@@ -381,7 +408,7 @@ EOF
 esac
 
 # ==========================================
-# 7. RUN WORKLOAD
+# 8. RUN WORKLOAD
 # ==========================================
 export ESB_SESSION_ID=$SESSION_ID
 export ESB_WORKLOAD_STORES=$STORE
