@@ -61,9 +61,9 @@ if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d
       {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
     ]'
 else
-    echo "Storage Mode: EBS gp3 Network Storage"
+    echo "Storage Mode: EBS gp3 Network Storage (Dedicated Data Volume)"
 
-    # Build dynamic EBS JSON block based on provided flags
+    # Build dynamic EBS JSON block for secondary data disk (/dev/sdb)
     EBS_CONFIG='"VolumeSize":60,"VolumeType":"gp3","DeleteOnTermination":true'
     if [ -n "$EBS_IOPS" ]; then
         EBS_CONFIG+=", \"Iops\": $EBS_IOPS"
@@ -79,7 +79,11 @@ else
         echo " -> Throughput: 125 MB/s (AWS baseline default)"
     fi
 
-    BLOCK_MAPPINGS="[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{$EBS_CONFIG}}]"
+    # Root volume (20 GB OS) + Secondary volume (60 GB Data)
+    BLOCK_MAPPINGS="[
+      {\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeSize\":20,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}},
+      {\"DeviceName\":\"/dev/sdb\",\"Ebs\":{$EBS_CONFIG}}
+    ]"
 fi
 
 echo "================================================="

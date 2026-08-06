@@ -45,23 +45,28 @@ aws ec2 describe-volumes \
     --output table || echo "[WARN] Failed to query AWS EC2 API for EBS details (Ensure IAM role has ec2:DescribeVolumes permission)."
 echo "=========================================="
 
-# --- MOUNT LOCAL NVMe SSD TO /opt ---
-echo "Searching for local NVMe SSD..."
+# --- MOUNT DEDICATED STORAGE TO /opt ---
+echo "Searching for dedicated benchmark storage..."
 
-# Locate the disk with the exact AWS "Instance Storage" model name
-EPHEMERAL_DEV=$(lsblk -dno NAME,MODEL | grep -i "Instance Storage" | awk '{print "/dev/"$1}' | head -n 1)
+# 1. Look for local NVMe Instance Storage first (e.g. c7gd instances)
+DATA_DEV=$(lsblk -dno NAME,MODEL | grep -i "Instance Storage" | awk '{print "/dev/"$1}' | head -n 1)
 
-if [ -n "$EPHEMERAL_DEV" ]; then
-  echo "Found local NVMe SSD at $EPHEMERAL_DEV. Formatting with ext4..."
-  mkfs.ext4 -F "$EPHEMERAL_DEV"
+# 2. If no Instance Storage, look for secondary attached disk (e.g. /dev/sdb or /dev/nvme1n1)
+if [ -z "$DATA_DEV" ]; then
+  DATA_DEV=$(lsblk -dno NAME,TYPE | grep "disk" | awk '{print "/dev/"$1}' | grep -vE "nvme0n1|xvda" | head -n 1)
+fi
+
+if [ -n "$DATA_DEV" ]; then
+  echo "Found dedicated data disk at $DATA_DEV. Formatting with ext4 (journaling enabled)..."
+  mkfs.ext4 -F "$DATA_DEV"
   mkdir -p /opt
-  mount -o noatime "$EPHEMERAL_DEV" /opt
-  echo "Local NVMe mounted successfully to /opt:"
+  mount -o noatime "$DATA_DEV" /opt
+  echo "Data volume mounted successfully to /opt:"
   df -h /opt
 else
-  echo "Warning: No local NVMe Instance Storage found, falling back to root volume."
+  echo "Warning: No secondary data volume found, falling back to root volume."
 fi
-# -----------------------------------
+# ---------------------------------------
 
 # ALWAYS SHUTDOWN ON EXIT (Even if an error triggers set -e)
 cleanup() {
