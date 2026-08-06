@@ -4,8 +4,6 @@ set -e
 
 # Disable the AWS CLI pager so the script runs non-interactively
 export AWS_PAGER=""
-
-# Explicitly set HOME for cloud-init background execution
 export HOME="/root"
 
 STORE="{{STORE}}"
@@ -18,9 +16,76 @@ ESB_MAX_CONCURRENT_WORKERS="{{ESB_MAX_CONCURRENT_WORKERS}}"
 S3_BUCKET="s3://esb-benchmark-results"
 
 STORE_LOG="/var/log/$STORE-server.log"
-RESULTS_STORE_LOG="/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log"
+RESULTS_DIR="/opt/benchmark/results/esb-$SESSION_ID"
+RESULTS_STORE_LOG="$RESULTS_DIR/$STORE-server.log"
+PG_SERVICE="postgresql" # Default service name, updated dynamically if on Ubuntu
 
+# ==========================================
+# 1. REGISTER CLEANUP TRAP FIRST
+# ==========================================
+# Trap will fire on script completion OR any fatal exit/error
+cleanup() {
+  EXIT_CODE=$?
+  echo "Script exiting with code $EXIT_CODE. Syncing logs and shutting down..."
 
+  # 1. Check for OOMs in kernel ring buffer
+  if dmesg -T 2>/dev/null | grep -q -iE 'oom-killer|killed process'; then
+    echo -e "\n=========================================="
+    echo "🚨 KERNEL OOM KILLER DETECTED 🚨"
+    dmesg -T 2>/dev/null | grep -iE 'oom-killer|killed process'
+    echo "=========================================="
+  fi
+
+  # 2. Ensure target results directory exists
+  mkdir -p "$RESULTS_DIR"
+
+  # Flush pending disk writes from RAM
+  sync
+
+  # 3. Capture store-specific background server logs
+  if [[ "$STORE" == *postgres* ]]; then
+    echo "Dumping PostgreSQL logs from systemd journal ($PG_SERVICE)..."
+    journalctl -u "$PG_SERVICE" --no-pager > "$RESULTS_STORE_LOG" 2>/dev/null || true
+
+    echo "Appending physical PostgreSQL log files if present..."
+    ls -l "/opt/postgresql/data/log/" 2>/dev/null || echo "No logs in /opt/postgresql/data/log/"
+    cat /var/log/postgresql/*.log /var/lib/pgsql/data/log/*.log /opt/postgresql/data/log/*.log >> "$RESULTS_STORE_LOG" 2>/dev/null || true
+  else
+    echo "Listing $STORE log file ($STORE_LOG):"
+    ls -l "$STORE_LOG" 2>/dev/null || echo "File $STORE_LOG not found."
+    if [ -f "$STORE_LOG" ]; then
+      cp -v "$STORE_LOG" "$RESULTS_STORE_LOG" || true
+    fi
+  fi
+
+  # 4. Copy the main user-data execution log
+  cp /var/log/benchmark.log "$RESULTS_DIR/$STORE-benchmark.log" 2>/dev/null || true
+
+  # 5. Sync results directory to S3
+  if [ -d "/opt/benchmark/results" ]; then
+    cd /opt/benchmark
+    aws s3 sync results/ "$S3_BUCKET/$SESSION_ID/" || true
+  fi
+
+  shutdown -h now
+}
+trap cleanup EXIT
+
+# ==========================================
+# 2. OS DETECTION
+# ==========================================
+if grep -qi ubuntu /etc/os-release; then
+  OS_FAMILY="ubuntu"
+elif grep -qi amzn /etc/os-release; then
+  OS_FAMILY="al"
+else
+  echo "[FATAL] Unsupported OS. This script requires Ubuntu or Amazon Linux."
+  exit 1
+fi
+
+# ==========================================
+# 3. HOST METADATA & STORAGE MOUNTING
+# ==========================================
 # Get IMDSv2 Token & Instance Info
 TOKEN=$(curl -s -S -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
 INSTANCE_TYPE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type)
@@ -30,6 +95,7 @@ REGION="${AZ%?}" # Trim last char to get region (e.g. us-east-1a -> us-east-1)
 
 echo "=========================================="
 echo "Benchmark Host Metadata"
+echo "OS Family:     $OS_FAMILY"
 echo "Instance ID:   $INSTANCE_ID"
 echo "Instance Type: $INSTANCE_TYPE"
 echo "Region / AZ:   $AZ"
@@ -40,13 +106,13 @@ echo "Local Storage Topology (lsblk):"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL
 echo "=========================================="
 
-# Query AWS API for exact EBS Volume configuration (IOPS, Throughput, VolumeType)
+# Query AWS API for exact EBS Volume configuration
 echo "EBS Volume Provisioning Specs:"
 aws ec2 describe-volumes \
     --region "$REGION" \
     --filters Name=attachment.instance-id,Values="$INSTANCE_ID" \
     --query 'Volumes[*].{VolumeId:VolumeId, VolumeType:VolumeType, Size:Size, Iops:Iops, Throughput:Throughput}' \
-    --output table || echo "[WARN] Failed to query AWS EC2 API for EBS details (Ensure IAM role has ec2:DescribeVolumes permission)."
+    --output table || echo "[WARN] Failed to query AWS EC2 API for EBS details."
 echo "=========================================="
 
 # --- MOUNT DEDICATED STORAGE TO /opt ---
@@ -72,101 +138,59 @@ else
 fi
 # ---------------------------------------
 
-# ALWAYS SHUTDOWN ON EXIT (Even if an error triggers set -e)
-cleanup() {
-  EXIT_CODE=$?
-  echo "Script exiting with code $EXIT_CODE. Syncing logs and shutting down..."
-
-  # 1. Check for OOMs and append to the main execution log BEFORE we copy it
-  if dmesg -T | grep -q -iE 'oom-killer|killed process'; then
-    echo -e "\n=========================================="
-    echo "🚨 KERNEL OOM KILLER DETECTED 🚨"
-    dmesg -T | grep -iE 'oom-killer|killed process'
-    echo "=========================================="
-  fi
-
-  # 2. Ensure target directory exists before copying
-  mkdir -p /opt/benchmark/results/esb-$SESSION_ID
-
-  # Flush pending disk writes from RAM
-  sync
-
-  # 3. Capture store-specific background server logs if present
-  if [[ $STORE =~ postgres ]]; then
-
-    echo "Dumping PostgreSQL logs from systemd journal..."
-    journalctl -u postgresql --no-pager > "$RESULTS_STORE_LOG" 2>/dev/null
-
-    echo "Appending physical PostgreSQL log files..."
-    # NB: /opt/postgresql/data/log/ is probably where they actually are...
-    ls -l "/opt/postgresql/data/log/" 2>/dev/null || echo "Failed to list logs in /opt/postgresql/data/log/"
-    cat /var/log/postgresql/*.log /var/lib/pgsql/data/log/*.log /opt/postgresql/data/log/*.log >> "$RESULTS_STORE_LOG" 2>/dev/null || true
-
-  else
-    echo "Listing $STORE log files:"
-    ls -l "$STORE_LOG" 2>/dev/null || echo "File $STORE_LOG not found."
-    if [ -f "$STORE_LOG" ]; then
-      cp -v "$STORE_LOG" "$RESULTS_STORE_LOG" || true
-    fi
-  fi
-
-  # 4. Ensure working directory is /opt/benchmark before syncing
-  cd /opt/benchmark
-
-  # 5. Copy the benchmark log file
-  cp /var/log/benchmark.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-benchmark.log" || true
-
-  # 6. Sync results folder if it exists
-  if [ -d "results" ]; then
-    aws s3 sync results/ "$S3_BUCKET/$SESSION_ID/" || true
-  fi
-
-  shutdown -h now
-}
-trap cleanup EXIT
-
-
-# Force max CPU performance
-sudo cpupower frequency-set -g performance || true
-
+# ==========================================
+# 4. SYSTEM SETUP & PACKAGE INSTALLATION
+# ==========================================
 # Maximize max map count and file descriptors
 sudo sysctl -w vm.max_map_count=262144
 sudo sysctl -w fs.file-max=2097152
 
-
-echo "Starting benchmark for $STORE in session $SESSION_ID"
-
-# 1. System Setup
-
-# Target file descriptor count for high performance / concurrency
 DESIRED_FD=65535
-
-# Check current hard limit
 HARD_FD=$(ulimit -Hn)
 
-# Automatically cap at the OS hard limit if it's lower than desired
 if [ "$HARD_FD" != "unlimited" ] && [ "$HARD_FD" -lt "$DESIRED_FD" ]; then
     echo "[WARN] Operating system hard limit ($HARD_FD) is lower than recommended ($DESIRED_FD)."
-    echo "[WARN] Setting file descriptor limit to OS ceiling ($HARD_FD)."
-    echo "[WARN] To increase this further, update /etc/security/limits.conf or systemd service settings."
     SET_FD=$HARD_FD
 else
     SET_FD=$DESIRED_FD
 fi
 
-# Apply the new limit to this shell and any child processes
 ulimit -n "$SET_FD"
-
 echo "[INFO] Starting benchmark with soft file descriptor limit set to $(ulimit -n)..."
 
-# AL2023 System Package Installation (No compiler tools required)
-dnf update -y
-dnf install -y git unzip make
+# Install packages dynamically based on OS family
+if [ "$OS_FAMILY" = "ubuntu" ]; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -yq
+    apt-get install -yq git unzip make linux-tools-common linux-tools-generic
 
-# Verify AWS CLI installation (Pre-installed on AL2023)
-aws --version
+    # Official AWS CLI v2 Installation (Architecture Aware)
+    if [ "$ARCH" = "aarch64" ]; then
+        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
+    else
+        AWS_CLI_URL="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    fi
 
-# 2. Clone repository & fetch pre-compiled binary from S3
+    echo "Installing AWS CLI v2 for Ubuntu ($ARCH)..."
+    curl -sSL "$AWS_CLI_URL" -o "/tmp/awscliv2.zip"
+    unzip -q /tmp/awscliv2.zip -d /tmp
+    /tmp/aws/install
+    rm -rf /tmp/awscliv2.zip /tmp/aws
+else
+    dnf update -y
+    dnf install -y git unzip make kernel-tools
+fi
+
+# Force max CPU performance if cpupower is installed
+if command -v cpupower &> /dev/null; then
+    sudo cpupower frequency-set -g performance || true
+fi
+
+# ==========================================
+# 5. FETCH BINARY & CLONE REPO
+# ==========================================
+echo "Starting benchmark setup for $STORE in session $SESSION_ID"
+
 git clone -b $BRANCH $REPO_URL /opt/benchmark
 cd /opt/benchmark
 mkdir -p /opt/benchmark/target/release
@@ -195,97 +219,131 @@ fi
 
 echo "[SUCCESS] Binary checksum verified! ($ACTUAL_SHA)"
 
-
-# 3. Store-specific Setup & PID capturing
+# ==========================================
+# 6. STORE-SPECIFIC SETUP
+# ==========================================
 case $STORE in
   postgres-dcb-ttcte)
-    # Install PostgreSQL 15 on AL2023
-    dnf install -y postgresql15-server postgresql15
-
     NEW_DIR="/opt/postgresql/data"
     echo "=== Initializing PostgreSQL on NVMe ($NEW_DIR) ==="
-
     mkdir -p "$NEW_DIR"
-    chown -R postgres:postgres /opt/postgresql
 
-    # 1. Initialize data directory directly on NVMe using initdb
-    sudo -u postgres initdb -D "$NEW_DIR"
+    if [ "$OS_FAMILY" = "ubuntu" ]; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get install -yq postgresql postgresql-contrib
 
-    # 2. Tell systemd where the custom data directory is located
-    mkdir -p /etc/systemd/system/postgresql.service.d/
-    cat <<EOF > /etc/systemd/system/postgresql.service.d/override.conf
+        # Stop and disable standard Ubuntu multi-cluster service
+        systemctl stop postgresql
+        systemctl disable postgresql
+
+        chown -R postgres:postgres /opt/postgresql
+
+        # Dynamically discover installed Postgres version
+        PG_VER=$(ls /usr/lib/postgresql/ | grep -E '^[0-9]+$' | sort -V | tail -n 1)
+        sudo -u postgres /usr/lib/postgresql/$PG_VER/bin/initdb -D "$NEW_DIR"
+
+        # Force physical log creation
+        echo "logging_collector = on" >> "$NEW_DIR/postgresql.conf"
+        echo "log_directory = 'log'" >> "$NEW_DIR/postgresql.conf"
+
+        # Create raw systemd service pointing to custom NVMe path
+        cat <<EOF > /etc/systemd/system/postgres-bench.service
+[Unit]
+Description=PostgreSQL Benchmark Server
+[Service]
+Type=simple
+User=postgres
+Environment=PGDATA=$NEW_DIR
+ExecStart=/usr/lib/postgresql/$PG_VER/bin/postgres
+LimitNOFILE=65535
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl start postgres-bench
+        PG_SERVICE="postgres-bench"
+    else
+        # Amazon Linux 2023 Setup
+        dnf install -y postgresql15-server postgresql15
+        chown -R postgres:postgres /opt/postgresql
+        sudo -u postgres initdb -D "$NEW_DIR"
+
+        # Force physical log creation
+        echo "logging_collector = on" >> "$NEW_DIR/postgresql.conf"
+        echo "log_directory = 'log'" >> "$NEW_DIR/postgresql.conf"
+
+        mkdir -p /etc/systemd/system/postgresql.service.d/
+        cat <<EOF > /etc/systemd/system/postgresql.service.d/override.conf
 [Service]
 Environment=PGDATA=$NEW_DIR
+LimitNOFILE=65535
 EOF
+        systemctl daemon-reload
+        systemctl enable postgresql
+        systemctl start postgresql
+        PG_SERVICE="postgresql"
+    fi
 
-    # 3. Reload systemd units and start PostgreSQL
-    systemctl daemon-reload
-    systemctl enable postgresql
-    systemctl start postgresql
-
-    # Create PostgreSQL user, database, and assign ownership
+    # Database & User setup
+    sleep 3
     sudo -u postgres psql -c "CREATE USER eventsourcing WITH PASSWORD 'eventsourcing';" || true
     sudo -u postgres psql -c "CREATE DATABASE eventsourcing OWNER eventsourcing;" || true
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE eventsourcing TO eventsourcing;" || true
 
-    # Capture PostgreSQL PID
     pgrep -o -x postgres > /opt/benchmark/postgres-dcb-ttcte.pid || true
 
     echo "=== PostgreSQL Status ==="
-    systemctl status postgresql --no-pager || true
+    systemctl status $PG_SERVICE --no-pager || true
 
     ./target/release/es-bench create-postgres-dcb-ttcte-tables
     ;;
 
   axonserver)
-    dnf install -y java-21-amazon-corretto-devel
+    if [ "$OS_FAMILY" = "ubuntu" ]; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get install -yq openjdk-21-jdk-headless
+    else
+        dnf install -y java-21-amazon-corretto-devel
+    fi
+
     curl -L https://download.axoniq.io/axonserver/AxonServer-2026.0.5.zip -o axonserver.zip
     unzip -q axonserver.zip
     cd AxonServer-2026.0.5
 
-    # --- DYNAMIC JVM MEMORY ALLOCATION ---
-    # Fetch total memory in MB
+    # Allocate 40% of system RAM to JVM Heap (floor at 512m)
     TOTAL_MEM_MB=$(($(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024))
-
-    # Allocate 40% of system RAM to the JVM Heap (leave rest for OS, native buffers, and es-bench)
-    # Minimum floor of 512m so it doesn't crash on very small instances
     HEAP_MB=$((TOTAL_MEM_MB * 40 / 100))
     if [ "$HEAP_MB" -lt 512 ]; then
       HEAP_MB=512
     fi
 
-    echo "Detected ${TOTAL_MEM_MB} MB RAM. Setting AxonServer JVM heap (-Xms/-Xmx) to ${HEAP_MB}m."
-    # -------------------------------------
+    echo "Detected ${TOTAL_MEM_MB} MB RAM. Setting AxonServer JVM heap to ${HEAP_MB}m."
 
     AXONIQ_AXONSERVER_STANDALONE_DCB=true nohup java \
       -Xms${HEAP_MB}m \
       -Xmx${HEAP_MB}m \
       -XX:+UseG1GC \
-      -jar axonserver.jar > $STORE_LOG 2>&1 &
+      -jar axonserver.jar > "$STORE_LOG" 2>&1 &
 
     echo $! > /opt/benchmark/axonserver.pid
     cd /opt/benchmark
 
-    echo "Waiting for AxonServer gRPC port (8124) to accept connections..."
+    echo "Waiting for AxonServer gRPC port (8124)..."
     for i in {1..60}; do
       if timeout 1 bash -c '</dev/tcp/127.0.0.1/8124' 2>/dev/null; then
-        echo "Port 8124 is open! AxonServer is ready."
+        echo "Port 8124 open!"
         break
       fi
-      echo "Port 8124 not ready yet, waiting 2s... ($i/60)"
       sleep 2
     done
-
-    # Give an extra 3 seconds for gRPC context initialization
     sleep 3
 
     echo "=== AxonServer Startup Log ==="
-    cat $STORE_LOG || true
+    cat "$STORE_LOG" || true
     echo "=============================="
     ;;
 
   umadb)
-    ARCH="{{ARCH}}"
     VERSION="v0.7.3"
 
     if [ "$ARCH" = "aarch64" ]; then
@@ -294,40 +352,37 @@ EOF
       BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-x86_64-unknown-linux-gnu-v3.tar.gz"
     fi
 
-    echo "Downloading UmaDB binary for $ARCH from $BINARY_URL..."
+    echo "Downloading UmaDB binary for $ARCH..."
     curl -sSL "$BINARY_URL" -o umadb.tar.gz
     tar -xzf umadb.tar.gz && chmod +x umadb && mv umadb /usr/local/bin/
 
+    # Split remaining memory 50/50 after reserving 1000MB for OS/es-bench
     TOTAL_MEM_MB=$(($(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024))
-
-    # Reserve 1000 MB for OS/es-bench, split the remainder 50/50
-    # between UmaDB deserialized cache and other things
     RAW_CALC=$(( (TOTAL_MEM_MB - 1000) / 2 ))
 
-    # Enforce a 128 MB minimum floor for low-memory testing (t4g.micro / t4g.small)
     if [ "$RAW_CALC" -lt 128 ]; then
         UMADB_PAGE_CACHE_MAX_MB=128
     else
         UMADB_PAGE_CACHE_MAX_MB=$RAW_CALC
     fi
 
-    echo "Total RAM: ${TOTAL_MEM_MB}MB | UmaDB Cache: ${UMADB_PAGE_CACHE_MAX_MB}MB | Free for OS & Kernel Cache: $((TOTAL_MEM_MB - UMADB_PAGE_CACHE_MAX_MB))MB"
-    # ---------------------------------
+    echo "Total RAM: ${TOTAL_MEM_MB}MB | UmaDB Cache: ${UMADB_PAGE_CACHE_MAX_MB}MB | Free for OS Cache: $((TOTAL_MEM_MB - UMADB_PAGE_CACHE_MAX_MB))MB"
 
-    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=$UMADB_PAGE_CACHE_MAX_MB nohup umadb > $STORE_LOG 2>&1 &
+    UMADB_READ_METHOD=fileio UMADB_PAGE_CACHE_MAX_MB=$UMADB_PAGE_CACHE_MAX_MB nohup umadb > "$STORE_LOG" 2>&1 &
     echo $! > /opt/benchmark/umadb.pid
 
-    echo "Waiting 5 seconds for UmaDB to initialize..."
+    echo "Waiting 5 seconds for UmaDB initialization..."
     sleep 5
 
     echo "=== UmaDB Startup Log ==="
-    cat $STORE_LOG || true
+    cat "$STORE_LOG" || true
     echo "========================="
     ;;
 esac
 
-
-# 4. Run Workload
+# ==========================================
+# 7. RUN WORKLOAD
+# ==========================================
 export ESB_SESSION_ID=$SESSION_ID
 export ESB_WORKLOAD_STORES=$STORE
 export ESB_MAX_CONCURRENT_WORKERS="{{ESB_MAX_CONCURRENT_WORKERS}}"

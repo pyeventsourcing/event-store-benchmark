@@ -11,15 +11,17 @@ IAM_PROFILE="${IAM_PROFILE:-BenchmarkRunnerRole}"
 EBS_IOPS=""
 EBS_THROUGHPUT=""
 ESB_MAX_CONCURRENT_WORKERS="1024"
+OS_CHOICE="al" # Default OS
 
 # Parse CLI arguments
 # Example usage:
-#   ./launch.sh --instance c7g.2xlarge --iops 10000 --throughput 500
-#   ./launch.sh --instance c7gd.2xlarge --stores umadb
+#   ./launch.sh --instance c7g.2xlarge --os ubuntu
+#   ./launch.sh --instance c7gd.2xlarge --stores umadb --os al
 while [[ $# -gt 0 ]]; do
   case $1 in
     -i|--instance) INSTANCE_TYPE="$2"; shift 2 ;;
     -s|--stores) IFS=',' read -r -a STORES <<< "$2"; shift 2 ;;
+    -o|--os) OS_CHOICE=$(echo "$2" | tr '[:upper:]' '[:lower:]'); shift 2 ;; # Converts to lowercase automatically
     --iops) EBS_IOPS="$2"; shift 2 ;;
     --throughput) EBS_THROUGHPUT="$2"; shift 2 ;;
     --iam-profile) IAM_PROFILE="$2"; shift 2 ;;
@@ -36,30 +38,42 @@ SESSION_ID=$(date +'%Y-%m-%dT%H-%M-%S')
 
 # Get Git commit hash for binary caching
 GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
-#if ! git -C "$REPO_ROOT" diff --quiet HEAD 2>/dev/null; then
-#    GIT_HASH="${GIT_HASH}-dirty"
-#fi
 
 echo "$SESSION_ID" > "$REPO_ROOT/.last_session_id"
 
 # Determine architecture based on instance family (e.g., c7g/c7gd = aarch64, c6i/c6id = x86_64)
 if [[ "$INSTANCE_TYPE" =~ ^[a-z][0-9]g ]] || [[ "$INSTANCE_TYPE" =~ ^a1 ]]; then
     ARCH="aarch64"
-    AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+    UBUNTU_ARCH="arm64"
 else
     ARCH="x86_64"
-    AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+    UBUNTU_ARCH="amd64"
 fi
 
+# Determine AMI Parameter and Root Device mapping based on OS
+if [ "$OS_CHOICE" == "ubuntu" ]; then
+    AMI_PARAM="/aws/service/canonical/ubuntu/server/24.04/stable/current/${UBUNTU_ARCH}/hvm/ebs-gp3/ami-id"
+    ROOT_DEVICE="/dev/sda1"
+else
+    OS_CHOICE="al" # Fallback safety
+    if [ "$ARCH" == "aarch64" ]; then
+        AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+    else
+        AMI_PARAM="/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+    fi
+    ROOT_DEVICE="/dev/xvda"
+fi
+
+echo "Resolving AMI ID for $OS_CHOICE ($ARCH)..."
 AMI_ID=$(aws ssm get-parameter --name "$AMI_PARAM" --query "Parameter.Value" --output text)
 
 # Catch I-series (Storage Optimized) OR any instance with a 'd' in its suffix
 if [[ "$INSTANCE_TYPE" =~ ^i[a-z0-9]*\. ]] || [[ "$INSTANCE_TYPE" =~ ^[a-z0-9]+d.*\. ]]; then
     echo "Storage Mode: Local NVMe Instance Storage (Direct-attached SSD detected)"
-    BLOCK_MAPPINGS='[
-      {"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":20,"VolumeType":"gp3","DeleteOnTermination":true}},
-      {"DeviceName":"/dev/sdb","VirtualName":"ephemeral0"}
-    ]'
+    BLOCK_MAPPINGS="[
+      {\"DeviceName\":\"$ROOT_DEVICE\",\"Ebs\":{\"VolumeSize\":20,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}},
+      {\"DeviceName\":\"/dev/sdb\",\"VirtualName\":\"ephemeral0\"}
+    ]"
 else
     echo "Storage Mode: EBS gp3 Network Storage (Dedicated Data Volume)"
 
@@ -81,16 +95,17 @@ else
 
     # Root volume (20 GB OS) + Secondary volume (60 GB Data)
     BLOCK_MAPPINGS="[
-      {\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeSize\":20,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}},
+      {\"DeviceName\":\"$ROOT_DEVICE\",\"Ebs\":{\"VolumeSize\":20,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}},
       {\"DeviceName\":\"/dev/sdb\",\"Ebs\":{$EBS_CONFIG}}
     ]"
 fi
 
 echo "================================================="
 echo " Launching Session: $SESSION_ID"
+echo " OS Selection:     $OS_CHOICE"
 echo " Stores:           ${STORES[*]}"
-echo " Target Repository: $REPO_URL (Branch: $BRANCH)"
-echo " Git Commit Hash:   $GIT_HASH"
+echo " Target Repo:      $REPO_URL (Branch: $BRANCH)"
+echo " Git Commit Hash:  $GIT_HASH"
 echo " Instance Type:    $INSTANCE_TYPE ($ARCH)"
 echo " Block mappings:   ${BLOCK_MAPPINGS}"
 echo " AMI ID:           $AMI_ID"
@@ -126,7 +141,7 @@ for STORE in "${STORES[@]}"; do
         --block-device-mappings "$BLOCK_MAPPINGS" \
         --user-data file://"$TMP_USERDATA" \
         --instance-initiated-shutdown-behavior terminate \
-        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID},{Key=Project,Value=event-store-benchmark-suite},{Key=Arch,Value=$ARCH}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=Benchmark-$STORE-$SESSION_ID},{Key=Project,Value=event-store-benchmark-suite},{Key=Arch,Value=$ARCH},{Key=OS,Value=$OS_CHOICE}]" \
         --query 'Instances[0].InstanceId' \
         --output text)
 
