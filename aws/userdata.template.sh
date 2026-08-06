@@ -68,25 +68,32 @@ cleanup() {
   EXIT_CODE=$?
   echo "Script exiting with code $EXIT_CODE. Syncing logs and shutting down..."
 
-  # Ensure target directory exists before copying
+  # 1. Check for OOMs and append to the main execution log BEFORE we copy it
+  if dmesg -T | grep -q -iE 'oom-killer|killed process'; then
+    echo -e "\n==========================================" >> /var/log/benchmark.log
+    echo "🚨 KERNEL OOM KILLER DETECTED 🚨" >> /var/log/benchmark.log
+    dmesg -T | grep -iE 'oom-killer|killed process' >> /var/log/benchmark.log
+    echo "==========================================" >> /var/log/benchmark.log
+  fi
+
+  # 2. Ensure target directory exists before copying
   mkdir -p /opt/benchmark/results/esb-$SESSION_ID
 
+  # 3. Capture store-specific background server logs if present
   if [ -d "/var/log/postgresql" ]; then
     # Concatenate or copy the latest Postgres log file
     cat /var/log/postgresql/*.log > "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" 2>/dev/null || true
-
-  # Capture store-specific background server logs if present
   elif [ -f "/opt/benchmark/$STORE.log" ]; then
     cp /opt/benchmark/$STORE.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" || true
   fi
 
-  # Ensure working directory is /opt/benchmark before syncing
+  # 4. Ensure working directory is /opt/benchmark before syncing
   cd /opt/benchmark
 
-  # Copy the benchmark log file
+  # 5. Copy the benchmark log file
   cp /var/log/benchmark.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-benchmark.log" || true
 
-  # Sync results folder if it exists
+  # 6. Sync results folder if it exists
   if [ -d "results" ]; then
     aws s3 sync results/ "$S3_BUCKET/$SESSION_ID/" || true
   fi
