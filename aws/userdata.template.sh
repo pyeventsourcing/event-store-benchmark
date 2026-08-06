@@ -68,8 +68,23 @@ cleanup() {
   EXIT_CODE=$?
   echo "Script exiting with code $EXIT_CODE. Syncing logs and shutting down..."
 
-  # Copy the log file to S3 for debugging
-  aws s3 cp /var/log/benchmark.log "$S3_BUCKET/$SESSION_ID/esb-$SESSION_ID/$STORE-benchmark.log" || true
+  # Ensure target directory exists before copying
+  mkdir -p /opt/benchmark/results/esb-$SESSION_ID
+
+  if [ -d "/var/log/postgresql" ]; then
+    # Concatenate or copy the latest Postgres log file
+    cat /var/log/postgresql/*.log > "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" 2>/dev/null || true
+
+  # Capture store-specific background server logs if present
+  elif [ -f "/opt/benchmark/$STORE.log" ]; then
+    cp /opt/benchmark/$STORE.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-server.log" || true
+  fi
+
+  # Ensure working directory is /opt/benchmark before syncing
+  cd /opt/benchmark
+
+  # Copy the benchmark log file
+  cp /var/log/benchmark.log "/opt/benchmark/results/esb-$SESSION_ID/$STORE-benchmark.log" || true
 
   # Sync results folder if it exists
   if [ -d "results" ]; then
