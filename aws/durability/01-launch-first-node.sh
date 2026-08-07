@@ -1,12 +1,6 @@
 #!/bin/bash
 set -e
 
-# --- Configuration ---
-KEY_NAME="durability-ssh-key"
-KEY_FILE="${KEY_NAME}.pem"
-AZ="us-east-1a"
-INSTANCE_TYPE="t3.small"
-
 # --- Parse CLI arguments ---
 SERVER_TYPE=""
 
@@ -24,7 +18,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# --- Validate mandatory arguments ---
 if [[ -z "$SERVER_TYPE" ]]; then
   echo "❌ Error: The --store argument is mandatory."
   echo "Usage: $0 --store <axonserver|umadb>"
@@ -37,10 +30,15 @@ if [[ "$SERVER_TYPE" != "axonserver" && "$SERVER_TYPE" != "umadb" ]]; then
   exit 1
 fi
 
-# Dynamically fetch the latest Ubuntu 24.04 AMI for your region
+# --- Configuration ---
+KEY_NAME="axon-test-key"
+KEY_FILE="${KEY_NAME}.pem"
+AZ="us-east-1a"
+INSTANCE_TYPE="c7i.2xlarge"  # 🔥 Upgraded to 8 vCPUs / 16GB RAM
+# Fetch the latest Ubuntu 24.04 AMI
 AMI_ID=$(aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query 'Parameters[0].Value' --output text)
 
-echo "🚀 Starting Setup for $SERVER_TYPE..."
+echo "🚀 Starting Setup for $SERVER_TYPE on a $INSTANCE_TYPE..."
 
 # 1. Create Security Group
 SG_ID=$(aws ec2 create-security-group --group-name "db-test-sg" --description "DB Test" --query 'GroupId' --output text 2>/dev/null || aws ec2 describe-security-groups --group-names "db-test-sg" --query 'SecurityGroups[0].GroupId' --output text)
@@ -48,7 +46,7 @@ aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port
 aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 8124 --cidr 0.0.0.0/0 2>/dev/null || true
 aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 50051 --cidr 0.0.0.0/0 2>/dev/null || true
 
-# 2. Create EBS Volume
+# 2. Create EBS Volume (10GB gp3 defaults to 3000 IOPS and 125MB/s - perfect bottleneck)
 echo "📦 Creating EBS Volume in $AZ..."
 VOL_ID=$(aws ec2 create-volume --availability-zone $AZ --size 10 --volume-type gp3 --query 'VolumeId' --output text)
 
@@ -65,7 +63,7 @@ echo "🔗 Attaching Volume $VOL_ID to $INST_ID..."
 aws ec2 attach-volume --volume-id $VOL_ID --instance-id $INST_ID --device /dev/sdf > /dev/null
 aws ec2 wait volume-in-use --volume-ids $VOL_ID
 
-# Save state for Script 2
+# Save state
 echo "VOL_ID=$VOL_ID" > .test-state
 echo "INST1_ID=$INST_ID" >> .test-state
 echo "SG_ID=$SG_ID" >> .test-state
@@ -75,7 +73,7 @@ echo "⏳ Waiting for SSH to become available on $IP..."
 while ! ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=2 ubuntu@$IP 'echo OK' > /dev/null 2>&1; do sleep 2; done
 
 echo "🛠️ Formatting volume, installing Docker, and starting server..."
-ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << EOF
+ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
     sudo mkfs.ext4 /dev/nvme1n1
     sudo mkdir -p /mnt/data
     sudo mount /dev/nvme1n1 /mnt/data
@@ -83,10 +81,9 @@ ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << EOF
 EOF
 
 if [ "$SERVER_TYPE" == "axonserver" ]; then
-echo "🐳 Starting Axon Server container..."
+    echo "🐳 Starting Axon Server container..."
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
         sudo docker pull axoniq/axonserver:2026.0.5-jdk-21-nonroot
-
         sudo docker run -d --rm \
           --name my-axon-server-dcb \
           -p 8024:8024 \
@@ -103,8 +100,11 @@ EOF
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "AXON_SERVER_URI=http://$IP:8124 ESB_WORKLOAD_STORES=axonserver make run-write-unconditional"
 else
-    # NOTE: Replace 'your/umadb-image' with your actual image, or scp your binary here!
-    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP "sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data your/umadb-image"
+    echo "🐳 Starting UmaDB container..."
+    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
+        # NOTE: Replace 'your/umadb-image' with your actual image path/pull command
+        sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data ghcr.io/umadb-io/umadb:latest
+EOF
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "UMADB_URI=http://$IP:50051 ESB_WORKLOAD_STORES=umadb make run-write-unconditional"
 fi
