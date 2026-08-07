@@ -188,7 +188,7 @@ impl EventStoreAdapter for FactAdapter {
         Ok(None)
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let request = proto::ReadRequest {
             stream: req.tag,
             from_offset: req.from_offset,
@@ -198,7 +198,7 @@ impl EventStoreAdapter for FactAdapter {
         let mut client = self.client.clone();
         let resp = client.read(request).await?.into_inner();
 
-        Ok(resp
+        let out = resp
             .events
             .into_iter()
             .map(|evt| ReadEvent {
@@ -207,7 +207,8 @@ impl EventStoreAdapter for FactAdapter {
                 payload: evt.payload,
                 metadata: vec![],
             })
-            .collect())
+            .collect();
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 }
 

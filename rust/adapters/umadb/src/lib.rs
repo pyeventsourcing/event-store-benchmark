@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
@@ -10,7 +10,7 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use umadb_client::UmaDbClient;
-use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbSubscriptionAsync};
+use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbSubscriptionAsync, DcbReadResponseAsync};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
@@ -166,30 +166,9 @@ impl UmaDbAdapter {
             .collect()
     }
 
-    pub async fn read_all(&self) -> Result<Vec<ReadEvent>> {
-        let mut rr = self.client
-            .read(
-                None,
-                None,
-                false,
-                None,
-            )
-            .await?;
-        let mut out = Vec::new();
-        while let Some(item) = rr.next().await {
-            match item {
-                Ok(se) => {
-                    out.push(ReadEvent {
-                        offset: se.position,
-                        event_type: se.event.event_type,
-                        payload: se.event.data,
-                        metadata: se.event.metadata,
-                    });
-                }
-                Err(_status) => break,
-            }
-        }
-        Ok(out)
+    pub async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
+        let stream = self.client.read(None, None, false, None).await?;
+        Ok(Box::new(UmaDbReadResponse { stream }))
     }
 }
 
@@ -240,14 +219,14 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Some(pos))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn ReadResponse>> {
         let query = DcbQuery {
             items: vec![DcbQueryItem {
                 types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
                 tags: vec![req.tag],
             }],
         };
-        let mut rr = self.client
+        let stream = self.client
             .read(
                 Some(query),
                 req.from_offset,
@@ -255,35 +234,10 @@ impl EventStoreAdapter for UmaDbAdapter {
                 req.limit.map(|l| l as u32),
             )
             .await?;
-        let mut out = Vec::new();
-        while let Some(item) = rr.next().await {
-            match item {
-                Ok(se) => {
-                    if let Some(lim) = req.limit {
-                        if (out.len() as u64) < lim {
-                            out.push(ReadEvent {
-                                offset: se.position,
-                                event_type: se.event.event_type,
-                                payload: se.event.data,
-                                metadata: se.event.metadata,
-                            });
-                        }
-                    } else {
-                        out.push(ReadEvent {
-                            offset: se.position,
-                            event_type: se.event.event_type,
-                            payload: se.event.data,
-                            metadata: se.event.metadata,
-                        });
-                    }
-                }
-                Err(_status) => break,
-            }
-        }
-        Ok(out)
+        Ok(Box::new(UmaDbReadResponse { stream }))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> anyhow::Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
         // Build a query from whichever of event_type / tag is set. An empty tag
         // and no event type means "no filter" (subscribe to all events).
         let mut item = DcbQueryItem { types: vec![], tags: vec![] };
@@ -307,7 +261,7 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbSubscription { stream }))
     }
 
-    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
+    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
         self.read_all().await
     }
 }
@@ -318,7 +272,27 @@ struct UmaDbSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for UmaDbSubscription {
+impl ReadResponse for UmaDbSubscription {
+    async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
+        match self.stream.next().await {
+            Some(Ok(se)) => Ok(Some(ReadEvent {
+                offset: se.position,
+                event_type: se.event.event_type,
+                payload: se.event.data,
+                metadata: se.event.metadata,
+            })),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+}
+
+struct UmaDbReadResponse {
+    stream: Box<dyn DcbReadResponseAsync + Send + 'static>,
+}
+
+#[async_trait]
+impl ReadResponse for UmaDbReadResponse {
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
         match self.stream.next().await {
             Some(Ok(se)) => Ok(Some(ReadEvent {
@@ -375,7 +349,11 @@ mod tests {
 
         umadb_adapter.append_dcb(&events, None).await?;
 
-        let read_events = umadb_adapter.read_all().await?;
+        let mut subscription = umadb_adapter.read_all().await?;
+        let mut read_events = Vec::new();
+        while let Some(event) = subscription.next_event().await? {
+            read_events.push(event);
+        }
         
         assert!(read_events.len() >= 2);
         

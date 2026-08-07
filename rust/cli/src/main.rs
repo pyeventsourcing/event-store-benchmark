@@ -214,10 +214,10 @@ fn main() -> Result<()> {
                 let mut manager = store_factory.create_store_manager(None, false)?;
                 let adapter = manager.create_adapter().await?;
 
-                let events = adapter.read_all_events().await?;
+                let mut subscription = adapter.read_all_events().await?;
                 let mut max_timestamp: Option<u128> = None;
 
-                for event in events {
+                while let Some(event) = subscription.next_event().await? {
                     for (key, value) in &event.metadata {
                         if key == "timestamp" {
                             if let Ok(ts) = value.parse::<u128>() {

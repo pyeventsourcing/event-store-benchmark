@@ -152,16 +152,17 @@ impl EventStoreAdapter for DummyAdapter {
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
         Ok(None)
     }
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
-        Ok((0..req.limit.unwrap_or(1))
+        let events = (0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {
                 offset: 0,
                 event_type: "DummyEvent".to_string(),
                 payload: vec![],
                 metadata: vec![],
             })
-            .collect())
+            .collect();
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(events)))
     }
 }
 

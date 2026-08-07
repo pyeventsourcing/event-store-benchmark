@@ -92,18 +92,14 @@ impl AxonServerClient {
         &self,
         from_sequence: i64,
         criteria: Vec<proto::dcb::Criterion>,
-    ) -> Result<Vec<SourceEventsResponse>> {
+    ) -> Result<tonic::Streaming<SourceEventsResponse>> {
         let mut inner = self.inner.clone();
         let req = SourceEventsRequest {
             from_sequence,
             criterion: criteria,
         };
-        let mut stream = inner.source(req).await?.into_inner();
-        let mut results = Vec::new();
-        while let Some(resp) = stream.message().await? {
-            results.push(resp);
-        }
-        Ok(results)
+        let stream = inner.source(req).await?.into_inner();
+        Ok(stream)
     }
 
     /// Open an infinite stream (subscription) of events matching criteria from a

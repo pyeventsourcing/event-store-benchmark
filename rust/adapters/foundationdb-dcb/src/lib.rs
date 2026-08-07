@@ -153,7 +153,7 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
         Ok(Some(id))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let query = Query {
             items: vec![QueryItem {
                 types: req.event_type.into_iter().collect(),
@@ -189,7 +189,7 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
                 }
             })
             .collect();
-        Ok(out)
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 }
 

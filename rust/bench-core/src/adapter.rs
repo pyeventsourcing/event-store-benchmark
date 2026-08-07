@@ -141,27 +141,44 @@ pub struct ReadEvent {
     pub metadata: Vec<(String, String)>,
 }
 
-/// A live subscription to an event store, yielding events as they arrive.
+/// A streaming response from an event store, yielding events as they arrive.
 ///
-/// Adapters convert their backend-specific event type into [`ReadEvent`] so the
-/// benchmark harness can measure subscription latency uniformly across stores.
+/// Adapters convert their backend-specific event type into [`ReadEvent`].
 #[async_trait]
-pub trait EventSubscription: Send {
-    /// Returns the next event from the subscription, or `None` once the
-    /// subscription has ended.
+pub trait ReadResponse: Send {
+    /// Returns the next event from the streaming response.
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>>;
 }
 
-/// A subscription that never yields any events.
+/// A read response that never yields any events.
 ///
-/// Returned by the default [`EventStoreAdapter::subscribe`] implementation so
-/// adapters that do not (yet) support subscriptions can compile unchanged.
-pub struct NullSubscription;
+/// Returned by the default [`EventStoreAdapter::subscribe`] implementation.
+pub struct NullReadResponse;
 
 #[async_trait]
-impl EventSubscription for NullSubscription {
+impl ReadResponse for NullReadResponse {
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
         Ok(None)
+    }
+}
+
+// A read response that simply encapsulates a vector of events.
+pub struct VecReadResponse {
+    events: std::vec::IntoIter<ReadEvent>,
+}
+
+impl VecReadResponse {
+    pub fn new(events: Vec<ReadEvent>) -> Self {
+        Self {
+            events: events.into_iter(),
+        }
+    }
+}
+
+#[async_trait]
+impl ReadResponse for VecReadResponse {
+    async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
+        Ok(self.events.next())
     }
 }
 
@@ -172,20 +189,20 @@ pub trait EventStoreAdapter: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
     async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>>;
     async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>>;
-    async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Vec<ReadEvent>>;
+    async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Box<dyn ReadResponse>>;
 
     /// Open a live subscription for the given request.
     ///
-    /// Defaults to a [`NullSubscription`] so adapters can opt in incrementally.
-    async fn subscribe(&self, _req: ReadRequest, _from_end: bool) -> anyhow::Result<Box<dyn EventSubscription>> {
-        Ok(Box::new(NullSubscription))
+    /// Defaults to a [`NullReadResponse`] so adapters can opt in incrementally.
+    async fn subscribe(&self, _req: ReadRequest, _from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+        Ok(Box::new(NullReadResponse))
     }
 
     /// Read all events from the store.
     ///
     /// Defaults to an empty vector so adapters can opt in incrementally.
-    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
-        Ok(vec![])
+    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
+        Ok(Box::new(NullReadResponse))
     }
 }
 

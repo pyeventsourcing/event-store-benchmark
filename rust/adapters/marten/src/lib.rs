@@ -289,7 +289,7 @@ impl EventStoreAdapter for MartenAdapter {
         Ok(Some(sequence_ids.last().expect("Marten sequence ID").clone() as u64))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let mut query = EventTagQuery::new(req.from_offset.map(|o| o as i64).unwrap_or(-1));
         if !req.tag.is_empty() {
             query = query.with_tag(&req.tag);
@@ -313,7 +313,7 @@ impl EventStoreAdapter for MartenAdapter {
                 metadata: vec![],
             });
         }
-        Ok(out)
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 }
 

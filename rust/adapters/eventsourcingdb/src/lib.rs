@@ -190,7 +190,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
         Ok(None)
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let subject = format!("/{}", req.tag);
         let mut stream = self
             .client
@@ -226,7 +226,7 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
                 });
             }
         }
-        Ok(out)
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 
     // async fn ping(&self) -> Result<Duration> {

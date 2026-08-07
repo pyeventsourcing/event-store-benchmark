@@ -844,16 +844,23 @@ impl PerformanceWorkload {
                 };
 
                 operation_started = Instant::now();
-                let operation_response = adapter.read_stream(req).await;
+                let result = async {
+                    let mut subscription = adapter.read_stream(req).await?;
+                    let mut count = 0;
+                    while let Some(_) = subscription.next_event().await? {
+                        count += 1;
+                    }
+                    Ok::<u64, anyhow::Error>(count as u64)
+                }.await;
                 operation_completed = Instant::now();
                 operation_duration = operation_completed - operation_started;
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
-                match operation_response {
-                    Ok(events) => {
+                match result {
+                    Ok(count) => {
                         if activate_metrics {
                             // Record throughput sample
-                            if throughput_recorder.record(operation_completed, events.len() as u64) == RecordingStatus::During {
+                            if throughput_recorder.record(operation_completed, count) == RecordingStatus::During {
                                 // Record latency sample
                                 store_latencies.record(operation_duration);
                             }

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::postgres_dcb_ttcte::{
     PostgresDcbTtctePostgres, POSTGRES_PORT,
@@ -244,7 +244,7 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         Ok(Some(pos as u64))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let stream = req.tag.clone();
         let query = Some(postgres_dcb_ttcte::DcbQuery {
             items: vec![postgres_dcb_ttcte::DcbQueryItem {
@@ -263,17 +263,18 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
             .await
             .with_context(|| format!("PostgresDcbTtcte read failed for stream '{}'", stream))?;
 
-        Ok(events.into_iter().map(|e: DcbSequencedEvent| {
+        let out = events.into_iter().map(|e: DcbSequencedEvent| {
             ReadEvent {
                 offset: e.position as u64,
                 event_type: e.event.type_name,
                 payload: e.event.data,
                 metadata: e.event.metadata,
             }
-        }).collect())
+        }).collect();
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn ReadResponse>> {
         // Start LISTENing before reading the head so no append is missed in the
         // gap between establishing the baseline and receiving notifications.
         let listener = self.recorder.open_listener().await?;
@@ -323,7 +324,7 @@ struct PostgresSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for PostgresSubscription {
+impl ReadResponse for PostgresSubscription {
     async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
         loop {
             if let Some(event) = self.buffer.pop_front() {

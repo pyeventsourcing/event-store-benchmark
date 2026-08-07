@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition, StreamEventsResponse};
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, EventSubscription, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
 use bench_core::wait_for_ready;
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
@@ -196,27 +196,13 @@ impl AxonServerAdapter {
             .collect()
     }
 
-    pub async fn read_all(&self) -> Result<Vec<ReadEvent>> {
-        let responses = self.client.source(0, vec![]).await?;
-        let mut out = Vec::new();
-        for resp in responses {
-            if let Some(result) = resp.result {
-                match result {
-                    source_events_response::Result::Event(seq_evt) => {
-                        if let Some(evt) = seq_evt.event {
-                            out.push(ReadEvent {
-                                offset: seq_evt.sequence as u64,
-                                event_type: evt.name,
-                                payload: evt.payload,
-                                metadata: evt.metadata.into_iter().collect(),
-                            });
-                        }
-                    }
-                    source_events_response::Result::ConsistencyMarker(_) => {}
-                }
-            }
-        }
-        Ok(out)
+    pub async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
+        let stream = self.client.source(0, vec![]).await?;
+        Ok(Box::new(AxonServerReadResponse {
+            stream,
+            limit: None,
+            count: 0,
+        }))
     }
 }
 
@@ -285,7 +271,7 @@ impl EventStoreAdapter for AxonServerAdapter {
         Ok(Some(if position >= 0 {position as u64} else {0}))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn ReadResponse>> {
         let from = req.from_offset.unwrap_or(0) as i64;
         let criterion = Criterion {
             tags_and_names: Some(TagsAndNamesCriterion {
@@ -296,35 +282,16 @@ impl EventStoreAdapter for AxonServerAdapter {
                 }],
             }),
         };
-        let responses = self.client.source(from, vec![criterion]).await?;
+        let stream = self.client.source(from, vec![criterion]).await?;
 
-        let mut out = Vec::new();
-        for resp in responses {
-            if let Some(result) = resp.result {
-                match result {
-                    source_events_response::Result::Event(seq_evt) => {
-                        if let Some(evt) = seq_evt.event {
-                            out.push(ReadEvent {
-                                offset: seq_evt.sequence as u64,
-                                event_type: evt.name,
-                                payload: evt.payload,
-                                metadata: evt.metadata.into_iter().collect(),
-                            });
-                        }
-                        if let Some(lim) = req.limit {
-                            if out.len() as u64 >= lim {
-                                break;
-                            }
-                        }
-                    }
-                    source_events_response::Result::ConsistencyMarker(_) => {}
-                }
-            }
-        }
-        Ok(out)
+        Ok(Box::new(AxonServerReadResponse {
+            stream,
+            limit: req.limit,
+            count: 0,
+        }))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn ReadResponse>> {
         // Build criteria from whichever of event_type / tag is set. No tag and no
         // event type means "no filter" (stream all events).
         let mut tags = Vec::new();
@@ -357,7 +324,7 @@ impl EventStoreAdapter for AxonServerAdapter {
         Ok(Box::new(AxonServerSubscription { stream }))
     }
 
-    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
+    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
         self.read_all().await
     }
 
@@ -375,7 +342,7 @@ struct AxonServerSubscription {
 }
 
 #[async_trait]
-impl EventSubscription for AxonServerSubscription {
+impl ReadResponse for AxonServerSubscription {
     async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
         while let Some(resp) = self.stream.message().await? {
             if let Some(seq_evt) = resp.event {
@@ -386,6 +353,42 @@ impl EventSubscription for AxonServerSubscription {
                         payload: evt.payload,
                         metadata: evt.metadata.into_iter().collect(),
                     }));
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+
+struct AxonServerReadResponse {
+    stream: axonserver_client::tonic::Streaming<axonserver_client::proto::dcb::SourceEventsResponse>,
+    limit: Option<u64>,
+    count: u64,
+}
+
+#[async_trait]
+impl ReadResponse for AxonServerReadResponse {
+    async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
+        if let Some(lim) = self.limit {
+            if self.count >= lim {
+                return Ok(None);
+            }
+        }
+        while let Some(resp) = self.stream.message().await? {
+            if let Some(result) = resp.result {
+                match result {
+                    source_events_response::Result::Event(seq_evt) => {
+                        if let Some(evt) = seq_evt.event {
+                            self.count += 1;
+                            return Ok(Some(ReadEvent {
+                                offset: seq_evt.sequence as u64,
+                                event_type: evt.name,
+                                payload: evt.payload,
+                                metadata: evt.metadata.into_iter().collect(),
+                            }));
+                        }
+                    }
+                    source_events_response::Result::ConsistencyMarker(_) => {}
                 }
             }
         }
@@ -442,7 +445,11 @@ mod tests {
 
         axon_adapter.append_dcb(&events, None).await?;
 
-        let read_events = axon_adapter.read_all().await?;
+        let mut subscription = axon_adapter.read_all().await?;
+        let mut read_events = Vec::new();
+        while let Some(event) = subscription.next_event().await? {
+            read_events.push(event);
+        }
 
         assert!(read_events.len() >= 2);
 

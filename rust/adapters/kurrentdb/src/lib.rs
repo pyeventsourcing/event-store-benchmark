@@ -182,7 +182,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
         Ok(Some(write_result.position.commit))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let count = req.limit.unwrap_or(4096) as usize;
         let options = ReadStreamOptions::default()
             .position(match req.from_offset {
@@ -223,7 +223,7 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 continue;
             }
         }
-        Ok(out)
+        Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 }
 
