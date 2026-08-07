@@ -157,7 +157,7 @@ start-axon-server-dcb:
 	  -e AXONIQ_AXONSERVER_NAME=my-axon-dcb-server \
 	  -e AXONIQ_AXONSERVER_HOSTNAME=my-axon-dcb-server \
 	  -e AXONIQ_AXONSERVER_STANDALONE_DCB="true" \
-	  axoniq/axonserver
+	  axoniq/axonserver:2026.0.5-jdk-21-nonroot
 	sleep 15
 #	  -e AXONIQ_AXONSERVER_EVENT_FORCE_INTERVAL="0" \
 #	  axoniq/axonserver:latest-jdk-21-nonroot
