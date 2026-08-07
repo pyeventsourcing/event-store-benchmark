@@ -165,6 +165,32 @@ impl UmaDbAdapter {
             })
             .collect()
     }
+
+    pub async fn read_all(&self) -> Result<Vec<ReadEvent>> {
+        let mut rr = self.client
+            .read(
+                None,
+                None,
+                false,
+                None,
+            )
+            .await?;
+        let mut out = Vec::new();
+        while let Some(item) = rr.next().await {
+            match item {
+                Ok(se) => {
+                    out.push(ReadEvent {
+                        offset: se.position,
+                        event_type: se.event.event_type,
+                        payload: se.event.data,
+                        metadata: se.event.metadata,
+                    });
+                }
+                Err(_status) => break,
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait]
@@ -318,5 +344,50 @@ impl StoreManagerFactory for UmaDbFactory {
 
     fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(UmaDbStoreManager::new(data_dir, use_docker)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read_all() -> Result<()> {
+        let mut manager = UmaDbStoreManager::new(None, true);
+        manager.start().await?;
+        
+        let adapter = manager.create_adapter().await?;
+        // We can use the concrete type directly since we created it
+        let umadb_adapter = adapter.as_any().downcast_ref::<UmaDbAdapter>().expect("UmaDbAdapter");
+
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![1, 2, 3]),
+                event_type: Arc::from("type1"),
+                tags: Arc::from([Arc::from("tag1")]),
+                metadata: Arc::from([]),
+            },
+            EventData {
+                payload: Arc::from(vec![4, 5, 6]),
+                event_type: Arc::from("type2"),
+                tags: Arc::from([Arc::from("tag2")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        umadb_adapter.append_dcb(&events, None).await?;
+
+        let read_events = umadb_adapter.read_all().await?;
+        
+        assert!(read_events.len() >= 2);
+        
+        let found1 = read_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = read_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+        
+        assert!(found1, "Event type1 not found in read_all results");
+        assert!(found2, "Event type2 not found in read_all results");
+
+        manager.stop().await?;
+        Ok(())
     }
 }
