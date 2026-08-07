@@ -1,0 +1,17 @@
+performance:
+  name: write-stream-unconditional
+  mode: write
+  use_docker: false
+  warmup_seconds: 1
+  duration_seconds: 120
+  samples_per_second: 2
+  concurrency:
+    readers: 0
+    writers: [128]
+  operations:
+    write:
+      event_size_bytes: 16
+  stores:
+    - umadb
+    - kurrentdb
+    - axonserver
