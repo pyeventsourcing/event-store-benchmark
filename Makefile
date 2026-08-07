@@ -28,6 +28,7 @@ endif
 .PHONY: run-scaling-streams-in-postgres
 .PHONY: run-scaling-readers
 .PHONY: run-scaling-writers
+.PHONY: run-write-condititional
 .PHONY: help
 .PHONY: FORCE
 
@@ -92,6 +93,10 @@ run-writeflood:
 # Run the scaling-streams-in-postgres workload
 run-scaling-streams-in-postgres:
 	@make ./configs/scaling-streams-in-postgres.yaml
+
+# Run the write-unconditional workload
+run-write-unconditional:
+	@make ./configs/write-unconditional.yaml
 
 # Run a specific benchmark configuration
 configs/%.yaml: FORCE

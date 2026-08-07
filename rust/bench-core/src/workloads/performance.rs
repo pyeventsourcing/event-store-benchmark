@@ -27,11 +27,10 @@ fn base_instant() -> Instant {
 
 /// Generates a high-precision, monotonic timestamp as a String.
 /// Call this on the WRITER side.
-pub fn generate_monotonic_timestamp() -> String {
+pub fn generate_monotonic_timestamp() -> u128 {
     Instant::now()
         .duration_since(base_instant())
         .as_nanos()
-        .to_string()
 }
 
 /// Calculates the duration elapsed since the timestamp was generated.
@@ -267,6 +266,8 @@ pub struct WriteOpConfig {
     pub in_flight_limit: usize,
     #[serde(default)]
     pub append_condition: AppendConditionValue,
+    #[serde(default)]
+    pub activate_timestamps: bool,
 }
 
 fn default_in_flight_limit() -> usize {
@@ -415,7 +416,7 @@ impl PerformanceWorkload {
                     activate_metrics,
                     ready_barrier.clone(),
                     sampling_config_rx.clone(),
-                    false,
+                    self.config.operations.write.activate_timestamps,
                 ),
                 PerformanceMode::Writeflood => Self::spawn_writer_flood_task(
                     store.name().to_string(),
@@ -498,8 +499,9 @@ impl PerformanceWorkload {
         let mut combined_throughput_counts = vec![0u64; num_intervals];
         let mut combined_error_counts = vec![0u64; num_intervals];
 
+        let mut max_timestamp: Option<u128> = None;
         while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput_counts, worker_error_counts, worker_tool_latencies))) = worker_result {
+            if let Ok(Some((worker_latencies, worker_throughput_counts, worker_error_counts, worker_tool_latencies, worker_max_timestamp))) = worker_result {
                 store_latencies.hist.add(&worker_latencies.hist).unwrap();
                 tool_latencies.hist.add(&worker_tool_latencies.hist).unwrap();
                 for (i, count) in worker_throughput_counts.counts.iter().enumerate() {
@@ -512,7 +514,20 @@ impl PerformanceWorkload {
                         combined_error_counts[i] += count;
                     }
                 }
+                if worker_max_timestamp.is_some() {
+                    if max_timestamp.is_none() {
+                        max_timestamp = worker_max_timestamp;
+                    } else {
+                        if worker_max_timestamp.unwrap() > max_timestamp.unwrap() {
+                            max_timestamp = worker_max_timestamp;
+                        }
+                    }
+                }
             }
+        }
+
+        if max_timestamp.is_some() {
+            println!("Overall max timestamp: {}", max_timestamp.unwrap())
         }
 
         // Convert combined counts to ThroughputSamples
@@ -614,7 +629,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_write_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -639,6 +654,8 @@ impl PerformanceWorkload {
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;
+            let mut max_timestamp: Option<u128> = None;
+            let mut last_timestamp: Option<u128> = None;
 
             let mut out_of_time = false;
 
@@ -673,15 +690,18 @@ impl PerformanceWorkload {
             let mut loop_started = Instant::now();
 
             while !out_of_time && !cancel_token.is_cancelled() {
+                let metadata = if activate_timestamps {
+                    let timestamp = generate_monotonic_timestamp();
+                    last_timestamp = Some(timestamp);
+                    Arc::from(vec![("timestamp".to_string(), timestamp.to_string())])
+                } else {
+                    null_metadata.clone()
+                };
                 let evt = EventData {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
                     tags: tags.clone(),
-                    metadata: if activate_timestamps {
-                        Arc::from(vec![("timestamp".to_string(), generate_monotonic_timestamp())])
-                    } else {
-                        null_metadata.clone()
-                    },
+                    metadata: metadata.clone(),
                 };
 
                 operation_started = Instant::now();
@@ -716,6 +736,9 @@ impl PerformanceWorkload {
 
                 match operation_response {
                     Ok(returned_global_position) => {
+
+                        max_timestamp = last_timestamp;
+
                         if write_cfg.concurrency_control {
                             global_position = returned_global_position.expect("global sequence value not returned");
                         }
@@ -750,7 +773,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, max_timestamp))
             } else {
                 None
             }
@@ -758,7 +781,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_read_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
         seed: u64,
@@ -851,7 +874,7 @@ impl PerformanceWorkload {
                 loop_started = Instant::now();
             }
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
             } else {
                 None
             }
@@ -859,7 +882,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_subscribe_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
         _seed: u64,
@@ -963,7 +986,7 @@ impl PerformanceWorkload {
                 }
             }
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
             } else {
                 None
             }
@@ -972,7 +995,7 @@ impl PerformanceWorkload {
 
     fn spawn_writer_flood_task(
         store_name: String,
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -1048,7 +1071,6 @@ impl PerformanceWorkload {
                     }
                     continue;
                 }
-
                 let evt = EventData {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
@@ -1090,7 +1112,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
             } else {
                 None
             }
@@ -1144,6 +1166,7 @@ performance:
                     concurrency_control: false,
                     in_flight_limit: 0,
                     append_condition: AppendConditionValue::default(),
+                    activate_timestamps: false,
                 },
                 read: ReadOpConfig::default(),
             },

@@ -25,7 +25,7 @@ pub struct AxonServerStoreManager {
 impl AxonServerStoreManager {
     pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
-            uri: format!("http://127.0.0.1:{}", AXONSERVER_GRPC_PORT.as_u16()),
+            uri: Self::get_axon_server_uri(),
             container: None,
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "axonserver"),
@@ -51,6 +51,12 @@ impl AxonServerStoreManager {
     //     let image = image.with_user(user);
     //     Ok(image)
     // }
+
+    fn get_axon_server_uri() -> String {
+        let uri: String = std::env::var("AXON_SERVER_URI").ok().unwrap_or(Self::format_uri(AXONSERVER_GRPC_PORT.as_u16()));
+        println!("Axon Server URI: {}", uri);
+        uri
+    }
 
     fn format_uri(host_port: u16) -> String {
         format!("http://127.0.0.1:{}", host_port)
