@@ -357,6 +357,10 @@ impl EventStoreAdapter for AxonServerAdapter {
         Ok(Box::new(AxonServerSubscription { stream }))
     }
 
+    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
+        self.read_all().await
+    }
+
     // async fn ping(&self) -> Result<Duration> {
     //     let mut client = self.client.clone();
     //     let t0 = std::time::Instant::now();

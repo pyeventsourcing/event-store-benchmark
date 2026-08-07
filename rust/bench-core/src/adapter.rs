@@ -180,6 +180,13 @@ pub trait EventStoreAdapter: Send + Sync {
     async fn subscribe(&self, _req: ReadRequest, _from_end: bool) -> anyhow::Result<Box<dyn EventSubscription>> {
         Ok(Box::new(NullSubscription))
     }
+
+    /// Read all events from the store.
+    ///
+    /// Defaults to an empty vector so adapters can opt in incrementally.
+    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
+        Ok(vec![])
+    }
 }
 
 #[async_trait]

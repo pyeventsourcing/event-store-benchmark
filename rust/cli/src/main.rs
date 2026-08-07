@@ -45,6 +45,11 @@ enum Commands {
     CreateMartenTables,
     /// Drop tables for marten adapter
     DropMartenTables,
+    /// Read all events and find the maximum timestamp in metadata
+    ReadMaxTimestamp {
+        /// Store name
+        store: String,
+    },
 }
 
 fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
@@ -197,6 +202,43 @@ fn main() -> Result<()> {
                     Ok::<(), anyhow::Error>(())
                 })?;
             }
+            Ok(())
+        }
+        Commands::ReadMaxTimestamp { store } => {
+            rt.block_on(async {
+                let store_factory = store_manager_factories()
+                    .into_iter()
+                    .find(|f| f.name() == store)
+                    .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store))?;
+
+                let mut manager = store_factory.create_store_manager(None, false)?;
+                let adapter = manager.create_adapter().await?;
+
+                let events = adapter.read_all_events().await?;
+                let mut max_timestamp: Option<u128> = None;
+
+                for event in events {
+                    for (key, value) in &event.metadata {
+                        if key == "timestamp" {
+                            if let Ok(ts) = value.parse::<u128>() {
+                                if let Some(current_max) = max_timestamp {
+                                    if ts > current_max {
+                                        max_timestamp = Some(ts);
+                                    }
+                                } else {
+                                    max_timestamp = Some(ts);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                match max_timestamp {
+                    Some(ts) => println!("{}", ts),
+                    None => println!("no timestamps were found"),
+                }
+                Ok::<(), anyhow::Error>(())
+            })?;
             Ok(())
         }
         Commands::Run { config, seed, data_dir } => {

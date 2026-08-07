@@ -307,11 +307,9 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbSubscription { stream }))
     }
 
-    // async fn ping(&self) -> Result<Duration> {
-    //     let t0 = std::time::Instant::now();
-    //     let _ = self.client.head().await?;
-    //     Ok(t0.elapsed())
-    // }
+    async fn read_all_events(&self) -> anyhow::Result<Vec<ReadEvent>> {
+        self.read_all().await
+    }
 }
 
 /// Live subscription backed by UmaDB's async gRPC event stream.
