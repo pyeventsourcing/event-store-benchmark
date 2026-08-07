@@ -195,6 +195,29 @@ impl AxonServerAdapter {
             })
             .collect()
     }
+
+    pub async fn read_all(&self) -> Result<Vec<ReadEvent>> {
+        let responses = self.client.source(0, vec![]).await?;
+        let mut out = Vec::new();
+        for resp in responses {
+            if let Some(result) = resp.result {
+                match result {
+                    source_events_response::Result::Event(seq_evt) => {
+                        if let Some(evt) = seq_evt.event {
+                            out.push(ReadEvent {
+                                offset: seq_evt.sequence as u64,
+                                event_type: evt.name,
+                                payload: evt.payload,
+                                metadata: evt.metadata.into_iter().collect(),
+                            });
+                        }
+                    }
+                    source_events_response::Result::ConsistencyMarker(_) => {}
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[async_trait]
@@ -384,4 +407,48 @@ fn now_millis() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read_all() -> Result<()> {
+        let mut manager = AxonServerStoreManager::new(None, true);
+        manager.start().await?;
+
+        let adapter = manager.create_adapter().await?;
+        let axon_adapter = adapter.as_any().downcast_ref::<AxonServerAdapter>().expect("AxonServerAdapter");
+
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![1, 2, 3]),
+                event_type: Arc::from("type1"),
+                tags: Arc::from([Arc::from("tag1")]),
+                metadata: Arc::from([]),
+            },
+            EventData {
+                payload: Arc::from(vec![4, 5, 6]),
+                event_type: Arc::from("type2"),
+                tags: Arc::from([Arc::from("tag2")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        axon_adapter.append_dcb(&events, None).await?;
+
+        let read_events = axon_adapter.read_all().await?;
+
+        assert!(read_events.len() >= 2);
+
+        let found1 = read_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = read_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+
+        assert!(found1, "Event type1 not found in read_all results");
+        assert!(found2, "Event type2 not found in read_all results");
+
+        manager.stop().await?;
+        Ok(())
+    }
 }
