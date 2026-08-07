@@ -1,0 +1,110 @@
+#!/bin/bash
+set -e
+
+# --- Configuration ---
+KEY_NAME="durability-ssh-key"
+KEY_FILE="${KEY_NAME}.pem"
+AZ="us-east-1a"
+INSTANCE_TYPE="t3.small"
+
+# --- Parse CLI arguments ---
+SERVER_TYPE=""
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -s|--store)
+      SERVER_TYPE=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+      shift 2
+      ;;
+    *)
+      echo "❌ Unknown option: $1"
+      echo "Usage: $0 --store <axonserver|umadb>"
+      exit 1
+      ;;
+  esac
+done
+
+# --- Validate mandatory arguments ---
+if [[ -z "$SERVER_TYPE" ]]; then
+  echo "❌ Error: The --store argument is mandatory."
+  echo "Usage: $0 --store <axonserver|umadb>"
+  exit 1
+fi
+
+if [[ "$SERVER_TYPE" != "axonserver" && "$SERVER_TYPE" != "umadb" ]]; then
+  echo "❌ Error: Invalid store type '$SERVER_TYPE'."
+  echo "Must be either 'axonserver' or 'umadb'."
+  exit 1
+fi
+
+# Dynamically fetch the latest Ubuntu 24.04 AMI for your region
+AMI_ID=$(aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query 'Parameters[0].Value' --output text)
+
+echo "🚀 Starting Setup for $SERVER_TYPE..."
+
+# 1. Create Security Group
+SG_ID=$(aws ec2 create-security-group --group-name "db-test-sg" --description "DB Test" --query 'GroupId' --output text 2>/dev/null || aws ec2 describe-security-groups --group-names "db-test-sg" --query 'SecurityGroups[0].GroupId' --output text)
+aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0 2>/dev/null || true
+aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 8124 --cidr 0.0.0.0/0 2>/dev/null || true
+aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 50051 --cidr 0.0.0.0/0 2>/dev/null || true
+
+# 2. Create EBS Volume
+echo "📦 Creating EBS Volume in $AZ..."
+VOL_ID=$(aws ec2 create-volume --availability-zone $AZ --size 10 --volume-type gp3 --query 'VolumeId' --output text)
+
+# 3. Launch Instance
+echo "🖥️ Launching Instance 1..."
+INST_ID=$(aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INSTANCE_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --placement AvailabilityZone=$AZ --query 'Instances[0].InstanceId' --output text)
+
+echo "⏳ Waiting for Instance 1 to be running..."
+aws ec2 wait instance-running --instance-ids $INST_ID
+IP=$(aws ec2 describe-instances --instance-ids $INST_ID --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
+
+# 4. Attach Volume
+echo "🔗 Attaching Volume $VOL_ID to $INST_ID..."
+aws ec2 attach-volume --volume-id $VOL_ID --instance-id $INST_ID --device /dev/sdf > /dev/null
+aws ec2 wait volume-in-use --volume-ids $VOL_ID
+
+# Save state for Script 2
+echo "VOL_ID=$VOL_ID" > .test-state
+echo "INST1_ID=$INST_ID" >> .test-state
+echo "SG_ID=$SG_ID" >> .test-state
+
+# 5. Setup Server via SSH
+echo "⏳ Waiting for SSH to become available on $IP..."
+while ! ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=2 ubuntu@$IP 'echo OK' > /dev/null 2>&1; do sleep 2; done
+
+echo "🛠️ Formatting volume, installing Docker, and starting server..."
+ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << EOF
+    sudo mkfs.ext4 /dev/nvme1n1
+    sudo mkdir -p /mnt/data
+    sudo mount /dev/nvme1n1 /mnt/data
+    sudo apt-get update -y && sudo apt-get install -y docker.io
+EOF
+
+if [ "$SERVER_TYPE" == "axonserver" ]; then
+echo "🐳 Starting Axon Server container..."
+    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
+        sudo docker pull axoniq/axonserver:2026.0.5-jdk-21-nonroot
+
+        sudo docker run -d --rm \
+          --name my-axon-server-dcb \
+          -p 8024:8024 \
+          -p 8124:8124 \
+          -v /mnt/data/eventdata:/eventdata \
+          -e AXONIQ_AXONSERVER_NAME=my-axon-dcb-server \
+          -e AXONIQ_AXONSERVER_HOSTNAME=my-axon-dcb-server \
+          -e AXONIQ_AXONSERVER_STANDALONE_DCB="true" \
+          axoniq/axonserver:2026.0.5-jdk-21-nonroot
+
+        echo "⏳ Waiting 15 seconds for Axon Server to boot..."
+        sleep 15
+EOF
+    echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
+    echo "AXON_SERVER_URI=http://$IP:8124 ESB_WORKLOAD_STORES=axonserver make run-write-unconditional"
+else
+    # NOTE: Replace 'your/umadb-image' with your actual image, or scp your binary here!
+    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP "sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data your/umadb-image"
+    echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
+    echo "UMADB_URI=http://$IP:50051 ESB_WORKLOAD_STORES=umadb make run-write-unconditional"
+fi
