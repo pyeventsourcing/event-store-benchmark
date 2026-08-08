@@ -10,7 +10,7 @@ performance:
     writers: [128]
   operations:
     write:
-      event_size_bytes: 256
+      event_size_bytes: 1024
       activate_timestamps: true
   stores:
     - umadb

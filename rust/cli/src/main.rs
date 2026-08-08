@@ -212,31 +212,70 @@ fn main() -> Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("Unknown store: {}", store))?;
 
                 let mut manager = store_factory.create_store_manager(None, false)?;
-                let adapter = manager.create_adapter().await?;
 
-                let mut subscription = adapter.read_all_events().await?;
-                let mut max_timestamp: Option<u128> = None;
+                let max_retries = 30;
+                let mut attempts = 0;
 
-                while let Some(event) = subscription.next_event().await? {
-                    for (key, value) in &event.metadata {
-                        if key == "timestamp" {
-                            if let Ok(ts) = value.parse::<u128>() {
-                                if let Some(current_max) = max_timestamp {
-                                    if ts > current_max {
-                                        max_timestamp = Some(ts);
+                let (max_timestamp, count) = loop {
+                    attempts += 1;
+
+                    // Especially to copy with Axon Server's...
+                    //
+                    //  'Client specified an invalid argument', message:
+                    //  "[AXONIQ-2308] Operation not supported on non-DCB context"
+                    //
+                    // ...we wrap the actual connection and read logic in a sub-async block
+                    // so we can easily catch any anyhow::Error and retry.
+                    let result = async {
+                        let adapter = manager.create_adapter().await?;
+                        let mut subscription = adapter.read_all_events().await?;
+
+                        let mut current_max: Option<u128> = None;
+                        let mut count = 0u64;
+
+                        while let Some(event) = subscription.next_event().await? {
+                            count += 1;
+                            for (key, value) in &event.metadata {
+                                if key == "timestamp" {
+                                    if let Ok(ts) = value.parse::<u128>() {
+                                        current_max = match current_max {
+                                            Some(max) if ts > max => Some(ts),
+                                            Some(max) => Some(max),
+                                            None => Some(ts),
+                                        };
                                     }
-                                } else {
-                                    max_timestamp = Some(ts);
                                 }
                             }
                         }
+
+                        Ok::<(Option<u128>, u64), anyhow::Error>((current_max, count))
+                    }.await;
+
+                    match result {
+                        Ok(ts) => break ts,
+                        Err(e) => {
+                            if attempts >= max_retries {
+                                return Err(anyhow::anyhow!(
+                            "Gave up after {} attempts. Last error: {}",
+                            max_retries, e
+                        ));
+                            }
+
+                            // Print to stderr so it doesn't pollute stdout if you are parsing the final number
+                            eprintln!("⚠️ [Attempt {}/{}] Store not ready: {}. Retrying in 2s...", attempts, max_retries, e);
+
+                            // Wait 2 seconds before trying again
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
                     }
+                };
+
+                println!("Received event count: {}", count);
+                match max_timestamp {
+                    Some(ts) => println!("Max received timestamp: {} ns", ts),
+                    None => println!("No timestamps were found"),
                 }
 
-                match max_timestamp {
-                    Some(ts) => println!("{}", ts),
-                    None => println!("no timestamps were found"),
-                }
                 Ok::<(), anyhow::Error>(())
             })?;
             Ok(())

@@ -84,6 +84,7 @@ impl WorkloadResults {
                 let last_sample = results.throughput_samples.last().unwrap();
                 let duration = last_sample.elapsed_s;
                 let throughput = (total_count as f64) / duration.max(0.001);
+                println!("Total count: {}", total_count);
                 println!("Throughput: {:.2} eps", throughput);
             }
             if !results.operation_error_samples.is_empty() {

@@ -14,5 +14,5 @@ if [ -z "$INSTANCE_IDS" ] || [ "$INSTANCE_IDS" == "None" ]; then
   exit 0
 fi
 
-echo "Terminating instances: $INSTANCE_IDS"
+echo "💥 Terminating instances: $INSTANCE_IDS"
 aws ec2 terminate-instances --instance-ids $INSTANCE_IDS

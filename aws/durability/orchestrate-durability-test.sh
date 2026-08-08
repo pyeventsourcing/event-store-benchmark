@@ -30,7 +30,6 @@ fi
 
 # 🚨 SAFETY TRAP: If you press Ctrl+C, forcefully kill the workload and run cleanup!
 cleanup() {
-  echo -e "\n⚠️ Orchestrator interrupted or finished. Cleaning up..."
   if [ -n "$WORKLOAD_PID" ]; then
       # We only kill on an unexpected exit (Ctrl+C). Normal execution bypasses this.
       kill -9 $WORKLOAD_PID 2>/dev/null || true
@@ -77,9 +76,10 @@ echo "📊 Querying surviving event store on Instance 2..."
 ./aws/durability/04-get-max-timestamp.sh
 
 # 6. Print Client ACKed Max Timestamp for Comparison
-echo "--------------------------------------------------"
+echo ""
 echo "📋 Client Workload Summary (from workload.log):"
 # Grabbing the last 25 lines so you can see the final stats even if there are a few timeout logs at the end
-tail -n 25 workload.log | grep "Overall max timestamp" || true
+tail -n 25 workload.log | grep "Total count:" || true
+tail -n 25 workload.log | grep "Max acknowledged timestamp:" || true
 echo "=================================================="
 echo "✅ Test complete! (Cleanup will run automatically)"

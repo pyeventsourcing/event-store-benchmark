@@ -389,13 +389,50 @@ impl PerformanceWorkload {
             for _ in 0..readers {
                 reader_adapters.push(store.create_adapter().await?);
             }
+            let max_failures = 60;
+            let mut failures = 0;
+            for _ in 0..writers {
+                loop {
+                    match store.create_adapter().await {
+                        Ok(adapter) => {
+                            reader_adapters.push(adapter);
+                            break
+                        },
+                        Err(err) => {
+                            if failures >= max_failures {
+                                return Err(err)
+                            }
+                            println!("Failed ({}/{}) to create reader: {}", failures, max_failures, err);
+                            failures += 1;
+                            sleep(Duration::from_secs(1)).await;
+                        },
+                    };
+                }
+            }
         }
 
         let mut writer_adapters = Vec::new();
         if writers > 0 {
             println!("Creating {} writer clients...", writers);
+            let max_failures = 60;
+            let mut failures = 0;
             for _ in 0..writers {
-                writer_adapters.push(store.create_adapter().await?);
+                loop {
+                    match store.create_adapter().await {
+                        Ok(adapter) => {
+                            writer_adapters.push(adapter);
+                            break
+                        },
+                        Err(err) => {
+                            if failures >= max_failures {
+                                return Err(err)
+                            }
+                            println!("Failed ({}/{}) to create writer: {}", failures, max_failures, err);
+                            failures += 1;
+                            sleep(Duration::from_secs(1)).await;
+                        },
+                    };
+                }
             }
         }
 
@@ -527,7 +564,7 @@ impl PerformanceWorkload {
         }
 
         if max_timestamp.is_some() {
-            println!("Overall max timestamp: {}", max_timestamp.unwrap())
+            println!("Max acknowledged timestamp: {} ns", max_timestamp.unwrap())
         }
 
         // Convert combined counts to ThroughputSamples
