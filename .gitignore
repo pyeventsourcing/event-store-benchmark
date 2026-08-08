@@ -37,3 +37,6 @@ vendor/
 /axonserver.aws_instance_id
 /postgres-dcb-ttcte.aws_instance_id
 /umadb.aws_instance_id
+/esb-durability-aws-ssh-key.pem
+/axon-recovered-events/00000000000000000000.events
+/workload.log
