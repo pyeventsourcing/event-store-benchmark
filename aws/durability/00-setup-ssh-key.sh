@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-KEY_NAME="axon-test-key"
+KEY_NAME="esb-durability-aws-ssh-key"
 KEY_FILE="${KEY_NAME}.pem"
 
 echo "🔑 Setting up SSH key pair: $KEY_NAME"
@@ -28,4 +28,4 @@ echo "🔒 Securing local key file (chmod 400)..."
 chmod 400 "$KEY_FILE"
 
 echo "✅ Key setup complete! Your key is saved as '$KEY_FILE'."
-echo "You can now run: ./01-launch-first-node.sh axonserver"
+echo "You can now run: ./01-launch-first-node.sh umadb"

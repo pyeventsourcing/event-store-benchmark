@@ -1,13 +1,19 @@
 #!/bin/bash
 set -e
 
+# --- Configuration ---
+AZ="us-east-1a"
+INSTANCE_TYPE="c7i.2xlarge"  # 🔥 Upgraded to 8 vCPUs / 16GB RAM
+KEY_NAME="esb-durability-aws-ssh-key"
+KEY_FILE="${KEY_NAME}.pem"
+
 # --- Parse CLI arguments ---
-SERVER_TYPE=""
+STORE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -s|--store)
-      SERVER_TYPE=$(echo "$2" | tr '[:upper:]' '[:lower:]')
+      STORE=$(echo "$2" | tr '[:upper:]' '[:lower:]')
       shift 2
       ;;
     *)
@@ -18,27 +24,41 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$SERVER_TYPE" ]]; then
+if [[ -z "$STORE" ]]; then
   echo "❌ Error: The --store argument is mandatory."
   echo "Usage: $0 --store <axonserver|umadb>"
   exit 1
 fi
 
-if [[ "$SERVER_TYPE" != "axonserver" && "$SERVER_TYPE" != "umadb" ]]; then
-  echo "❌ Error: Invalid store type '$SERVER_TYPE'."
+if [[ "$STORE" != "axonserver" && "$STORE" != "umadb" ]]; then
+  echo "❌ Error: Invalid store '$STORE'."
   echo "Must be either 'axonserver' or 'umadb'."
   exit 1
 fi
 
-# --- Configuration ---
-KEY_NAME="axon-test-key"
-KEY_FILE="${KEY_NAME}.pem"
-AZ="us-east-1a"
-INSTANCE_TYPE="c7i.2xlarge"  # 🔥 Upgraded to 8 vCPUs / 16GB RAM
-# Fetch the latest Ubuntu 24.04 AMI
-AMI_ID=$(aws ssm get-parameters --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query 'Parameters[0].Value' --output text)
+cleanup_on_failure() {
+    echo -e "\n⚠️ Script interrupted or failed! Cleaning up partial resources..."
+    if [ -n "$VOL_ID" ]; then
+        echo "Deleting volume $VOL_ID..."
+        aws ec2 delete-volume --volume-id "$VOL_ID" 2>/dev/null || true
+    fi
+    if [ -n "$INST_ID" ]; then
+        echo "Terminating instance $INST_ID..."
+        aws ec2 terminate-instances --instance-ids "$INST_ID" 2>/dev/null || true
+    fi
+}
 
-echo "🚀 Starting Setup for $SERVER_TYPE on a $INSTANCE_TYPE..."
+# Trigger cleanup_on_failure on INT (Ctrl+C), TERM, or ERR
+trap cleanup_on_failure INT TERM ERR
+
+
+# Fetch the latest Ubuntu 24.04 AMI
+AMI_ID=$(aws ssm get-parameters \
+  --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
+  --query 'Parameters[0].Value' \
+  --output text)
+
+echo "🚀 Starting Setup for $STORE on a $INSTANCE_TYPE..."
 
 # 1. Create Security Group
 SG_ID=$(aws ec2 create-security-group --group-name "db-test-sg" --description "DB Test" --query 'GroupId' --output text 2>/dev/null || aws ec2 describe-security-groups --group-names "db-test-sg" --query 'SecurityGroups[0].GroupId' --output text)
@@ -52,7 +72,17 @@ VOL_ID=$(aws ec2 create-volume --availability-zone $AZ --size 10 --volume-type g
 
 # 3. Launch Instance
 echo "🖥️ Launching Instance 1..."
-INST_ID=$(aws ec2 run-instances --image-id $AMI_ID --count 1 --instance-type $INSTANCE_TYPE --key-name $KEY_NAME --security-group-ids $SG_ID --placement AvailabilityZone=$AZ --query 'Instances[0].InstanceId' --output text)
+INST_ID=$(aws ec2 run-instances \
+  --image-id $AMI_ID \
+  --count 1 \
+  --instance-type $INSTANCE_TYPE \
+  --key-name $KEY_NAME \
+  --security-group-ids $SG_ID \
+  --placement AvailabilityZone=$AZ \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Project,Value=event-store-benchmark-suite}]" \
+  --query 'Instances[0].InstanceId' \
+  --output text)
+
 
 echo "⏳ Waiting for Instance 1 to be running..."
 aws ec2 wait instance-running --instance-ids $INST_ID
@@ -67,10 +97,12 @@ aws ec2 wait volume-in-use --volume-ids $VOL_ID
 echo "VOL_ID=$VOL_ID" > .test-state
 echo "INST1_ID=$INST_ID" >> .test-state
 echo "SG_ID=$SG_ID" >> .test-state
+echo "INST1_IP=$IP" >> .test-state
+echo "STORE=$STORE" >> .test-state
 
 # 5. Setup Server via SSH
 echo "⏳ Waiting for SSH to become available on $IP..."
-while ! ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o ConnectTimeout=2 ubuntu@$IP 'echo OK' > /dev/null 2>&1; do sleep 2; done
+while ! ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=2 ubuntu@$IP 'echo OK' > /dev/null 2>&1; do sleep 2; done
 
 echo "🛠️ Formatting volume, installing Docker, and starting server..."
 ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
@@ -80,7 +112,7 @@ ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
     sudo apt-get update -y && sudo apt-get install -y docker.io
 EOF
 
-if [ "$SERVER_TYPE" == "axonserver" ]; then
+if [ "$STORE" == "axonserver" ]; then
     echo "🐳 Starting Axon Server container..."
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
         sudo docker pull axoniq/axonserver:2026.0.5-jdk-21-nonroot
@@ -94,8 +126,8 @@ if [ "$SERVER_TYPE" == "axonserver" ]; then
           -e AXONIQ_AXONSERVER_STANDALONE_DCB="true" \
           axoniq/axonserver:2026.0.5-jdk-21-nonroot
 
-        echo "⏳ Waiting 15 seconds for Axon Server to boot..."
-        sleep 15
+        echo "⏳ Waiting 30 seconds for Axon Server to boot..."
+        sleep 30
 EOF
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "AXON_SERVER_URI=http://$IP:8124 ESB_WORKLOAD_STORES=axonserver make run-write-unconditional"
@@ -103,7 +135,9 @@ else
     echo "🐳 Starting UmaDB container..."
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
         # NOTE: Replace 'your/umadb-image' with your actual image path/pull command
-        sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data ghcr.io/umadb-io/umadb:latest
+        sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data umadb/umadb:latest
+        echo "⏳ Waiting 3 seconds for UmaDB to boot..."
+        sleep 3
 EOF
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "UMADB_URI=http://$IP:50051 ESB_WORKLOAD_STORES=umadb make run-write-unconditional"

@@ -2,15 +2,15 @@ performance:
   name: write-stream-unconditional
   mode: write
   use_docker: false
-  warmup_seconds: 1
-  duration_seconds: 120
+  warmup_seconds: 0
+  duration_seconds: 60
   samples_per_second: 2
   concurrency:
     readers: 0
     writers: [128]
   operations:
     write:
-      event_size_bytes: 16
+      event_size_bytes: 256
       activate_timestamps: true
   stores:
     - umadb
