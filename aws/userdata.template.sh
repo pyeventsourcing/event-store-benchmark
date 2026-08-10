@@ -371,7 +371,7 @@ EOF
     ;;
 
   umadb)
-    VERSION="v0.7.4"
+    VERSION="v0.7.5"
 
     if [ "$ARCH" = "aarch64" ]; then
       BINARY_URL="https://github.com/umadb-io/umadb/releases/download/${VERSION}/umadb-aarch64-unknown-linux-gnu.tar.gz"
