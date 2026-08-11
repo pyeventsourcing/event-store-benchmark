@@ -1,4 +1,5 @@
 pub mod axonserver;
+pub mod tephra;
 pub mod eventsourcingdb;
 pub mod fact;
 pub mod foundationdb_dcb;

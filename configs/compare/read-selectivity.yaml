@@ -1,0 +1,122 @@
+# Read selectivity / cardinality sweep (tephra vs umadb).
+# Each document queries a different fraction of the same graded corpus:
+#   single  -> one entity (one stream)
+#   s1000   -> ~1/1000 of the log
+#   s100    -> ~1/100
+#   s10     -> ~1/10
+#   full    -> the whole log (Query::all)
+# Mirrors compare.rs `read_selectivity` / `read_full_scan`.
+performance:
+  name: sel-single
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: one_tag_one_type
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: sel-s1000
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s1000
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: sel-s100
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s100
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: sel-s10
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s10
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: sel-full
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: full_scan
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb

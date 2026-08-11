@@ -2,6 +2,7 @@
 members = [
     "rust/bench-core",
     "rust/adapters/umadb",
+    "rust/adapters/tephra",
     "rust/adapters/dummy",
     "rust/adapters/kurrentdb",
     "rust/testcontainers",

@@ -1,0 +1,306 @@
+# DCB group: tephra vs umadb vs axonserver, the three DCB-capable stores in this suite.
+#
+# Fairness settings baked in here and in the testcontainers, recorded per run in
+# run_manifest.json:
+#   * docker_memory_limit_mb: 4096 on every doc  -> equal cgroup budget for all three stores.
+#   * segment size pinned to 16 MiB for BOTH segmented stores (tephra TEPHRA__SEGMENT__SIZE, axon
+#     -Daxoniq.axonserver.event.segment-size) so segment size is a controlled constant and small
+#     enough that the sustained-write configs cross several boundaries in 60 s -> rollover cost is
+#     actually measured, not hidden by a within-one-segment sprint. axon heap pinned -Xmx2g; umadb
+#     is page-based (no segments) and keeps its author-set 2 GB page cache. Set in rust/testcontainers.
+#   * Reads are run in TWO regimes: `warm-*` (small corpus that fits in the 4 GB budget, so the
+#     data is cache-resident) and `cold-*` (a corpus larger than 4 GB, so the cgroup evicts page
+#     cache and reads go out-of-core for every store equally). Never mix the two on one chart.
+#   * Writes sweep concurrency AND batch size together, plus a pipelined writeflood, so
+#     per-append latency and sustained throughput are separable rather than confounded.
+#
+# 8 vCPU box, client + server co-located (disclosed in the manifest); concurrency capped at 128.
+
+# ============================================================================================
+# WRITES
+# ============================================================================================
+
+# Headline scaling curve: one conditional (DCB optimistic-concurrency) append per event, batch 1.
+performance:
+  name: scale-write
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 4, 16, 64, 128] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 1 }
+  stores: [tephra]
+---
+# Concurrency x batch matrix (batch 64): separates latency from throughput at a mid batch size.
+performance:
+  name: matrix-b64
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 64 }
+  stores: [tephra]
+---
+# Concurrency x batch matrix (batch 512): shows large-batch behaviour is concurrency dependent
+# (a large synchronous batch at low concurrency is latency-bound, not a store ceiling).
+performance:
+  name: matrix-b512
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 512 }
+  stores: [tephra]
+---
+# Write flood: pipelined fire-hose, many appends in flight per worker (unconditional). Peak
+# sustained ingest, the ceiling test.
+performance:
+  name: writeflood
+  mode: writeflood
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16, 64] }
+  operations:
+    write: { event_size_bytes: 256, in_flight_limit: 256, batch_size: 1 }
+  stores: [tephra]
+---
+# Write payload sweep at fixed 16 writers (conditional), to isolate payload-size effects.
+performance:
+  name: wp-64
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 64, concurrency_control: true, append_condition: one_tag_one_type }
+  stores: [tephra]
+---
+performance:
+  name: wp-1024
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 1024, concurrency_control: true, append_condition: one_tag_one_type }
+  stores: [tephra]
+---
+performance:
+  name: wp-16384
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 16384, concurrency_control: true, append_condition: one_tag_one_type }
+  stores: [tephra]
+---
+# ============================================================================================
+# READS - WARM regime (50k-event corpus, cache-resident within the 4 GB budget)
+# ============================================================================================
+
+# Scaling curve: load-one-entity read, sweeping readers.
+performance:
+  name: warm-scale-read
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [1, 4, 16, 64, 128] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+# Selectivity / cardinality sweep at fixed 16 readers (single stream -> 1/1000 -> 1/100 ->
+# 1/10 -> full scan). The `limit` is large so each read drains its whole result set.
+performance:
+  name: warm-sel-single
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-sel-s1000
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s1000 }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-sel-s100
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100 }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-sel-s10
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s10 }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-sel-full
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: full_scan }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+# Resume-position sweep at fixed selectivity (s100), 16 readers: whole / half / recent tail.
+performance:
+  name: warm-resume-whole
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100, resume: whole }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-resume-half
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100, resume: half }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+performance:
+  name: warm-resume-recent
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100, resume: recent }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra]
+---
+# ============================================================================================
+# READS - COLD regime (~8 GB corpus > 4 GB budget -> out-of-core for every store)
+# 1 KiB payload x 8M events ~= 8 GB, re-seeded per run with 16 parallel seeders. Both shapes are
+# BOUNDED on the client side (small `limit`) and SCATTERED across the corpus so each read lands in
+# a different, uncached region -> the store must fetch cold pages from disk, while the benchmark
+# client never materialises more than a few MB per op. (An unbounded full scan would instead force
+# the *client* to hold the whole 8 GB corpus in RAM -> client-side OOM, measuring nothing about the
+# store; that is deliberately avoided here.)
+# ============================================================================================
+# Cold aggregate load: fetch one random entity's events per op. The store must locate and read that
+# entity out of the 8 GB on-disk log -> the realistic "rebuild one aggregate from cold storage" op.
+performance:
+  name: cold-entity
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 8000000, prepopulate_streams: 8000, tag_scheme: graded, prepopulate_concurrency: 16 }
+  stores: [tephra]
+---
+# Cold sequential window: read a bounded ~10k-event window (~10 MiB) starting at a fresh random
+# global position each op (resume: random). Successive reads hit different cold regions of the log
+# -> out-of-core sequential scan throughput, with client memory bounded to ~10 MiB/op x 16 readers.
+performance:
+  name: cold-window
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 10000, dcb_query: full_scan, resume: random }
+  setup: { prepopulate_events: 8000000, prepopulate_streams: 8000, tag_scheme: graded, prepopulate_concurrency: 16 }
+  stores: [tephra]

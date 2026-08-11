@@ -1,0 +1,148 @@
+# Stream/universal group: benchmarks every store can do fairly (no DCB tag queries).
+# Stores: tephra + umadb (as reference) vs the stream stores kurrentdb, eventsourcingdb,
+# fact, postgres-dcb-marten. Writes are UNCONDITIONAL single-stream appends (append_condition:
+# none) and reads are load-one-entity; this is the raw append/read path all six share.
+#
+# Fairness caveats to state next to any chart from this file:
+#   * Unconditional path: stores give different durability/ordering guarantees here (Marten is a
+#     bare INSERT with no reliably-followable sequence; eventsourcingdb commits per write). This
+#     is "raw append across the ecosystem", NOT a like-for-like consistency comparison.
+#   * docker_memory_limit_mb: 4096 on every doc (equal budget); segment/cache/heap pinned in the
+#     testcontainers and recorded in run_manifest.json.
+#   * Reads: `warm-*` (cache-resident) always; `cold-*` (out-of-core) only for the fast-writing
+#     stores, because eventsourcingdb/fact/marten cannot seed a multi-GB corpus in bounded time.
+
+# ============================================================================================
+# WRITES (unconditional)
+# ============================================================================================
+performance:
+  name: scale-write
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 4, 16, 64, 128] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 1 }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+performance:
+  name: matrix-b64
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 64 }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+performance:
+  name: matrix-b512
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [1, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 512 }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+# Write flood: pipelined fire-hose (peak sustained ingest). Note the harness special-cases
+# Marten under flood (stream_len=1) to keep it from erroring; disclose that on any flood chart.
+performance:
+  name: writeflood
+  mode: writeflood
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16, 64] }
+  operations:
+    write: { event_size_bytes: 256, in_flight_limit: 256, batch_size: 1 }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+# Write payload sweep at 16 writers.
+performance:
+  name: wp-64
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 64, append_condition: none }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+performance:
+  name: wp-1024
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 1024, append_condition: none }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+performance:
+  name: wp-16384
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 16384, append_condition: none }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+# ============================================================================================
+# READS - WARM (load one entity; 50k corpus, seeded with 8 parallel seeders so the slow-writing
+# stores seed in bounded time)
+# ============================================================================================
+performance:
+  name: warm-scale-read
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [1, 4, 16, 64, 128] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, prepopulate_concurrency: 8 }
+  stores: [tephra, umadb, kurrentdb, eventsourcingdb, fact, postgres-dcb-marten]
+---
+# ============================================================================================
+# READS - COLD (out-of-core point read; ~8 GB corpus > 4 GB budget). Fast-writing stores only:
+# eventsourcingdb/fact/marten cannot seed 8M events in bounded time.
+# ============================================================================================
+performance:
+  name: cold-scale-read
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 8000000, prepopulate_streams: 8000, prepopulate_concurrency: 16 }
+  stores: [tephra, umadb, kurrentdb]

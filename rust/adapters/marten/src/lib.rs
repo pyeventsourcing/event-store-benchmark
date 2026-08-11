@@ -38,6 +38,15 @@ impl Marten {
             mounts: vec![mount],
         }
     }
+
+    /// The store-config posture recorded in each run's manifest.
+    pub fn describe() -> serde_json::Value {
+        serde_json::json!({
+            "image": format!("{NAME}:{TAG}"),
+            "shared_buffers": "1GB",
+            "note": "Marten = bare Postgres INSERT path (no reliably-followable sequence)",
+        })
+    }
 }
 
 impl Default for Marten {
@@ -57,6 +66,12 @@ impl Image for Marten {
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stderr("database system is ready to accept connections")]
+    }
+
+    fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
+        // Pin shared_buffers so Postgres's cache budget is a recorded, comparable value rather
+        // than the tiny 128 MB default; the 4 GB container cgroup cap is the outer equalizer.
+        ["postgres", "-c", "shared_buffers=1GB", "-c", "max_connections=200"]
     }
 
     fn env_vars(
@@ -107,7 +122,11 @@ impl MartenStoreManager {
     }
 
     fn format_uri(host_port: u16) -> String {
-        format!("postgres://eventsourcing:eventsourcing@127.0.0.1:{}/eventsourcing", host_port)
+        // Credentials/db must match the container env set in `Marten::new`
+        // (POSTGRES_USER=postgres, POSTGRES_PASSWORD=postgres, POSTGRES_DB=marten); otherwise
+        // every connect fails with `role "eventsourcing" does not exist` and the store never
+        // becomes ready.
+        format!("postgres://postgres:postgres@127.0.0.1:{host_port}/marten")
     }
 }
 
@@ -134,26 +153,37 @@ impl StoreManager for MartenStoreManager {
                 });
             }
     
+            // At small (e.g. 16 MiB) segment sizes a multi-GB run produces hundreds of segment
+            // files, and these engines hold file handles per segment; raise the container's
+            // open-file limit so fds — not concurrency — are never the bottleneck (mirrors tephra).
+            image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
+
             let container = image.start().await?;
     
             let host_port = container.get_host_port_ipv4(POSTGRES_PORT).await?;
             self.uri = Self::format_uri(host_port);
             self.container = Some(container);
     
-            let client = MartenClient::connect(&self.uri).await?;
-            
-            // Wait for container to be ready and initialize schema
-            let client_clone = client.clone();
-            wait_for_ready(
+            // Reconnect on every attempt: the official Postgres image logs "ready to accept
+            // connections" during its init bootstrap and then restarts, so a connection made
+            // before that restart goes stale and every create_tables() on it fails for the
+            // whole timeout (seen as "Marten did not become ready within 60s"). Connecting
+            // inside the loop yields a live client once Postgres is truly up.
+            let uri = self.uri.clone();
+            let client = wait_for_ready(
                 "Marten",
-                || async {
-                    client_clone.create_tables().await.map_err(|e| anyhow::anyhow!("{}", e))?;
-                    Ok(())
+                || {
+                    let uri = uri.clone();
+                    async move {
+                        let client = MartenClient::connect(&uri).await?;
+                        client.create_tables().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+                        Ok(client)
+                    }
                 },
-                Duration::from_secs(60),
+                Duration::from_secs(90),
             )
             .await?;
-    
+
             self.client = Some(client);
         }
         Ok(())
@@ -190,6 +220,14 @@ impl StoreManager for MartenStoreManager {
 
     fn name(&self) -> &'static str {
         "postgres-dcb-marten"
+    }
+
+    fn describe(&self) -> serde_json::Value {
+        let mut desc = Marten::describe();
+        if let Some(limit_mb) = self.memory_limit_mb {
+            desc["memory_limit_mb"] = serde_json::json!(limit_mb);
+        }
+        desc
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {

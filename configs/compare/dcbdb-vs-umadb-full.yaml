@@ -1,0 +1,109 @@
+# Curated headline comparison (tephra vs umadb) touching every realistic dimension in one
+# run at fixed concurrency (readers/writers = 16). For the throughput/latency-vs-workers
+# scaling view, use configs/tephra-vs-umadb.yaml; for a single dimension in depth, use the
+# per-dimension files in this directory.
+performance:
+  name: sel-single
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra, umadb]
+---
+performance:
+  name: sel-s100
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100 }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra, umadb]
+---
+performance:
+  name: sel-full
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: full_scan }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra, umadb]
+---
+performance:
+  name: resume-recent
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100, resume: recent }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra, umadb]
+---
+performance:
+  name: batch-1
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 1 }
+  stores: [tephra, umadb]
+---
+performance:
+  name: batch-64
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 64 }
+  stores: [tephra, umadb]
+---
+performance:
+  name: batch-512
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 512 }
+  stores: [tephra, umadb]
+---
+performance:
+  name: rp-4096
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 4096 }
+    read: { limit: 1000000, dcb_query: s100 }
+  setup: { prepopulate_events: 50000, prepopulate_streams: 5000, tag_scheme: graded }
+  stores: [tephra, umadb]

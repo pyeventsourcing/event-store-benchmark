@@ -233,6 +233,13 @@ pub trait StoreManager: Send + Sync {
     /// Store name (adapter name)
     fn name(&self) -> &'static str;
 
+    /// A JSON description of the store's runtime posture (image/tag, segment size, cache/heap
+    /// settings, memory limit), recorded in each run's `run_manifest.json` so results are
+    /// self-documenting. Defaults to null for stores that expose nothing extra.
+    fn describe(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+
     /// Create a new adapter instance (client)
     async fn create_adapter(&mut self) -> anyhow::Result<Arc<dyn EventStoreAdapter>>;
 

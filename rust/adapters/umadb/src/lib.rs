@@ -66,6 +66,11 @@ impl StoreManager for UmaDbStoreManager {
                 });
             }
 
+            // At small (e.g. 16 MiB) segment sizes a multi-GB run produces hundreds of segment
+            // files, and these engines hold file handles per segment; raise the container's
+            // open-file limit so fds — not concurrency — are never the bottleneck (mirrors tephra).
+            image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
+
             let container = image.start().await?;
 
             let host_port = container.get_host_port_ipv4(UMADB_PORT).await?;
@@ -117,6 +122,14 @@ impl StoreManager for UmaDbStoreManager {
 
     fn name(&self) -> &'static str {
         "umadb"
+    }
+
+    fn describe(&self) -> serde_json::Value {
+        let mut desc = UmaDb::describe();
+        if let Some(limit_mb) = self.memory_limit_mb {
+            desc["memory_limit_mb"] = serde_json::json!(limit_mb);
+        }
+        desc
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
@@ -219,16 +232,28 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Some(pos))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn ReadResponse>> {
-        let query = DcbQuery {
-            items: vec![DcbQueryItem {
-                types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
-                tags: vec![req.tag],
-            }],
+    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+        // An empty tag and no event type means "no filter" (full scan). Passing an empty-string
+        // tag would otherwise match nothing, so build the query from only the set fields and
+        // send `None` when neither is present, matching the tephra adapter's semantics.
+        let mut types = Vec::new();
+        if let Some(event_type) = req.event_type {
+            types.push(event_type);
+        }
+        let mut tags = Vec::new();
+        if !req.tag.is_empty() {
+            tags.push(req.tag);
+        }
+        let query = if types.is_empty() && tags.is_empty() {
+            None
+        } else {
+            Some(DcbQuery {
+                items: vec![DcbQueryItem { types, tags }],
+            })
         };
         let stream = self.client
             .read(
-                Some(query),
+                query,
                 req.from_offset,
                 false,
                 req.limit.map(|l| l as u32),
@@ -238,8 +263,6 @@ impl EventStoreAdapter for UmaDbAdapter {
     }
 
     async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
-        // Build a query from whichever of event_type / tag is set. An empty tag
-        // and no event type means "no filter" (subscribe to all events).
         let after = if from_end {
             self.client.head().await?
         } else {
@@ -315,7 +338,7 @@ mod tests {
     async fn test_read_all() -> Result<()> {
         let mut manager = UmaDbStoreManager::new(None, true);
         manager.start().await?;
-        
+
         let adapter = manager.create_adapter().await?;
         // We can use the concrete type directly since we created it
         let umadb_adapter = adapter.as_any().downcast_ref::<UmaDbAdapter>().expect("UmaDbAdapter");
@@ -342,12 +365,12 @@ mod tests {
         while let Some(event) = read_response.next_event().await? {
             received_events.push(event);
         }
-        
+
         assert!(received_events.len() >= 2);
-        
+
         let found1 = received_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
         let found2 = received_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
-        
+
         assert!(found1, "Event type1 not found in read_all results");
         assert!(found2, "Event type2 not found in read_all results");
 

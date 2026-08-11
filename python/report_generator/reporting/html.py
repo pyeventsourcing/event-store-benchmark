@@ -200,6 +200,56 @@ def generate_session_index(
 
     session_title = f"Benchmark Session: {session_metadata.session_info.session_id}"
 
+    # Self-discovering dimension-comparison section: comparison.py writes
+    # report/comparison_<dimension>_<metric>.png for the configs/compare/* runs. Group them
+    # by dimension and embed; absent for ordinary sessions, so this stays empty there.
+    comparison_section = ""
+    report_dir = session_out_dir / "report"
+    comparison_imgs = sorted(report_dir.glob("comparison_*.png")) if report_dir.exists() else []
+    if comparison_imgs:
+        metric_order = ["throughput", "p99", "memory"]
+        metric_labels = {"throughput": "Throughput", "p99": "p99 latency", "memory": "Peak memory"}
+        dim_titles = {
+            "selectivity": "Read selectivity (warm)",
+            "resume": "Resume position (warm)",
+            "write_batch": "Write batch size",
+            "write_payload": "Write payload (bytes)",
+            "read_payload": "Read payload (bytes)",
+        }
+        dims: Dict[str, Dict[str, str]] = {}
+        for img in comparison_imgs:
+            stem = img.stem[len("comparison_"):]  # <dimension>_<metric>
+            dim_key, _, metric = stem.rpartition("_")
+            dims.setdefault(dim_key, {})[metric] = img.name
+        dim_blocks = ""
+        for dim_key, metrics in dims.items():
+            cards = ""
+            for metric in metric_order:
+                if metric in metrics:
+                    cards += (
+                        f"<div class='card'><h3>{metric_labels.get(metric, metric)}</h3>"
+                        f"<img src='report/{metrics[metric]}' width='420' "
+                        f"style='max-width:100%;height:auto;'></div>"
+                    )
+            dim_blocks += f"<h3>{dim_titles.get(dim_key, dim_key)}</h3><div class='row'>{cards}</div>"
+        # Embed the numbers (store-config panel + per-dimension tables with sample counts and
+        # low-N suppression) that comparison.py writes alongside the PNGs, so the figures are
+        # accompanied by each store's recorded configuration and the N behind every percentile.
+        tables_md = ""
+        tables_file = report_dir / "comparison_tables.md"
+        if tables_file.exists():
+            import html as _html
+            tables_md = (
+                "<pre style='overflow:auto;font-size:12px;line-height:1.35;'>"
+                f"{_html.escape(tables_file.read_text())}</pre>"
+            )
+        comparison_section = f"""
+    <div class='workload-section'>
+      <h2>Dimension Comparisons</h2>
+      {dim_blocks}
+      {tables_md}
+    </div>"""
+
     container_stats_section = ""
     if has_container_stats_summary is None:
         has_container_stats_summary = (session_out_dir / "report" / "container_stats_summary.png").exists()
@@ -259,6 +309,7 @@ def generate_session_index(
   <h1>{session_title}</h1>
   <p><a href="../index.html">← Back to all sessions</a></p>
   {env_section}
+  {comparison_section}
   {container_stats_section}
   {selected_slice_section}
   <h2 style='margin-bottom: 0;'>Workload Reports</h2>

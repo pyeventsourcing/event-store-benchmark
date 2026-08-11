@@ -83,6 +83,11 @@ impl StoreManager for AxonServerStoreManager {
                 });
             }
 
+            // At small (e.g. 16 MiB) segment sizes a multi-GB run produces hundreds of segment
+            // files, and these engines hold file handles per segment; raise the container's
+            // open-file limit so fds — not concurrency — are never the bottleneck (mirrors tephra).
+            image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
+
             let container = image.start().await?;
 
             let host_port = container.get_host_port_ipv4(AXONSERVER_GRPC_PORT).await?;
@@ -131,6 +136,14 @@ impl StoreManager for AxonServerStoreManager {
 
     fn name(&self) -> &'static str {
         "axonserver"
+    }
+
+    fn describe(&self) -> serde_json::Value {
+        let mut desc = AxonServer::describe();
+        if let Some(limit_mb) = self.memory_limit_mb {
+            desc["memory_limit_mb"] = serde_json::json!(limit_mb);
+        }
+        desc
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
@@ -273,19 +286,35 @@ impl EventStoreAdapter for AxonServerAdapter {
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn ReadResponse>> {
         let from = req.from_offset.unwrap_or(0) as i64;
-        let criterion = Criterion {
-            tags_and_names: Some(TagsAndNamesCriterion {
-                name: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]} ,
-                tag: vec![Tag {
+        // An empty tag and no event type means "no filter" (full scan). Axon's source treats
+        // an empty criteria list as match-all, so send no criterion in that case rather than
+        // a criterion with an empty tag key (which would match nothing).
+        let has_type = req.event_type.is_some();
+        let has_tag = !req.tag.is_empty();
+        let criteria = if !has_type && !has_tag {
+            vec![]
+        } else {
+            let name = if let Some(event_type) = req.event_type {
+                vec![event_type.into()]
+            } else {
+                vec![]
+            };
+            let tag = if has_tag {
+                vec![Tag {
                     key: req.tag.as_bytes().to_vec().into(),
                     value: Vec::new().into(),
-                }],
-            }),
+                }]
+            } else {
+                vec![]
+            };
+            vec![Criterion {
+                tags_and_names: Some(TagsAndNamesCriterion { name, tag }),
+            }]
         };
-        let stream = self.client.source(from, vec![criterion]).await?;
+        let response = self.client.source(from, criteria).await?;
 
         Ok(Box::new(AxonServerReadResponse {
-            stream: Some(stream),
+            stream: Some(response),
             limit: req.limit,
             count: 0,
         }))
@@ -297,21 +326,16 @@ impl EventStoreAdapter for AxonServerAdapter {
         } else {
             0
         };
-        
+
         let stream = self.client.stream(from, vec![]).await?;
         Ok(Box::new(AxonServerSubscription { stream }))
     }
+
 
     async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
         self.read_all().await
     }
 
-    // async fn ping(&self) -> Result<Duration> {
-    //     let mut client = self.client.clone();
-    //     let t0 = std::time::Instant::now();
-    //     client.get_head().await?;
-    //     Ok(t0.elapsed())
-    // }
 }
 
 /// Live subscription backed by Axon Server's infinite `Stream` RPC.

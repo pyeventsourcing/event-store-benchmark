@@ -1,0 +1,80 @@
+# Fast smoke test: tiny corpus and short durations to exercise every new code path
+# (readiness gate, run_manifest.json, latency sample counts + low-N suppression, parallel
+# prepopulation, writeflood, warm/cold read labelling) for two stores in ~1-2 minutes.
+# Not for real numbers. docker_memory_limit_mb kept tiny so the run is light.
+
+# Basic write: confirms readiness.json (ready=true), run_manifest.json, and a healthy sample count.
+performance:
+  name: smoke-scale-write
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 2048
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency: { writers: [4] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 1 }
+  stores: [tephra, umadb]
+---
+# Deliberately low sample count: a big synchronous batch at low concurrency for a short window
+# completes only a handful of appends, so the report should show N and SUPPRESS the percentiles.
+performance:
+  name: smoke-batch512-lowN
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 2048
+  warmup_seconds: 1
+  duration_seconds: 2
+  samples_per_second: 2
+  concurrency: { writers: [2] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 512 }
+  stores: [tephra, umadb]
+---
+# Writeflood: pipelined ingest path.
+performance:
+  name: smoke-writeflood
+  mode: writeflood
+  use_docker: true
+  docker_memory_limit_mb: 2048
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency: { writers: [4] }
+  operations:
+    write: { event_size_bytes: 256, in_flight_limit: 64, batch_size: 1 }
+  stores: [tephra, umadb]
+---
+# Warm read (cache-resident) with full scan.
+performance:
+  name: warm-smoke-full
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 2048
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency: { readers: [4] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 100000, dcb_query: full_scan }
+  setup: { prepopulate_events: 2000, prepopulate_streams: 200, tag_scheme: graded }
+  stores: [tephra, umadb]
+---
+# Cold-labelled read that exercises parallel prepopulation (prepopulate_concurrency: 4). At
+# smoke scale the corpus still fits in cache, so this validates the path, not a real cold number.
+performance:
+  name: cold-smoke-read
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 2048
+  warmup_seconds: 1
+  duration_seconds: 3
+  samples_per_second: 2
+  concurrency: { readers: [4] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 100000, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 20000, prepopulate_streams: 2000, prepopulate_concurrency: 4 }
+  stores: [tephra, umadb]

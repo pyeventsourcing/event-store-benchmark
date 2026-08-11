@@ -280,6 +280,10 @@ impl WorkloadRunner {
 
         workload_results.print_summary();
 
+        // Capture the store's resolved posture (image/tag, segment size, cache/heap, memory
+        // limit) while the manager is still alive, for `run_manifest.json`.
+        let store_manifest = store.describe();
+
         let mut container_stats: Option<ContainerStats> = None;
         let mut cpu_samples: Option<Vec<CpuSample>> = None;
         let mut memory_samples: Option<Vec<MemorySample>> = None;
@@ -338,6 +342,7 @@ impl WorkloadRunner {
             tool_cpu_samples,
             tool_memory_samples,
             server_logs,
+            store_manifest,
         })
     }
 

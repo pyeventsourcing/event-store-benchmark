@@ -1,0 +1,48 @@
+# Segment-size sweep: tephra vs axonserver (the two segmented DCB stores), a focused set of
+# write shapes at fixed concurrency. The segment size itself is varied ACROSS invocations by the
+# runner via `ESB_SEGMENT_SIZE_BYTES` (both stores read the same value, staying equal), so running
+# this config at 16 / 64 / 256 MiB produces three sessions whose throughput/latency show how each
+# engine responds to segment size and rollover frequency. umadb is page-based (no segments) and
+# the stream stores use their own chunk formats, so they are intentionally excluded here.
+#
+# Each doc holds the concurrency fixed so segment size is the only variable between sessions.
+# docker_memory_limit_mb: 4096 to match the main runs.
+
+performance:
+  name: sweep-scale-write
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [64] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 1 }
+  stores: [tephra, axonserver]
+---
+performance:
+  name: sweep-batch64
+  mode: write
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type, batch_size: 64 }
+  stores: [tephra, axonserver]
+---
+performance:
+  name: sweep-writeflood
+  mode: writeflood
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, in_flight_limit: 256, batch_size: 1 }
+  stores: [tephra, axonserver]

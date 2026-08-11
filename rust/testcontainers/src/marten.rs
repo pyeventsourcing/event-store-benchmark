@@ -29,6 +29,15 @@ impl Marten {
             mounts: vec![mount],
         }
     }
+
+    /// The store-config posture recorded in each run's manifest.
+    pub fn describe() -> serde_json::Value {
+        serde_json::json!({
+            "image": format!("{NAME}:{TAG}"),
+            "shared_buffers": "1GB",
+            "note": "Marten = bare Postgres INSERT path (no reliably-followable sequence)",
+        })
+    }
 }
 
 impl Default for Marten {
@@ -48,6 +57,12 @@ impl Image for Marten {
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stderr("database system is ready to accept connections")]
+    }
+
+    fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
+        // Pin shared_buffers so Postgres's cache budget is a recorded, comparable value rather
+        // than the tiny 128 MB default; the 4 GB container cgroup cap is the outer equalizer.
+        ["postgres", "-c", "shared_buffers=1GB", "-c", "max_connections=200"]
     }
 
     fn env_vars(

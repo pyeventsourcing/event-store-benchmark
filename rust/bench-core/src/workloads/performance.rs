@@ -1,5 +1,5 @@
 use crate::adapter::{EsbAppendCondition, EsbQuery, EsbQueryItem, EventData, ReadRequest, StoreManager};
-use crate::common::{SetupConfig};
+use crate::common::{SetupConfig, TagScheme};
 use crate::metrics::{LatencyRecorder, PerformanceWorkloadResults, ThroughputRecorder, ThroughputSample, RecordingStatus, SamplingConfigDecision};
 use anyhow::Result;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -237,7 +237,35 @@ pub enum AppendConditionValue {
 pub enum DcbQueryValue {
     #[default]
     None,
+    /// Load one entity: one random prepopulated stream, filtered to the setup type.
     OneTagOneType,
+    /// Read everything (empty tag, no type filter). Projection catch-up shape.
+    FullScan,
+    /// Graded selectivity: a single `s10:` bucket (~1/10 of the log). Requires the
+    /// `graded` prepopulation tag scheme.
+    S10,
+    /// A single `s100:` bucket (~1/100 of the log).
+    S100,
+    /// A single `s1000:` bucket (~1/1000 of the log).
+    S1000,
+}
+
+/// Where a read resumes from, expressed as a fraction of the prepopulated log. Maps to
+/// `ReadRequest.from_offset` (the exclusive `after` position).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ResumePoint {
+    /// From the beginning of the log.
+    #[default]
+    Whole,
+    /// From the midpoint (subscription resumed halfway).
+    Half,
+    /// From the most recent tenth (a caught-up subscriber).
+    Recent,
+    /// A fresh random position per read, uniform over the whole log. Used for cold/out-of-core
+    /// reads so successive reads land in different (uncached) regions of a >RAM corpus instead of
+    /// repeatedly hitting the head, which would otherwise stay cache-resident.
+    Random,
 }
 
 
@@ -266,6 +294,9 @@ pub struct WriteOpConfig {
     pub in_flight_limit: usize,
     #[serde(default)]
     pub append_condition: AppendConditionValue,
+    /// Events appended per commit (default 1 = one event per append).
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
     #[serde(default)]
     pub activate_timestamps: bool,
 }
@@ -274,13 +305,18 @@ fn default_in_flight_limit() -> usize {
     2000
 }
 
+fn default_batch_size() -> usize {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReadOpConfig {
     #[serde(default = "default_read_limit")]
     pub limit: usize,
     #[serde(default)]
     pub dcb_query: DcbQueryValue,
-
+    #[serde(default)]
+    pub resume: ResumePoint,
 }
 
 fn default_read_limit() -> usize {
@@ -433,6 +469,71 @@ impl PerformanceWorkload {
             }
         }
 
+        // Readiness gate: before opening the measured window, confirm the store actually serves
+        // a real request over its mapped port. We append one throwaway event (every adapter
+        // supports `append_to_stream`; it is the same path `prepare()` uses) to a dedicated
+        // probe tag no workload query targets, retrying until it succeeds or times out. The
+        // outcome is recorded per run so nobody has to reconstruct from log timestamps whether
+        // startup noise touched the numbers; a store that never becomes ready fails the run
+        // loudly rather than producing measured-but-meaningless numbers.
+        let readiness = {
+            let probe = store.create_adapter().await?;
+            let probe_tag: Arc<str> = Arc::from("esb-readiness-probe");
+            let probe_event = EventData {
+                payload: Arc::from(vec![0u8; 1]),
+                event_type: Arc::from("esb_probe"),
+                tags: Arc::from([probe_tag]),
+                metadata: Arc::from(vec![]),
+            };
+            let probe_start = Instant::now();
+            let timeout = Duration::from_secs(30);
+            let mut attempts: u32 = 0;
+            let mut ready = false;
+            loop {
+                attempts += 1;
+                match probe
+                    .append_to_stream(std::slice::from_ref(&probe_event), None, None)
+                    .await
+                {
+                    Ok(_) => {
+                        ready = true;
+                        break;
+                    }
+                    Err(err) => {
+                        if probe_start.elapsed() >= timeout {
+                            println!(
+                                "readiness probe for {} failed after {} attempt(s): {err}",
+                                self.store_name(),
+                                attempts
+                            );
+                            break;
+                        }
+                        sleep(Duration::from_millis(200)).await;
+                    }
+                }
+            }
+            let info = crate::metrics::ReadinessInfo {
+                ready,
+                attempts,
+                wait_ms: probe_start.elapsed().as_millis() as u64,
+            };
+            if !ready {
+                anyhow::bail!(
+                    "store {} not ready after {} attempt(s) ({} ms); refusing to measure",
+                    self.store_name(),
+                    attempts,
+                    info.wait_ms
+                );
+            }
+            println!(
+                "{} ready after {} attempt(s), {} ms",
+                self.store_name(),
+                attempts,
+                info.wait_ms
+            );
+            info
+        };
+
         println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
         let mut worker_tasks = JoinSet::new();
         let duration_seconds = self.config.duration_seconds;
@@ -506,6 +607,7 @@ impl PerformanceWorkload {
                     cancel_token.clone(),
                     self.stream_prefix.clone(),
                     prepopulated_streams,
+                    self.config.setup.prepopulate_events,
                     matches!(self.config.mode, PerformanceMode::Read),
                     ready_barrier.clone(),
                     sampling_config_rx.clone(),
@@ -583,6 +685,10 @@ impl PerformanceWorkload {
 
         let store_latency_percentiles = store_latencies.to_percentiles();
         let tool_latency_percentiles = tool_latencies.to_percentiles();
+        // Exact per-operation sample counts behind the percentiles, so the report can flag or
+        // suppress percentiles taken over too few samples.
+        let store_latency_count = store_latencies.hist.len();
+        let tool_latency_count = tool_latencies.hist.len();
 
         Ok(PerformanceWorkloadResults::new(
             serde_json::to_value(&self.config)?,
@@ -590,6 +696,9 @@ impl PerformanceWorkload {
             operation_error_samples,
             store_latency_percentiles,
             tool_latency_percentiles,
+            store_latency_count,
+            tool_latency_count,
+            Some(readiness),
         ))
     }
 
@@ -608,13 +717,22 @@ impl PerformanceWorkload {
         );
         let events_per_stream = (total_events as f64 / num_streams as f64).ceil() as u64;
 
-        // Prepopulate events across streams concurrently
+        // Prepopulate events across streams concurrently. Concurrency is configurable so a
+        // multi-GB cold-read corpus can be seeded in reasonable time; the per-event global
+        // index is derived from `stream_idx` below, so the result is identical at any
+        // concurrency (the graded tag scheme stays deterministic).
         let mut setup_set = JoinSet::new();
-        let concurrency = 1;
+        let concurrency = self
+            .config
+            .setup
+            .prepopulate_concurrency
+            .max(1)
+            .min(num_streams as usize);
         let streams_per_task = (num_streams as f64 / concurrency as f64).ceil() as usize;
 
         let write_config = self.config.operations.write.clone();
         let event_size = write_config.event_size_bytes;
+        let tag_scheme = self.config.setup.tag_scheme;
 
         for task_idx in 0..concurrency {
             let start_stream = task_idx * streams_per_task;
@@ -631,15 +749,30 @@ impl PerformanceWorkload {
                 let payload: Arc<[u8]> = Arc::from(vec![0u8; event_size]);
                 for stream_idx in start_stream..end_stream {
                     let stream_name = format!("{}{}", stream_prefix, stream_idx);
-                    let tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_str())]);
+                    let stream_tag: Arc<str> = Arc::from(stream_name.as_str());
+                    let single_tags: Arc<[Arc<str>]> = Arc::from([stream_tag.clone()]);
                     let mut events = Vec::with_capacity(events_per_stream as usize);
                     let metadata: Arc<[(String, String)]> = Arc::from(vec![]);
 
-                    for _ in 0..events_per_stream {
+                    for j in 0..events_per_stream {
+                        // Under the graded scheme each event also carries selectivity tags so a
+                        // query for `s{d}:0` matches the 1/d fraction of the whole log.
+                        let tags: Arc<[Arc<str>]> = match tag_scheme {
+                            TagScheme::Single => single_tags.clone(),
+                            TagScheme::Graded => {
+                                let g = stream_idx as u64 * events_per_stream + j;
+                                Arc::from([
+                                    stream_tag.clone(),
+                                    Arc::from(format!("s1000:{}", g % 1000).as_str()),
+                                    Arc::from(format!("s100:{}", g % 100).as_str()),
+                                    Arc::from(format!("s10:{}", g % 10).as_str()),
+                                ])
+                            }
+                        };
                         events.push(EventData {
                             payload: payload.clone(),
                             event_type: event_type.clone(),
-                            tags: tags.clone(),
+                            tags,
                             metadata: metadata.clone(),
                         });
                     }
@@ -723,41 +856,48 @@ impl PerformanceWorkload {
             let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
 
+            let batch_size = write_cfg.batch_size.max(1);
+
             while !out_of_time && !cancel_token.is_cancelled() {
-                let metadata = if activate_timestamps {
+                // Build a batch of `batch_size` events sharing this stream's tag and the
+                // current event type (batch_size == 1 is the historical single-append shape).
+                let mut events = Vec::with_capacity(batch_size);
+                for _ in 0..batch_size {
                     let timestamp = generate_monotonic_timestamp();
                     last_timestamp = Some(timestamp);
-                    Arc::from(vec![("timestamp".to_string(), timestamp.to_string())])
-                } else {
-                    null_metadata.clone()
-                };
-                let evt = EventData {
-                    payload: payload.clone(),
-                    event_type: event_types[stream_position].clone(),
-                    tags: tags.clone(),
-                    metadata: metadata.clone(),
-                };
+                    events.push(EventData {
+                        payload: payload.clone(),
+                        event_type: event_types[stream_position].clone(),
+                        tags: tags.clone(),
+                        metadata: if activate_timestamps {
+                            Arc::from(vec![("timestamp".to_string(), timestamp.to_string())])
+                        } else {
+                            null_metadata.clone()
+                        },
+                    });
+                }
 
                 operation_started = Instant::now();
                 let operation_response = match write_cfg.append_condition {
                     AppendConditionValue::None => {
                         adapter.append_to_stream(
-                            &[evt],
+                            &events,
                             if write_cfg.concurrency_control { Some(stream_position) } else { None },
                             if write_cfg.concurrency_control { Some(global_position) } else { None },
                         ).await
 
                     },
                     AppendConditionValue::OneTagOneType => {
+                        // The batch shares one (tag, type), so guard on the first event.
                         adapter.append_dcb(
-                            &[evt.clone()],
+                            &events,
                             Some(
                                 EsbAppendCondition::new(
                                     EsbQuery::new()
                                         .item(
                                             EsbQueryItem::new()
-                                                .tags(vec![evt.tags[0].as_ref()])
-                                                .types(vec![evt.event_type.as_ref()])
+                                                .tags(vec![events[0].tags[0].as_ref()])
+                                                .types(vec![events[0].event_type.as_ref()])
                                         )
                                 ).after(Some(0))
                             ),
@@ -777,8 +917,8 @@ impl PerformanceWorkload {
                             global_position = returned_global_position.expect("global sequence value not returned");
                         }
                         if activate_metrics {
-                            // Record throughput sample
-                            if throughput_recorder.record(operation_completed, 1) == RecordingStatus::During {
+                            // Record throughput sample (a batch commits batch_size events).
+                            if throughput_recorder.record(operation_completed, batch_size as u64) == RecordingStatus::During {
                                 // Record latency sample
                                 store_latencies.record(operation_duration);
                             }
@@ -822,6 +962,7 @@ impl PerformanceWorkload {
         cancel_token: CancellationToken,
         stream_prefix: String,
         prepopulated_streams: u64,
+        prepopulated_events: u64,
         activate_metrics: bool,
         ready_barrier: Arc<Barrier>,
         mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
@@ -862,23 +1003,50 @@ impl PerformanceWorkload {
             let mut operation_completed: Instant;
             let mut operation_duration: Duration;
             let mut loop_started = Instant::now();
-            let event_type = match read_cfg.dcb_query {
-                DcbQueryValue::OneTagOneType => Some("setup".to_string()),
-                DcbQueryValue::None => None,
+
+            // The exclusive `after` position each read starts from, as a fraction of the
+            // prepopulated log. Fixed for the run for Whole/Half/Recent; `Random` picks a fresh
+            // position per read (computed inside the loop below).
+            let fixed_from_offset = match read_cfg.resume {
+                ResumePoint::Whole => None,
+                ResumePoint::Half => Some(prepopulated_events / 2),
+                ResumePoint::Recent => Some(prepopulated_events * 9 / 10),
+                ResumePoint::Random => None,
             };
 
             while !out_of_time && !cancel_token.is_cancelled() {
-                let stream_idx = rng.random_range(0..prepopulated_streams);
+                let from_offset = match read_cfg.resume {
+                    ResumePoint::Random => Some(rng.random_range(0..prepopulated_events.max(1))),
+                    _ => fixed_from_offset,
+                };
+                // Pick the query target for this read from the configured shape.
+                let (tag, event_type) = match read_cfg.dcb_query {
+                    DcbQueryValue::OneTagOneType => (
+                        stream_names[rng.random_range(0..prepopulated_streams) as usize].clone(),
+                        Some("setup".to_string()),
+                    ),
+                    DcbQueryValue::None => (
+                        stream_names[rng.random_range(0..prepopulated_streams) as usize].clone(),
+                        None,
+                    ),
+                    // Empty tag + no type => match everything.
+                    DcbQueryValue::FullScan => (String::new(), None),
+                    DcbQueryValue::S10 => (format!("s10:{}", rng.random_range(0..10)), None),
+                    DcbQueryValue::S100 => (format!("s100:{}", rng.random_range(0..100)), None),
+                    DcbQueryValue::S1000 => (format!("s1000:{}", rng.random_range(0..1000)), None),
+                };
 
                 let req = ReadRequest {
-                    tag: stream_names[stream_idx as usize].clone(),
-                    event_type: event_type.clone(),
-                    from_offset: None,
+                    tag,
+                    event_type,
+                    from_offset,
                     limit: Some(read_cfg.limit as u64),
                 };
 
                 operation_started = Instant::now();
-                let result = async {
+
+                // TODO: There's probably a nicer way to write this.
+                let operation_response = async {
                     let mut read_response = adapter.read_stream(req).await?;
                     let mut count = 0;
                     while let Some(_) = read_response.next_event().await? {
@@ -886,11 +1054,12 @@ impl PerformanceWorkload {
                     }
                     Ok::<u64, anyhow::Error>(count as u64)
                 }.await;
+
                 operation_completed = Instant::now();
                 operation_duration = operation_completed - operation_started;
                 out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
-                match result {
+                match operation_response {
                     Ok(count) => {
                         if activate_metrics {
                             // Record throughput sample
@@ -1101,6 +1270,7 @@ impl PerformanceWorkload {
                     }
                     continue;
                 }
+
                 let evt = EventData {
                     payload: payload.clone(),
                     event_type: event_types[stream_position].clone(),
@@ -1196,6 +1366,7 @@ performance:
                     concurrency_control: false,
                     in_flight_limit: 0,
                     append_condition: AppendConditionValue::default(),
+                    batch_size: 1,
                     activate_timestamps: false,
                 },
                 read: ReadOpConfig::default(),

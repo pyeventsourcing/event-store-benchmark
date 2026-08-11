@@ -6,7 +6,6 @@ use clap::{Parser, Subcommand};
 use rand::random;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 use bench_core::workloads::performance::WorkloadConfig;
@@ -61,6 +60,11 @@ fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
         factories.push(Box::new(umadb_adapter::UmaDbFactory));
     }
 
+    #[cfg(feature = "tephra")]
+    {
+        factories.push(Box::new(tephra_adapter::TephraFactory));
+    }
+
     #[cfg(feature = "kurrentdb")]
     {
         factories.push(Box::new(kurrentdb_adapter::KurrentDbFactory));
@@ -112,7 +116,13 @@ fn main() -> Result<()> {
     // Must run before Runtime::new() — set_var is unsound under concurrent env reads.
     detect_docker_host();
 
-    let rt = Runtime::new()?;
+    // Raise the blocking-pool ceiling (default 512): the tephra adapter runs its synchronous
+    // client on `spawn_blocking`, so one blocking thread is live per concurrent worker. The
+    // default would cap tephra at 512 concurrent ops and skew high-concurrency comparisons.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .max_blocking_threads(4096)
+        .build()?;
     let cancel_token = CancellationToken::new();
     let ct = cancel_token.clone();
 
@@ -350,7 +360,9 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         return Ok(());
     }
 
-    println!("Total runs to execute: {}", all_workload_runs.len());
+    let total_runs = all_workload_runs.len();
+    println!("Total runs to execute: {}", total_runs);
+    let runs_started = std::time::Instant::now();
 
     // 2. Write session metadata and environment info (once per session)
     let tool_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
@@ -374,7 +386,7 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     )?;
 
     // 3. Execute all runs
-    for (original_workload_name, workload_run_config) in all_workload_runs {
+    for (run_index, (original_workload_name, workload_run_config)) in all_workload_runs.into_iter().enumerate() {
         if cancel_token.is_cancelled() {
             break;
         }
@@ -385,7 +397,26 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         let workload_runner = WorkloadRunner::Performance(PerformanceWorkload::from_config(workload_run_config, actual_seed)?);
         let workload_run_name = workload_runner.name()?.to_string();
 
-        println!("\n=== Running {} / {} ===", original_workload_name, workload_run_name);
+        // Progress line: which run this is, elapsed session time, and a rough ETA from the
+        // average run duration so far (so `tail -f` shows how much is left).
+        let elapsed_s = runs_started.elapsed().as_secs();
+        let eta_note = if run_index > 0 {
+            let per = runs_started.elapsed().as_secs_f64() / run_index as f64;
+            let remaining = (per * (total_runs - run_index) as f64) as u64;
+            format!(", ~{}m{:02}s left", remaining / 60, remaining % 60)
+        } else {
+            String::new()
+        };
+        println!(
+            "\n=== [{}/{}] Running {} / {} (elapsed {}m{:02}s{}) ===",
+            run_index + 1,
+            total_runs,
+            original_workload_name,
+            workload_run_name,
+            elapsed_s / 60,
+            elapsed_s % 60,
+            eta_note
+        );
 
         // Create workload run results directory (results/esb-<session_id>/<original_workload_name>/<workload_run_name>)
         let run_results_path = session_results_path.join(&original_workload_name).join(&workload_run_name);

@@ -212,6 +212,7 @@ dependencies = [
  "bench-testcontainers",
  "futures",
  "serde",
+ "serde_json",
  "testcontainers",
  "tokio",
  "tracing",
@@ -316,6 +317,7 @@ dependencies = [
 name = "bench-testcontainers"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "testcontainers",
 ]
 
@@ -1088,6 +1090,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tephra-adapter",
  "tokio",
  "tokio-util",
  "tracing-subscriber",
@@ -2188,6 +2191,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "linkme"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3045e122bd98aef8ec3ad58ce84f0791f64e70163d1a02710af4aa11a4d54cc5"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.37"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77060ebe535362c3da75682cd17b0431017b6e7c5661e714fc69a7ad017d1301"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2571,6 +2594,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "paste-complete"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a4cf96a295ab7f0ec2334fa557745c0e9526595f6ebabbb129563a98dfc1b2a"
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2853,6 +2882,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "protobuf"
+version = "4.35.1-release"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a169648cc34d6f327fea8919ca63f38261fb26405fde8879745dc0a483db328e"
+dependencies = [
+ "cc",
+ "linkme",
+ "paste-complete",
+ "protobuf-macros",
+]
+
+[[package]]
+name = "protobuf-codegen"
+version = "4.35.1-release"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19dffd9a419f79bca4fad6bc09d5ead0e932596b76e4b3d7e79acc7e2eba4b98"
+
+[[package]]
+name = "protobuf-macros"
+version = "4.35.1-release"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fddf7218148e92862511304cfde3ef07ce109e1f03e830601833b9f0cb901a75"
+dependencies = [
+ "quote",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -3776,6 +3833,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
 name = "sync_wrapper"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3841,6 +3909,50 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tephra-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bench-core",
+ "bench-testcontainers",
+ "libc",
+ "serde_json",
+ "tephra-client",
+ "testcontainers",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tephra-client"
+version = "0.1.0"
+source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+dependencies = [
+ "tephra-proto",
+ "tephra-types",
+]
+
+[[package]]
+name = "tephra-proto"
+version = "0.1.0"
+source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+dependencies = [
+ "protobuf",
+ "protobuf-codegen",
+ "tephra-types",
+]
+
+[[package]]
+name = "tephra-types"
+version = "0.1.0"
+source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+dependencies = [
+ "smallvec",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4349,6 +4461,7 @@ dependencies = [
  "bench-testcontainers",
  "futures",
  "serde",
+ "serde_json",
  "testcontainers",
  "tokio",
  "tracing",

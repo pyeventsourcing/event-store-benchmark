@@ -58,6 +58,11 @@ impl StoreManager for KurrentDbStoreManager {
                 });
             }
 
+            // At small (e.g. 16 MiB) segment sizes a multi-GB run produces hundreds of segment
+            // files, and these engines hold file handles per segment; raise the container's
+            // open-file limit so fds — not concurrency — are never the bottleneck (mirrors tephra).
+            image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
+
             let container = image.start().await?;
 
             let host_port = container.get_host_port_ipv4(KURRENTDB_PORT).await?;

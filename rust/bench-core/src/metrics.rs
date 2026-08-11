@@ -48,6 +48,19 @@ pub struct ContainerStats {
     pub image_size_bytes: Option<u64>,
 }
 
+/// Outcome of the pre-measurement readiness probe: whether the store answered a real request
+/// before the measured window opened, and how long that took. Recorded per run so nobody has to
+/// reconstruct from log timestamps whether startup noise touched the numbers.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReadinessInfo {
+    /// The store answered the probe successfully before the timeout.
+    pub ready: bool,
+    /// How many probe attempts were made before success (or giving up).
+    pub attempts: u32,
+    /// Wall-clock time spent waiting for readiness, in milliseconds.
+    pub wait_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceWorkloadResults {
     pub workload_config: serde_json::Value,
@@ -55,6 +68,17 @@ pub struct PerformanceWorkloadResults {
     pub operation_error_samples: Vec<ThroughputSample>,
     pub store_latency_percentiles: Vec<LatencyPercentile>,
     pub tool_latency_percentiles: Vec<LatencyPercentile>,
+    /// Number of store-latency samples behind the percentiles above. Percentiles over a tiny
+    /// sample (e.g. a big-batch run that completed ~100 appends) are not comparable to those
+    /// over 100k samples; the report shows this count and suppresses percentiles below a floor.
+    #[serde(default)]
+    pub store_latency_count: u64,
+    /// Number of tool-latency samples behind the tool percentiles.
+    #[serde(default)]
+    pub tool_latency_count: u64,
+    /// Pre-measurement readiness-probe outcome (see [`ReadinessInfo`]).
+    #[serde(default)]
+    pub readiness: Option<ReadinessInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +98,11 @@ pub struct RunResults {
     pub tool_cpu_samples: Option<Vec<CpuSample>>,
     pub tool_memory_samples: Option<Vec<MemorySample>>,
     pub server_logs: String,
+    /// The store's resolved runtime posture (image/tag, segment size, cache/heap, memory
+    /// limit) from `StoreManager::describe()`, written to `run_manifest.json` so every result
+    /// records the exact configuration it was produced under.
+    #[serde(default)]
+    pub store_manifest: serde_json::Value,
 }
 
 impl WorkloadResults {
@@ -96,19 +125,26 @@ impl WorkloadResults {
 }
 
 impl PerformanceWorkloadResults {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         workload_config: serde_json::Value,
         throughput_samples: Vec<ThroughputSample>,
         operation_error_samples: Vec<ThroughputSample>,
         store_latency_percentiles: Vec<LatencyPercentile>,
         tool_latency_percentiles: Vec<LatencyPercentile>,
+        store_latency_count: u64,
+        tool_latency_count: u64,
+        readiness: Option<ReadinessInfo>,
     ) -> Self {
         Self {
             workload_config,
             throughput_samples,
             operation_error_samples,
             store_latency_percentiles,
-            tool_latency_percentiles: tool_latency_percentiles,
+            tool_latency_percentiles,
+            store_latency_count,
+            tool_latency_count,
+            readiness,
         }
     }
 }
@@ -143,6 +179,25 @@ impl WorkloadResults {
                     path.join("tool_latency.json"),
                     serde_json::to_string_pretty(&results.tool_latency_percentiles)?,
                 )?;
+
+                // Sample counts alongside the percentiles, so the report can show N and
+                // suppress percentiles taken over too few samples. `latency.json` stays a bare
+                // array for backward compatibility; this file carries the metadata.
+                fs::write(
+                    path.join("latency_stats.json"),
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "store_latency_count": results.store_latency_count,
+                        "tool_latency_count": results.tool_latency_count,
+                        "store_latency_percentiles": results.store_latency_percentiles,
+                    }))?,
+                )?;
+
+                if let Some(readiness) = &results.readiness {
+                    fs::write(
+                        path.join("readiness.json"),
+                        serde_json::to_string_pretty(readiness)?,
+                    )?;
+                }
             }
             WorkloadResults::Durability => {}
             WorkloadResults::Consistency => {}
@@ -194,6 +249,13 @@ impl RunResults {
 
         if !self.server_logs.is_empty() {
             fs::write(path.join("logs.txt"), &self.server_logs)?;
+        }
+
+        if !self.store_manifest.is_null() {
+            fs::write(
+                path.join("run_manifest.json"),
+                serde_json::to_string_pretty(&self.store_manifest)?,
+            )?;
         }
 
         Ok(())

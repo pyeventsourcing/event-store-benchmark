@@ -3,6 +3,11 @@ ESB_CONTAINER_DATA_DIR ?= ./container-data
 ESB_SEED ?= 42
 ESB_RUST_TARGET ?= release
 
+# Source tree of the tephra project (sibling checkout, not published to a registry). The
+# tephra Docker image and the tephra adapter's path dependency both resolve from here. The
+# directory is still named `dcbdb` on disk; the crates inside are `tephra*`.
+TEPHRA_SRC ?= $(HOME)/dev/tqwewe/dcbdb
+
 ifeq ($(ESB_RUST_TARGET),release)
 	CARGO_RELEASE_FLAG := --release
 else
@@ -52,6 +57,15 @@ check:
 # Build the es-bench binary
 build:
 	cargo build -p es-bench $(CARGO_RELEASE_FLAG) $(CARGO_FEATURE_FLAG)
+
+# Build the local tephra:local Docker image the tephra adapter/testcontainer expects. The build
+# context is the tephra source tree; the Dockerfile lives in this repo. The source commit is
+# baked into the image (TEPHRA_GIT_SHA) so each run's manifest can pin the exact build.
+.PHONY: build-tephra-image
+build-tephra-image:
+	DOCKER_BUILDKIT=1 docker build -f docker/tephra.Dockerfile \
+		--build-arg TEPHRA_GIT_SHA="$$(git -C $(TEPHRA_SRC) rev-parse --short HEAD 2>/dev/null || echo unknown)" \
+		-t tephra:local $(TEPHRA_SRC)
 
 # Create Python virtual environment and install dependencies
 venv:

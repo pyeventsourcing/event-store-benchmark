@@ -1,0 +1,43 @@
+# Recovery config: ONLY the cold (out-of-core) DCB reads that were never completed in session
+# esb-2026-08-09T18-43-03 (the original run OOM-killed the client on the old unbounded `cold-full`
+# full-scan). Re-run with ESB_SESSION_ID=2026-08-09T18-43-03 so these append into that session's
+# dir alongside the 87 already-complete write + warm-read runs -> one unified DCB comparison.
+#
+# Both shapes are BOUNDED client-side and SCATTERED across the ~8 GB (>4 GB budget) corpus, so the
+# store fetches cold pages from disk while the client never holds more than a few MB per op. See
+# group-dcb.yaml for the full rationale; these two docs are copied verbatim from it.
+
+# Cold aggregate load: fetch one random entity's events per op (limit 10) out of the 8 GB on-disk
+# log -> the realistic "rebuild one aggregate from cold storage" op.
+performance:
+  name: cold-entity
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 8000000, prepopulate_streams: 8000, tag_scheme: graded, prepopulate_concurrency: 16 }
+  stores: [tephra, umadb, axonserver]
+---
+# Cold sequential window: read a bounded ~10k-event window (~10 MiB) starting at a fresh random
+# global position each op (resume: random) -> out-of-core sequential scan throughput, client memory
+# bounded to ~10 MiB/op x 16 readers.
+performance:
+  name: cold-window
+  mode: read
+  use_docker: true
+  docker_memory_limit_mb: 4096
+  warmup_seconds: 15
+  duration_seconds: 60
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 1024 }
+    read: { limit: 10000, dcb_query: full_scan, resume: random }
+  setup: { prepopulate_events: 8000000, prepopulate_streams: 8000, tag_scheme: graded, prepopulate_concurrency: 16 }
+  stores: [tephra, umadb, axonserver]

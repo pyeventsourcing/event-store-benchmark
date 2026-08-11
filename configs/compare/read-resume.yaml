@@ -1,0 +1,74 @@
+# Resume-position sweep (tephra vs umadb): a fixed 1/100 selectivity query starting from
+# the whole log, its midpoint, and its most recent tenth (subscription-resume shape).
+# Mirrors compare.rs `read_range`.
+performance:
+  name: resume-whole
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s100
+      resume: whole
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: resume-half
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s100
+      resume: half
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: resume-recent
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    readers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+    read:
+      limit: 1000000
+      dcb_query: s100
+      resume: recent
+  setup:
+    prepopulate_events: 50000
+    prepopulate_streams: 5000
+    tag_scheme: graded
+  stores:
+    - tephra
+    - umadb

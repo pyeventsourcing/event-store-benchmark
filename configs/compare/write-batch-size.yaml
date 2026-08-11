@@ -1,0 +1,78 @@
+# Write batch-size sweep (tephra vs umadb): unconditional appends of 1/8/64/512 events per
+# commit. Mirrors compare.rs `batch_size`. Throughput is counted in events, so larger
+# batches amortize the per-commit cost (tephra's cross-thread handoff, umadb's fsyncs).
+performance:
+  name: batch-1
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    writers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+      concurrency_control: false
+      append_condition: none
+      batch_size: 1
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: batch-8
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    writers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+      concurrency_control: false
+      append_condition: none
+      batch_size: 8
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: batch-64
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    writers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+      concurrency_control: false
+      append_condition: none
+      batch_size: 64
+  stores:
+    - tephra
+    - umadb
+---
+performance:
+  name: batch-512
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 20
+  samples_per_second: 2
+  concurrency:
+    writers: [16]
+  operations:
+    write:
+      event_size_bytes: 256
+      concurrency_control: false
+      append_condition: none
+      batch_size: 512
+  stores:
+    - tephra
+    - umadb

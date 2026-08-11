@@ -24,10 +24,22 @@ impl UmaDb {
         Self {
             env_vars: vec![
                 ("UMADB_READ_METHOD", "fileio"),
+                // UmaDB's own author-set default private page cache (~half the 4 GB container
+                // budget). Left as-is so UmaDB runs as its author configures it; recorded in
+                // the manifest so the memory posture is stated next to every figure.
                 ("UMADB_PAGE_CACHE_MAX_MB", "2000"),
             ],
             mounts: vec![mount],
         }
+    }
+
+    /// The store-config posture recorded in each run's manifest.
+    pub fn describe() -> serde_json::Value {
+        serde_json::json!({
+            "image": format!("{NAME}:{TAG}"),
+            "read_method": "fileio",
+            "page_cache_max_mb": 2000,
+        })
     }
 }
 

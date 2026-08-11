@@ -1,0 +1,10 @@
+# Applied to the tephra build context (BuildKit reads `<dockerfile>.dockerignore`).
+# Keep the context small: only the Cargo workspace sources are needed to build the server.
+# Keep benches/ and tests/ — the workspace manifest declares [[bench]] targets, so Cargo
+# needs those files present to parse it, even though we only build the server binary.
+target/
+.git/
+.devenv/
+.direnv/
+.claude/
+*.md

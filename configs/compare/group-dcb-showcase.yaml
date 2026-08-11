@@ -1,0 +1,142 @@
+# SHOWCASE: tephra vs umadb vs axonserver. Trimmed from group-dcb for a few clean, shareable
+# graphs (~35 min): real 15s runs, a smooth [1,4,16,64] concurrency curve, and the headline
+# level of each dimension. For the exhaustive matrix use group-dcb.yaml instead.
+performance:
+  name: scale-write
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [1, 4, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256, concurrency_control: true, append_condition: one_tag_one_type }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: scale-read
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { readers: [1, 4, 16, 64] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 10, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 20000, prepopulate_streams: 2000, tag_scheme: graded }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: sel-single
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: one_tag_one_type }
+  setup: { prepopulate_events: 20000, prepopulate_streams: 2000, tag_scheme: graded }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: sel-s100
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: s100 }
+  setup: { prepopulate_events: 20000, prepopulate_streams: 2000, tag_scheme: graded }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: sel-full
+  mode: read
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { readers: [16] }
+  operations:
+    write: { event_size_bytes: 256 }
+    read: { limit: 1000000, dcb_query: full_scan }
+  setup: { prepopulate_events: 20000, prepopulate_streams: 2000, tag_scheme: graded }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: batch-1
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 1 }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: batch-64
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 64 }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: batch-512
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 256, append_condition: none, batch_size: 512 }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: wp-64
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 64, append_condition: none }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: wp-1024
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 1024, append_condition: none }
+  stores: [tephra, umadb, axonserver]
+---
+performance:
+  name: wp-16384
+  mode: write
+  use_docker: true
+  warmup_seconds: 2
+  duration_seconds: 15
+  samples_per_second: 2
+  concurrency: { writers: [16] }
+  operations:
+    write: { event_size_bytes: 16384, append_condition: none }
+  stores: [tephra, umadb, axonserver]
