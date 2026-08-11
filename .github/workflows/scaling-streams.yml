@@ -13,7 +13,7 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     env:
-      ESB_FEATURES: umadb,kurrentdb,axonserver-dcb
+      ESB_FEATURES: umadb,kurrentdb,axonserver
     outputs:
       session_id: ${{ steps.session.outputs.session_id }}
     steps:
