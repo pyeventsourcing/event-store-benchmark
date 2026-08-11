@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse};
+use tokio::sync::mpsc;
 use bench_core::wait_for_ready;
 use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
 use tephra_client::{
@@ -191,6 +192,7 @@ impl StoreManager for TephraStoreManager {
 /// A worker that never runs two ops at once (every reader, and non-flood writers) therefore opens
 /// exactly one connection, so read workloads keep their previous single-connection footprint. The
 /// blocking calls run on tokio's blocking pool.
+#[derive(Clone)]
 pub struct TephraAdapter {
     addr: String,
     /// One permit per allowed connection; held for the duration of an op, so at most `pool_size`
@@ -408,9 +410,70 @@ impl EventStoreAdapter for TephraAdapter {
             // frame-aligned for the next request.
             Ok(out)
         })
-        .await?;
+            .await?;
 
         Ok(Box::new(VecReadResponse::new(out)))
+    }
+
+    async fn read_all(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
+        let (tx, rx) = mpsc::channel(64);
+        let addr = self.addr.clone();
+
+        // Spawn a blocking task that creates its own client for the duration of the read,
+        // iterates the streaming ReadStream, and sends events through the channel.
+        tokio::task::spawn_blocking(move || {
+            match Client::connect(&addr) {
+                Ok(mut client) => {
+                    match client.read(Query::all(), Position::ZERO) {
+                        Ok(read_stream) => {
+                            for response in read_stream {
+                                match response {
+                                    Ok(sequenced_event) => {
+                                        let event = sequenced_event.event();
+                                        let read_event = ReadEvent {
+                                            offset: sequenced_event.position().get(),
+                                            event_type: event.event_type().to_string(),
+                                            payload: event.payload().to_vec(),
+                                            metadata: Vec::new(),
+                                        };
+                                        if tx.blocking_send(Ok(read_event)).is_err() {
+                                            break;
+                                        }
+                                    },
+                                    Err(err) => {
+                                        let _ = tx.blocking_send(Err(anyhow!("{err}")));
+                                        break;
+                                    }
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            let _ = tx.blocking_send(Err(anyhow!("{err}")));
+                        }
+                    }
+                },
+                Err(err) => {
+                    let _ = tx.blocking_send(Err(anyhow!("{err}")));
+                }
+            };
+        });
+
+        Ok(Box::new(TephraReadResponse { rx }))
+    }
+}
+
+struct TephraReadResponse {
+    rx: mpsc::Receiver<anyhow::Result<ReadEvent>>,
+}
+
+#[async_trait]
+impl ReadResponse for TephraReadResponse {
+    async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
+        match self.rx.recv().await {
+            Some(Ok(event)) => Ok(Some(event)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
     }
 }
 
@@ -427,5 +490,61 @@ impl StoreManagerFactory for TephraFactory {
         use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(TephraStoreManager::new(data_dir, use_docker)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read_all() -> Result<()> {
+        let mut manager = TephraStoreManager::new(None, false);
+        manager.start().await?;
+
+        println!("Creating adapter");
+        let adapter = manager.create_adapter().await?;
+
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![1, 2, 3]),
+                event_type: Arc::from("type1"),
+                tags: Arc::from([Arc::from("tag1")]),
+                metadata: Arc::from([]),
+            },
+            EventData {
+                payload: Arc::from(vec![4, 5, 6]),
+                event_type: Arc::from("type2"),
+                tags: Arc::from([Arc::from("tag2")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        println!("Appending events");
+        adapter.append_dcb(&events, None).await?;
+        println!("Appended events");
+
+        println!("Reading all events");
+        let mut read_response = adapter.read_all().await?;
+        println!("Got read response");
+        let mut received_events = Vec::new();
+        while let Some(event) = read_response.next_event().await? {
+            received_events.push(event);
+            println!("Got next event");
+        }
+        println!("Got all events");
+
+        assert!(received_events.len() >= 2);
+
+        let found1 = received_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = received_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+
+        assert!(found1, "Event type1 not found in read_all results");
+        assert!(found2, "Event type2 not found in read_all results");
+
+        println!("Stopping manager");
+        manager.stop().await?;
+        println!("Stopped manager");
+        Ok(())
     }
 }
