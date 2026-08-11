@@ -27,8 +27,11 @@ jobs:
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: '35.1' # Matches the version required by Tephra
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build benchmark tool
         run: make build
