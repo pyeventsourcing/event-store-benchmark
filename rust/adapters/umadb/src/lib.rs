@@ -237,20 +237,25 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbReadResponse { stream }))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, req: Option<ReadRequest>, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
         // Build a query from whichever of event_type / tag is set. An empty tag
         // and no event type means "no filter" (subscribe to all events).
-        let mut item = DcbQueryItem { types: vec![], tags: vec![] };
-        if let Some(event_type) = req.event_type {
-            item.types.push(event_type);
-        }
-        if !req.tag.is_empty() {
-            item.tags.push(req.tag);
-        }
-        let query = if item.types.is_empty() && item.tags.is_empty() {
-            None
+        let query = if let Some(req) = req {
+            let mut item = DcbQueryItem { types: vec![], tags: vec![] };
+            if let Some(event_type) = req.event_type {
+                item.types.push(event_type);
+            }
+            if !req.tag.is_empty() {
+                item.tags.push(req.tag);
+            }
+            let query = if item.types.is_empty() && item.tags.is_empty() {
+                None
+            } else {
+                Some(DcbQuery { items: vec![item] })
+            };
+            query
         } else {
-            Some(DcbQuery { items: vec![item] })
+            None
         };
         let after = if from_end {
             self.client.head().await?
@@ -349,21 +354,67 @@ mod tests {
 
         umadb_adapter.append_dcb(&events, None).await?;
 
-        let mut subscription = umadb_adapter.read_all().await?;
-        let mut read_events = Vec::new();
-        while let Some(event) = subscription.next_event().await? {
-            read_events.push(event);
+        let mut read_response = umadb_adapter.read_all().await?;
+        let mut received_events = Vec::new();
+        while let Some(event) = read_response.next_event().await? {
+            received_events.push(event);
         }
         
-        assert!(read_events.len() >= 2);
+        assert!(received_events.len() >= 2);
         
-        let found1 = read_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
-        let found2 = read_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+        let found1 = received_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = received_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
         
         assert!(found1, "Event type1 not found in read_all results");
         assert!(found2, "Event type2 not found in read_all results");
 
         manager.stop().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() -> Result<()> {
+        println!("Starting test");
+        let mut manager = UmaDbStoreManager::new(None, true);
+        manager.start().await?;
+
+        let adapter = manager.create_adapter().await?;
+        // We can use the concrete type directly since we created it
+        let umadb_adapter = adapter.as_any().downcast_ref::<UmaDbAdapter>().expect("UmaDbAdapter");
+
+        let mut subscription = umadb_adapter.subscribe(None, true).await?;
+
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![1, 2, 3]),
+                event_type: Arc::from("type1"),
+                tags: Arc::from([Arc::from("tag1")]),
+                metadata: Arc::from([]),
+            },
+            EventData {
+                payload: Arc::from(vec![4, 5, 6]),
+                event_type: Arc::from("type2"),
+                tags: Arc::from([Arc::from("tag2")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        umadb_adapter.append_dcb(&events, None).await?;
+
+
+        // let mut received_events = Vec::new();
+
+        let event1 = subscription.next_event().await?;
+        let event2 = subscription.next_event().await?;
+        assert!(event1.is_some());
+        assert!(event2.is_some());
+
+        //
+        // assert!(found1, "Event type1 not found in read_all results");
+        // assert!(found2, "Event type2 not found in read_all results");
+        // println!("Got two events");
+        //
+        // manager.stop().await?;
         Ok(())
     }
 }

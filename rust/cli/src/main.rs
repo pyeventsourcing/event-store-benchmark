@@ -228,12 +228,12 @@ fn main() -> Result<()> {
                     // so we can easily catch any anyhow::Error and retry.
                     let result = async {
                         let adapter = manager.create_adapter().await?;
-                        let mut subscription = adapter.read_all_events().await?;
+                        let mut read_response = adapter.read_all_events().await?;
 
                         let mut current_max: Option<u128> = None;
                         let mut count = 0u64;
 
-                        while let Some(event) = subscription.next_event().await? {
+                        while let Some(event) = read_response.next_event().await? {
                             count += 1;
                             for (key, value) in &event.metadata {
                                 if key == "timestamp" {

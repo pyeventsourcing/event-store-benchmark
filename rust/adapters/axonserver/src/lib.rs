@@ -291,36 +291,14 @@ impl EventStoreAdapter for AxonServerAdapter {
         }))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn ReadResponse>> {
-        // Build criteria from whichever of event_type / tag is set. No tag and no
-        // event type means "no filter" (stream all events).
-        let mut tags = Vec::new();
-        if !req.tag.is_empty() {
-            tags.push(Tag {
-                key: req.tag.as_bytes().to_vec().into(),
-                value: Vec::new().into(),
-            });
-        }
-        let names = if let Some(event_type) = req.event_type {
-            vec![event_type]
-        } else {
-            vec![]
-        };
-        let criteria = if tags.is_empty() && names.is_empty() {
-            vec![]
-        } else {
-            vec![Criterion {
-                tags_and_names: Some(TagsAndNamesCriterion { name: names, tag: tags }),
-            }]
-        };
-
+    async fn subscribe(&self, req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
         let from = if from_end {
             self.client.get_head().await?
         } else {
             0
         };
         
-        let stream = self.client.stream(from, criteria).await?;
+        let stream = self.client.stream(from, vec![]).await?;
         Ok(Box::new(AxonServerSubscription { stream }))
     }
 

@@ -274,41 +274,25 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 
-    async fn subscribe(&self, req: ReadRequest, from_end: bool) -> Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
         // Start LISTENing before reading the head so no append is missed in the
         // gap between establishing the baseline and receiving notifications.
         let listener = self.recorder.open_listener().await?;
         let last_position = if from_end {
             self.recorder.head().await?
         } else {
-            req.from_offset.map(|o| o as i64).unwrap_or(0)
+            0
         };
 
         Ok(Box::new(PostgresSubscription {
             recorder: self.recorder.clone(),
             listener,
-            event_type: req.event_type,
-            tag: req.tag,
             last_position,
             buffer: VecDeque::new(),
         }))
     }
 }
 
-/// Builds the read query for a subscription from its event_type / tag filters.
-/// Returns `None` (match everything) when neither filter is set.
-fn build_subscribe_query(event_type: &Option<String>, tag: &str) -> Option<DcbQuery> {
-    let types = event_type.clone().map(|t| vec![t]).unwrap_or_default();
-    let mut tags = Vec::new();
-    if !tag.is_empty() {
-        tags.push(tag.to_string());
-    }
-    if types.is_empty() && tags.is_empty() {
-        None
-    } else {
-        Some(DcbQuery { items: vec![DcbQueryItem { types, tags }] })
-    }
-}
 
 /// Live subscription backed by Postgres `LISTEN`/`NOTIFY`.
 ///
@@ -317,8 +301,6 @@ fn build_subscribe_query(event_type: &Option<String>, tag: &str) -> Option<DcbQu
 struct PostgresSubscription {
     recorder: PostgresDCBRecorderTT,
     listener: NotificationListener,
-    event_type: Option<String>,
-    tag: String,
     last_position: i64,
     buffer: VecDeque<ReadEvent>,
 }
@@ -337,10 +319,9 @@ impl ReadResponse for PostgresSubscription {
                 None => return Ok(None), // connection closed
             }
 
-            let query = build_subscribe_query(&self.event_type, &self.tag);
             let events = self
                 .recorder
-                .read(query, Some(self.last_position), None)
+                .read(None, Some(self.last_position), None)
                 .await
                 .context("PostgresDcbTtcte subscription read failed")?;
 

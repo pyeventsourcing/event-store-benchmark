@@ -928,7 +928,7 @@ impl PerformanceWorkload {
     fn spawn_subscribe_task(
         worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
         adapter: Arc<dyn EventStoreAdapter>,
-        read_cfg: ReadOpConfig,
+        _read_cfg: ReadOpConfig,
         _seed: u64,
         cancel_token: CancellationToken,
         _stream_prefix: String,
@@ -963,20 +963,8 @@ impl PerformanceWorkload {
             let mut store_latencies = LatencyRecorder::new_for_store_latencies();
             let tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
-            let event_type = match read_cfg.dcb_query {
-                DcbQueryValue::OneTagOneType => Some("setup".to_string()),
-                DcbQueryValue::None => None,
-            };
-
-            // Open a single live subscription for the whole benchmark. An empty
-            // tag means "no tag filter" so we receive events from every writer.
-            let req = ReadRequest {
-                tag: String::new(),
-                event_type,
-                from_offset: None,
-                limit: None,
-            };
-            let mut subscription = match adapter.subscribe(req, true).await {
+            // Open a single live subscription for the whole benchmark.
+            let mut subscription = match adapter.subscribe(None, true).await {
                 Ok(sub) => sub,
                 Err(e) => {
                     eprintln!("Failed to open subscription: {:#}", e);
@@ -1029,6 +1017,7 @@ impl PerformanceWorkload {
                     }
                 }
             }
+
             if activate_metrics {
                 Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
             } else {
