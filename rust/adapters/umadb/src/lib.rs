@@ -378,10 +378,8 @@ mod tests {
         manager.start().await?;
 
         let adapter = manager.create_adapter().await?;
-        // We can use the concrete type directly since we created it
-        let umadb_adapter = adapter.as_any().downcast_ref::<UmaDbAdapter>().expect("UmaDbAdapter");
 
-        let mut subscription = umadb_adapter.subscribe(None, true).await?;
+        let mut subscription = adapter.subscribe(None, true).await?;
 
         let events = vec![
             EventData {
@@ -398,7 +396,7 @@ mod tests {
             },
         ];
 
-        umadb_adapter.append_dcb(&events, None).await?;
+        adapter.append_dcb(&events, None).await?;
 
 
         // let mut received_events = Vec::new();
@@ -408,12 +406,7 @@ mod tests {
         assert!(event1.is_some());
         assert!(event2.is_some());
 
-        //
-        // assert!(found1, "Event type1 not found in read_all results");
-        // assert!(found2, "Event type2 not found in read_all results");
-        // println!("Got two events");
-        //
-        // manager.stop().await?;
+        manager.stop().await?;
         Ok(())
     }
 }

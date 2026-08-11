@@ -2,12 +2,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse};
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use bench_core::wait_for_ready;
 use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
-use tephra_client::{
-    AppendCondition, Client, Event, EventType, Position, Query, QueryItem, Tag, Tags,
-};
+use tephra_client::{AppendCondition, Client, Event, EventType, Position, Query, QueryItem, SubEvent, SubscribeCancel, Tag, Tags};
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
@@ -297,6 +295,18 @@ impl TephraAdapter {
         }
     }
 
+    /// Convert a tephra `SequencedEvent` into the benchmark's `ReadEvent`.
+    fn to_read_event(sequenced: &tephra_client::SequencedEvent) -> ReadEvent {
+        let event = sequenced.event();
+        let (payload, metadata) = Self::decode_envelope(event.payload());
+        ReadEvent {
+            offset: sequenced.position().get(),
+            event_type: event.event_type().to_string(),
+            payload,
+            metadata,
+        }
+    }
+
     /// Build a single `QueryItem` from string type/tag lists, validating each name.
     fn build_query_item(types: &[&str], tags: &[&str]) -> Result<QueryItem> {
         let types: Vec<EventType> = types
@@ -450,44 +460,73 @@ impl EventStoreAdapter for TephraAdapter {
         // Spawn a blocking task that creates its own client for the duration of the read,
         // iterates the streaming ReadStream, and sends events through the channel.
         tokio::task::spawn_blocking(move || {
-            match Client::connect(&addr) {
-                Ok(mut client) => {
-                    match client.read(Query::all(), Position::ZERO) {
-                        Ok(read_stream) => {
-                            for response in read_stream {
-                                match response {
-                                    Ok(sequenced_event) => {
-                                        let event = sequenced_event.event();
-                                        let (payload, metadata) = TephraAdapter::decode_envelope(event.payload());
-                                        let read_event = ReadEvent {
-                                            offset: sequenced_event.position().get(),
-                                            event_type: event.event_type().to_string(),
-                                            payload,
-                                            metadata,
-                                        };
-                                        if tx.blocking_send(Ok(read_event)).is_err() {
-                                            break;
-                                        }
-                                    },
-                                    Err(err) => {
-                                        let _ = tx.blocking_send(Err(anyhow!("{err}")));
-                                        break;
-                                    }
-                                }
-                            }
-                        },
-                        Err(err) => {
-                            let _ = tx.blocking_send(Err(anyhow!("{err}")));
+            let send_err = |tx: &mpsc::Sender<_>, err: &dyn std::fmt::Display| {
+                let _ = tx.blocking_send(Err(anyhow!("{err}")));
+            };
+            let mut client = match Client::connect(&addr) {
+                Ok(c) => c,
+                Err(err) => return send_err(&tx, &err),
+            };
+            let read_stream = match client.read(Query::all(), Position::ZERO) {
+                Ok(s) => s,
+                Err(err) => return send_err(&tx, &err),
+            };
+            for result in read_stream {
+                match result {
+                    Ok(sequenced) => {
+                        if tx.blocking_send(Ok(TephraAdapter::to_read_event(&sequenced))).is_err() {
+                            break;
                         }
                     }
-                },
-                Err(err) => {
-                    let _ = tx.blocking_send(Err(anyhow!("{err}")));
+                    Err(err) => {
+                        send_err(&tx, &err);
+                        break;
+                    }
                 }
-            };
+            }
         });
 
         Ok(Box::new(TephraReadResponse { rx }))
+    }
+
+    async fn subscribe(&self, _req: Option<ReadRequest>, _from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+        let (tx, rx) = mpsc::channel(64);
+        let (cancel_tx, cancel_rx) = oneshot::channel::<SubscribeCancel>();
+        let addr = self.addr.clone();
+
+        // Spawn a blocking task that creates its own client for the duration of the
+        // subscription, sends the cancel handle back, then forwards events through the channel.
+        tokio::task::spawn_blocking(move || {
+            let send_err = |tx: &mpsc::Sender<_>, err: &dyn std::fmt::Display| {
+                let _ = tx.blocking_send(Err(anyhow!("{err}")));
+            };
+            let mut client = match Client::connect(&addr) {
+                Ok(c) => c,
+                Err(err) => return send_err(&tx, &err),
+            };
+            let (subscription, cancel) = match client.subscribe(Query::all(), Position::ZERO) {
+                Ok(pair) => pair,
+                Err(err) => return send_err(&tx, &err),
+            };
+            let _ = cancel_tx.send(cancel);
+            for result in subscription {
+                match result {
+                    Ok(SubEvent::Event(sequenced)) => {
+                        if tx.blocking_send(Ok(TephraAdapter::to_read_event(&sequenced))).is_err() {
+                            break;
+                        }
+                    }
+                    Ok(SubEvent::CaughtUp(_)) => {}
+                    Err(err) => {
+                        send_err(&tx, &err);
+                        break;
+                    }
+                }
+            }
+        });
+
+        let cancel = cancel_rx.await.ok();
+        Ok(Box::new(TephraSubscription { rx, cancel }))
     }
 }
 
@@ -497,6 +536,31 @@ struct TephraReadResponse {
 
 #[async_trait]
 impl ReadResponse for TephraReadResponse {
+    async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
+        match self.rx.recv().await {
+            Some(Ok(event)) => Ok(Some(event)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Subscription response that cancels the underlying tephra subscription when dropped.
+struct TephraSubscription {
+    rx: mpsc::Receiver<anyhow::Result<ReadEvent>>,
+    cancel: Option<SubscribeCancel>,
+}
+
+impl Drop for TephraSubscription {
+    fn drop(&mut self) {
+        if let Some(cancel) = self.cancel.take() {
+            cancel.cancel();
+        }
+    }
+}
+
+#[async_trait]
+impl ReadResponse for TephraSubscription {
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
         match self.rx.recv().await {
             Some(Ok(event)) => Ok(Some(event)),
@@ -566,6 +630,45 @@ mod tests {
         assert_eq!(received_events[1].metadata.len(), 1);
         assert_eq!(received_events[0].metadata[0], ("a".to_string(), "b".to_string()));
         assert_eq!(received_events[1].metadata[0], ("c".to_string(), "d".to_string()));
+
+        manager.stop().await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() -> Result<()> {
+        println!("Starting test");
+        let mut manager = TephraStoreManager::new(None, true);
+        manager.start().await?;
+
+        let adapter = manager.create_adapter().await?;
+
+        let mut subscription = adapter.subscribe(None, true).await?;
+
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![1, 2, 3]),
+                event_type: Arc::from("type1"),
+                tags: Arc::from([Arc::from("tag1")]),
+                metadata: Arc::from([]),
+            },
+            EventData {
+                payload: Arc::from(vec![4, 5, 6]),
+                event_type: Arc::from("type2"),
+                tags: Arc::from([Arc::from("tag2")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        adapter.append_dcb(&events, None).await?;
+
+
+        // let mut received_events = Vec::new();
+
+        let event1 = subscription.next_event().await?;
+        let event2 = subscription.next_event().await?;
+        assert!(event1.is_some());
+        assert!(event2.is_some());
 
         manager.stop().await?;
         Ok(())
