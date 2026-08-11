@@ -1,6 +1,6 @@
+use std::borrow::Cow;
 use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::Image;
-use std::borrow::Cow;
 
 const NAME: &str = "postgres";
 const TAG: &str = "16-alpine";
@@ -56,23 +56,26 @@ impl Image for Marten {
     }
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
-        vec![WaitFor::message_on_stderr("database system is ready to accept connections")]
+        vec![WaitFor::message_on_stderr(
+            "database system is ready to accept connections",
+        )]
     }
 
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
         // Pin shared_buffers so Postgres's cache budget is a recorded, comparable value rather
         // than the tiny 128 MB default; the 4 GB container cgroup cap is the outer equalizer.
-        ["postgres", "-c", "shared_buffers=1GB", "-c", "max_connections=200"]
+        [
+            "postgres",
+            "-c",
+            "shared_buffers=1GB",
+            "-c",
+            "max_connections=200",
+        ]
     }
 
     fn env_vars(
         &self,
-    ) -> impl IntoIterator<
-        Item = (
-            impl Into<Cow<'_, str>>,
-            impl Into<Cow<'_, str>>,
-        ),
-    > {
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         self.env_vars.iter().map(|(k, v)| (*k, *v))
     }
 

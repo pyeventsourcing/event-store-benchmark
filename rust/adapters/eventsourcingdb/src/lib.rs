@@ -1,6 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir,
+    StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::eventsourcingdb::{
     EventsourcingDb, EVENTSOURCINGDB_API_TOKEN, EVENTSOURCINGDB_PORT,
@@ -11,8 +14,8 @@ use futures::StreamExt;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use url::Url;
@@ -48,7 +51,9 @@ impl EventsourcingDbStoreManager {
 
 #[async_trait]
 impl StoreManager for EventsourcingDbStoreManager {
-    fn use_docker(&self) -> bool { self.use_docker }
+    fn use_docker(&self) -> bool {
+        self.use_docker
+    }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
@@ -78,13 +83,20 @@ impl StoreManager for EventsourcingDbStoreManager {
             self.container = Some(container);
 
             // Use the default API token for the container
-            self.options
-                .insert("api_token".to_string(), EVENTSOURCINGDB_API_TOKEN.to_string());
+            self.options.insert(
+                "api_token".to_string(),
+                EVENTSOURCINGDB_API_TOKEN.to_string(),
+            );
 
-            wait_for_ready("EventsourcingDB", || async {
-                let client = Client::new(Url::parse(&self.uri)?, EVENTSOURCINGDB_API_TOKEN);
-                client.ping().await.map_err(|e| anyhow::anyhow!(e))
-            }, Duration::from_secs(60)).await?;
+            wait_for_ready(
+                "EventsourcingDB",
+                || async {
+                    let client = Client::new(Url::parse(&self.uri)?, EVENTSOURCINGDB_API_TOKEN);
+                    client.ping().await.map_err(|e| anyhow::anyhow!(e))
+                },
+                Duration::from_secs(60),
+            )
+            .await?;
         }
         Ok(())
     }
@@ -123,7 +135,10 @@ impl StoreManager for EventsourcingDbStoreManager {
     }
 
     async fn create_adapter(&mut self) -> Result<Arc<dyn EventStoreAdapter>> {
-        Ok(Arc::new(EventsourcingDbAdapter::new(&self.uri, &self.options)?))
+        Ok(Arc::new(EventsourcingDbAdapter::new(
+            &self.uri,
+            &self.options,
+        )?))
     }
 
     async fn logs(&self) -> Result<String> {
@@ -160,33 +175,50 @@ impl EventsourcingDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for EventsourcingDbAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        _events: &[EventData],
+        _condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         anyhow::bail!("append_dcb not implemented in EventsourcingDbAdapter")
     }
 
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         if stream_position.is_some() || global_position.is_some() {
-            anyhow::bail!("Optimistic concurrency control not implemented in EventsourcingDbAdapter")
+            anyhow::bail!(
+                "Optimistic concurrency control not implemented in EventsourcingDbAdapter"
+            )
         }
-        let candidates: Vec<EventCandidate> = events.iter().map(|evt| {
-            let data: serde_json::Value = serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
-                json!({"raw": serde_json::Value::String(
-                    String::from_utf8_lossy(&evt.payload).to_string()
-                )})
-            });
-            EventCandidate::builder()
-                .source("https://bench.eventsourcingdb.io".to_string())
-                .subject(format!("/{}", evt.tags[0]))
-                .ty(if evt.event_type.contains('.') {
-                    evt.event_type.to_string()
-                } else {
-                    format!("io.eventsourcingdb.bench.{}", evt.event_type)
-                })
-                .data(data)
-                .build()
-        }).collect();
+        let candidates: Vec<EventCandidate> = events
+            .iter()
+            .map(|evt| {
+                let data: serde_json::Value =
+                    serde_json::from_slice(&evt.payload).unwrap_or_else(|_| {
+                        json!({"raw": serde_json::Value::String(
+                            String::from_utf8_lossy(&evt.payload).to_string()
+                        )})
+                    });
+                EventCandidate::builder()
+                    .source("https://bench.eventsourcingdb.io".to_string())
+                    .subject(format!("/{}", evt.tags[0]))
+                    .ty(if evt.event_type.contains('.') {
+                        evt.event_type.to_string()
+                    } else {
+                        format!("io.eventsourcingdb.bench.{}", evt.event_type)
+                    })
+                    .data(data)
+                    .build()
+            })
+            .collect();
 
         self.client
             .write_events(candidates, vec![])
@@ -195,7 +227,10 @@ impl EventStoreAdapter for EventsourcingDbAdapter {
         Ok(None)
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let subject = format!("/{}", req.tag);
         let mut stream = self
             .client
@@ -251,7 +286,13 @@ impl StoreManagerFactory for EventsourcingDbFactory {
         "eventsourcingdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(EventsourcingDbStoreManager::new(data_dir, use_docker)))
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(EventsourcingDbStoreManager::new(
+            data_dir, use_docker,
+        )))
     }
 }

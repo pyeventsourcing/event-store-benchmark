@@ -1,10 +1,10 @@
 pub mod axonserver;
-pub mod tephra;
 pub mod eventsourcingdb;
 pub mod fact;
 pub mod foundationdb_dcb;
 pub mod kurrentdb;
 pub mod marten;
+pub mod tephra;
 pub mod umadb;
 
 pub mod postgres_dcb_ttcte;

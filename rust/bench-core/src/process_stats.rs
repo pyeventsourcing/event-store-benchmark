@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use tokio::sync::{Mutex, watch};
-use tokio::task::JoinHandle;
-use std::time::{Duration, Instant};
+use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
 #[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
-use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
-use sysinfo::{Pid, System, ProcessRefreshKind, RefreshKind, ProcessesToUpdate, Process};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use tokio::sync::{watch, Mutex};
+use tokio::task::JoinHandle;
 
 use memory_stats::memory_stats;
 
@@ -95,7 +95,9 @@ impl LinuxCgroupState {
         let cpu_usage_usec_now = self.read_cpu_usage_usec()?;
         let memory_bytes = self.read_memory_current_bytes()?;
 
-        let cpu_percent = if let (Some(prev_usage), Some(prev_time)) = (self.last_cpu_usage_usec, self.last_cpu_sample_at) {
+        let cpu_percent = if let (Some(prev_usage), Some(prev_time)) =
+            (self.last_cpu_usage_usec, self.last_cpu_sample_at)
+        {
             let delta_cpu = cpu_usage_usec_now.saturating_sub(prev_usage) as f64;
             let delta_wall = now.duration_since(prev_time).as_secs_f64() * 1_000_000.0;
             if delta_wall > 0.0 {
@@ -155,7 +157,10 @@ impl ProcessMonitor {
         }
     }
 
-    pub async fn start(&mut self, mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>) {
+    pub async fn start(
+        &mut self,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+    ) {
         let pid = self.pid;
         let scope = self.scope;
         let stats_arc = self.stats.clone();
@@ -171,7 +176,7 @@ impl ProcessMonitor {
                     return;
                 }
             }
-            
+
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
@@ -186,16 +191,17 @@ impl ProcessMonitor {
                 guard.cpu_samples = Vec::with_capacity(expected_samples);
                 guard.memory_samples = Vec::with_capacity(expected_samples);
             }
-            
+
             let mut sys = System::new_with_specifics(
-                RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory())
+                RefreshKind::nothing()
+                    .with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory()),
             );
-            
+
             // Initial refresh to establish baseline for CPU usage
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::All,
                 true,
-                ProcessRefreshKind::nothing().with_cpu().with_memory()
+                ProcessRefreshKind::nothing().with_cpu().with_memory(),
             );
 
             #[cfg(target_os = "linux")]
@@ -211,7 +217,7 @@ impl ProcessMonitor {
             loop {
                 let next_sample_time = start_time + interval.mul_f64(sample_count as f64);
                 let now = Instant::now();
-                
+
                 if next_sample_time > now {
                     tokio::select! {
                         _ = &mut stop_rx => break,
@@ -225,9 +231,9 @@ impl ProcessMonitor {
                 sys.refresh_processes_specifics(
                     ProcessesToUpdate::All,
                     false, // Use false for subsequent refreshes to allow delta calculation
-                    ProcessRefreshKind::nothing().with_cpu().with_memory()
+                    ProcessRefreshKind::nothing().with_cpu().with_memory(),
                 );
-                
+
                 if sys.process(pid).is_none() {
                     // Process no longer exists
                     break;
@@ -238,12 +244,19 @@ impl ProcessMonitor {
                 #[cfg(target_os = "linux")]
                 if matches!(scope, MonitoringScope::LinuxCgroupOfRoot) {
                     if let Some(state) = cgroup_state.as_mut() {
-                        if let Some((cpu_percent_opt, memory_bytes)) = state.sample(Instant::now()) {
+                        if let Some((cpu_percent_opt, memory_bytes)) = state.sample(Instant::now())
+                        {
                             let mut guard = stats_arc.lock().await;
                             if let Some(cpu_percent) = cpu_percent_opt {
-                                guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent });
+                                guard.cpu_samples.push(CpuSample {
+                                    elapsed_s,
+                                    cpu_percent,
+                                });
                             }
-                            guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes });
+                            guard.memory_samples.push(MemorySample {
+                                elapsed_s,
+                                memory_bytes,
+                            });
 
                             sample_count += 1;
                             if Instant::now() >= end_time {
@@ -256,7 +269,9 @@ impl ProcessMonitor {
 
                 let tracked_pids = match scope {
                     MonitoringScope::RootOnly | MonitoringScope::LinuxCgroupOfRoot => vec![pid],
-                    MonitoringScope::RootPlusDescendants => collect_descendants_including_root(&sys, pid),
+                    MonitoringScope::RootPlusDescendants => {
+                        collect_descendants_including_root(&sys, pid)
+                    }
                 };
                 let (total_cpu, total_memory) = tracked_pids
                     .iter()
@@ -269,8 +284,14 @@ impl ProcessMonitor {
                     });
 
                 let mut guard = stats_arc.lock().await;
-                guard.cpu_samples.push(CpuSample { elapsed_s, cpu_percent: total_cpu });
-                guard.memory_samples.push(MemorySample { elapsed_s, memory_bytes: total_memory });
+                guard.cpu_samples.push(CpuSample {
+                    elapsed_s,
+                    cpu_percent: total_cpu,
+                });
+                guard.memory_samples.push(MemorySample {
+                    elapsed_s,
+                    memory_bytes: total_memory,
+                });
 
                 sample_count += 1;
 
@@ -293,6 +314,9 @@ impl ProcessMonitor {
 
         let guard = self.stats.lock().await;
 
-        (Some(guard.cpu_samples.clone()), Some(guard.memory_samples.clone()))
+        (
+            Some(guard.cpu_samples.clone()),
+            Some(guard.memory_samples.clone()),
+        )
     }
 }

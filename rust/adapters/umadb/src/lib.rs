@@ -1,16 +1,22 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse,
+    StoreDataDir, StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::umadb::{UmaDb, UMADB_PORT};
 use futures::StreamExt;
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use umadb_client::UmaDbClient;
-use umadb_dcb::{DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbSubscriptionAsync, DcbReadResponseAsync};
+use umadb_dcb::{
+    DcbAppendCondition, DcbEvent, DcbEventStoreAsync, DcbQuery, DcbQueryItem, DcbReadResponseAsync,
+    DcbSubscriptionAsync,
+};
 
 // Store manager - handles lifecycle and adapter creation
 pub struct UmaDbStoreManager {
@@ -39,7 +45,9 @@ impl UmaDbStoreManager {
     }
 
     fn get_umadb_uri() -> String {
-        let uri: String = std::env::var("UMADB_URI").ok().unwrap_or(Self::format_uri(UMADB_PORT.as_u16()));
+        let uri: String = std::env::var("UMADB_URI")
+            .ok()
+            .unwrap_or(Self::format_uri(UMADB_PORT.as_u16()));
         println!("UmaDB Server URI: {}", uri);
         uri
     }
@@ -47,7 +55,9 @@ impl UmaDbStoreManager {
 
 #[async_trait]
 impl StoreManager for UmaDbStoreManager {
-    fn use_docker(&self) -> bool { self.use_docker }
+    fn use_docker(&self) -> bool {
+        self.use_docker
+    }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
@@ -77,11 +87,16 @@ impl StoreManager for UmaDbStoreManager {
             self.container = Some(container);
 
             // Wait for container to be ready
-            wait_for_ready("UmaDb", || async {
-                let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
-                client.head().await?;
-                Ok(())
-            }, Duration::from_secs(60)).await?;
+            wait_for_ready(
+                "UmaDb",
+                || async {
+                    let client = UmaDbClient::new(self.uri.clone()).connect_async().await?;
+                    client.head().await?;
+                    Ok(())
+                },
+                Duration::from_secs(60),
+            )
+            .await?;
         }
         Ok(())
     }
@@ -181,9 +196,15 @@ impl UmaDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for UmaDbAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        events: &[EventData],
+        condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         let dcb_events = Self::convert_events(events);
 
         let dcb_condition: Option<DcbAppendCondition> = condition.map(|cond| DcbAppendCondition {
@@ -205,24 +226,35 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Some(pos))
     }
 
-    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        _stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         let dcb_events = Self::convert_events(events);
         let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
             // One query item with one tag, for each unique tag mentioned in all events.
             Some(DcbAppendCondition {
                 fail_if_events_match: DcbQuery::new().item(
-                    dcb_events.iter()
+                    dcb_events
+                        .iter()
                         .flat_map(|evt| &evt.tags)
                         .collect::<std::collections::HashSet<_>>()
                         .into_iter()
-                        .fold(DcbQueryItem::new(), |item, tag| item.tags(vec![tag.to_string()]))
+                        .fold(DcbQueryItem::new(), |item, tag| {
+                            item.tags(vec![tag.to_string()])
+                        }),
                 ),
                 after: global_position,
             })
         } else {
             None
         };
-        let pos: u64 = self.client.append(dcb_events, append_condition, None).await?;
+        let pos: u64 = self
+            .client
+            .append(dcb_events, append_condition, None)
+            .await?;
         Ok(Some(pos))
     }
 
@@ -245,18 +277,18 @@ impl EventStoreAdapter for UmaDbAdapter {
                 items: vec![DcbQueryItem { types, tags }],
             })
         };
-        let stream = self.client
-            .read(
-                query,
-                req.from_offset,
-                false,
-                req.limit.map(|l| l as u32),
-            )
+        let stream = self
+            .client
+            .read(query, req.from_offset, false, req.limit.map(|l| l as u32))
             .await?;
         Ok(Box::new(UmaDbReadResponse { stream }))
     }
 
-    async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(
+        &self,
+        _req: Option<ReadRequest>,
+        from_end: bool,
+    ) -> anyhow::Result<Box<dyn ReadResponse>> {
         let after = if from_end {
             self.client.head().await?
         } else {
@@ -320,7 +352,11 @@ impl StoreManagerFactory for UmaDbFactory {
         "umadb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(UmaDbStoreManager::new(data_dir, use_docker)))
     }
 }
@@ -361,8 +397,12 @@ mod tests {
 
         assert!(received_events.len() >= 2);
 
-        let found1 = received_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
-        let found2 = received_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+        let found1 = received_events
+            .iter()
+            .any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = received_events
+            .iter()
+            .any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
 
         assert!(found1, "Event type1 not found in read_all results");
         assert!(found2, "Event type2 not found in read_all results");
@@ -397,7 +437,6 @@ mod tests {
         ];
 
         adapter.append_dcb(&events, None).await?;
-
 
         // let mut received_events = Vec::new();
 

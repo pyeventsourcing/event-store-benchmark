@@ -1,17 +1,23 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse};
-use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use bench_core::adapter::{
+    EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest,
+    ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
-use tephra_client::{AppendCondition, Client, Event, EventType, Position, Query, QueryItem, SubEvent, SubscribeCancel, Tag, Tags};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
+use tephra_client::{
+    AppendCondition, Client, Event, EventType, Position, Query, QueryItem, SubEvent,
+    SubscribeCancel, Tag, Tags,
+};
+use tokio::sync::{mpsc, oneshot};
 
-use tokio::sync::Semaphore;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, ImageExt};
+use tokio::sync::Semaphore;
 use tokio::time::Duration;
 
 // Store manager - handles lifecycle and adapter creation.
@@ -37,7 +43,9 @@ impl TephraStoreManager {
     }
 
     fn get_uri() -> String {
-        let uri: String = std::env::var("TEPHRA_URI").ok().unwrap_or(Self::local_uri(TEPHRA_PORT.as_u16()));
+        let uri: String = std::env::var("TEPHRA_URI")
+            .ok()
+            .unwrap_or(Self::local_uri(TEPHRA_PORT.as_u16()));
         println!("Tephra Server URI: {}", uri);
         uri
     }
@@ -46,7 +54,6 @@ impl TephraStoreManager {
         format!("127.0.0.1:{}", host_port)
     }
 }
-
 
 #[async_trait]
 impl StoreManager for TephraStoreManager {
@@ -425,29 +432,30 @@ impl EventStoreAdapter for TephraAdapter {
         let limit = req.limit;
 
         // TODO: Actually define a TephraReadResponse... this is just to fix the build.
-        let out = self.with_client(move |client| {
-            let mut stream = client.read(query, after).map_err(|err| anyhow!("{err}"))?;
-            let mut out = Vec::new();
-            for item in stream.by_ref() {
-                if let Some(lim) = limit {
-                    if out.len() as u64 >= lim {
-                        break;
+        let out = self
+            .with_client(move |client| {
+                let mut stream = client.read(query, after).map_err(|err| anyhow!("{err}"))?;
+                let mut out = Vec::new();
+                for item in stream.by_ref() {
+                    if let Some(lim) = limit {
+                        if out.len() as u64 >= lim {
+                            break;
+                        }
                     }
+                    let sequenced = item.map_err(|err| anyhow!("{err}"))?;
+                    let event = sequenced.event();
+                    let (payload, metadata) = Self::decode_envelope(event.payload());
+                    out.push(ReadEvent {
+                        offset: sequenced.position().get(),
+                        event_type: event.event_type().to_string(),
+                        payload,
+                        metadata,
+                    });
                 }
-                let sequenced = item.map_err(|err| anyhow!("{err}"))?;
-                let event = sequenced.event();
-                let (payload, metadata) = Self::decode_envelope(event.payload());
-                out.push(ReadEvent {
-                    offset: sequenced.position().get(),
-                    event_type: event.event_type().to_string(),
-                    payload,
-                    metadata,
-                });
-            }
-            // Dropping the partially-consumed stream drains the rest, keeping the connection
-            // frame-aligned for the next request.
-            Ok(out)
-        })
+                // Dropping the partially-consumed stream drains the rest, keeping the connection
+                // frame-aligned for the next request.
+                Ok(out)
+            })
             .await?;
 
         Ok(Box::new(VecReadResponse::new(out)))
@@ -474,7 +482,10 @@ impl EventStoreAdapter for TephraAdapter {
             for result in read_stream {
                 match result {
                     Ok(sequenced) => {
-                        if tx.blocking_send(Ok(TephraAdapter::to_read_event(&sequenced))).is_err() {
+                        if tx
+                            .blocking_send(Ok(TephraAdapter::to_read_event(&sequenced)))
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -489,7 +500,11 @@ impl EventStoreAdapter for TephraAdapter {
         Ok(Box::new(TephraReadResponse { rx }))
     }
 
-    async fn subscribe(&self, _req: Option<ReadRequest>, _from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(
+        &self,
+        _req: Option<ReadRequest>,
+        _from_end: bool,
+    ) -> anyhow::Result<Box<dyn ReadResponse>> {
         let (tx, rx) = mpsc::channel(64);
         let (cancel_tx, cancel_rx) = oneshot::channel::<SubscribeCancel>();
         let addr = self.addr.clone();
@@ -512,7 +527,10 @@ impl EventStoreAdapter for TephraAdapter {
             for result in subscription {
                 match result {
                     Ok(SubEvent::Event(sequenced)) => {
-                        if tx.blocking_send(Ok(TephraAdapter::to_read_event(&sequenced))).is_err() {
+                        if tx
+                            .blocking_send(Ok(TephraAdapter::to_read_event(&sequenced)))
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -628,8 +646,14 @@ mod tests {
         assert_eq!(received_events[1].event_type, "type2".to_string());
         assert_eq!(received_events[0].metadata.len(), 1);
         assert_eq!(received_events[1].metadata.len(), 1);
-        assert_eq!(received_events[0].metadata[0], ("a".to_string(), "b".to_string()));
-        assert_eq!(received_events[1].metadata[0], ("c".to_string(), "d".to_string()));
+        assert_eq!(
+            received_events[0].metadata[0],
+            ("a".to_string(), "b".to_string())
+        );
+        assert_eq!(
+            received_events[1].metadata[0],
+            ("c".to_string(), "d".to_string())
+        );
 
         manager.stop().await?;
         Ok(())
@@ -661,7 +685,6 @@ mod tests {
         ];
 
         adapter.append_dcb(&events, None).await?;
-
 
         // let mut received_events = Vec::new();
 

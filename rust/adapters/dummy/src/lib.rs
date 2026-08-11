@@ -1,12 +1,15 @@
-use std::collections::BinaryHeap;
-use std::cmp::Ordering;
-use std::hint::spin_loop;
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreManager,
+    StoreManagerFactory,
+};
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+use std::hint::spin_loop;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::sync::mpsc;
 use tokio::sync::oneshot;
 
 struct ScheduledRequest {
@@ -43,12 +46,12 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel::<ScheduledRequest>();
-        
+
         std::thread::Builder::new()
             .name("scheduler-thread".to_string())
             .spawn(move || {
                 let mut heap = BinaryHeap::new();
-                
+
                 loop {
                     // Try to drain new requests into the heap
                     while let Ok(req) = rx.try_recv() {
@@ -82,7 +85,10 @@ impl Scheduler {
             })
             .expect("failed to spawn scheduler thread");
 
-        Self { tx, delay: Duration::from_micros(1000) }
+        Self {
+            tx,
+            delay: Duration::from_micros(1000),
+        }
     }
 
     pub async fn wait(&self, release_at: Instant) {
@@ -106,7 +112,9 @@ impl DummyStoreManager {
 
 #[async_trait]
 impl StoreManager for DummyStoreManager {
-    fn use_docker(&self) -> bool { true }
+    fn use_docker(&self) -> bool {
+        true
+    }
     async fn start(&mut self) -> Result<()> {
         Ok(())
     }
@@ -140,20 +148,38 @@ pub struct DummyAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for DummyAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    async fn append_dcb(
+        &self,
+        _events: &[EventData],
+        _condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         anyhow::bail!("append_dcb not implemented in DummyAdapter")
     }
 
-    async fn append_to_stream(&self, _events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        _events: &[EventData],
+        stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         if stream_position.is_some() || global_position.is_some() {
             anyhow::bail!("Optimistic concurrency control not implemented in DummyAdapter")
         }
-        self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
+        self.scheduler
+            .wait(Instant::now() + self.scheduler.delay)
+            .await;
         Ok(None)
     }
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
-        self.scheduler.wait(Instant::now() + self.scheduler.delay).await;
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+        self.scheduler
+            .wait(Instant::now() + self.scheduler.delay)
+            .await;
         let events = (0..req.limit.unwrap_or(1))
             .map(|_| ReadEvent {
                 offset: 0,

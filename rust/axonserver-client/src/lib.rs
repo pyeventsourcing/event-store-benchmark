@@ -15,6 +15,7 @@ pub mod proto {
 // taking their own (possibly mismatched) tonic dependency.
 pub use tonic;
 
+use crate::proto::dcb::ConsistencyCondition;
 use anyhow::Result;
 use proto::dcb::{
     dcb_event_store_client::DcbEventStoreClient, AppendEventsRequest, Event, GetHeadRequest,
@@ -24,7 +25,6 @@ use proto::dcb::{
 use std::time::Duration;
 use tokio_stream::once;
 use tonic::transport::{Channel, Endpoint};
-use crate::proto::dcb::ConsistencyCondition;
 
 /// Minimal Axon Server DCB client.
 #[derive(Clone)]
@@ -48,7 +48,11 @@ impl AxonServerClient {
     }
 
     /// Append a batch of tagged events unconditionally.
-    pub async fn append(&self, events: Vec<TaggedEvent>, condition: Option<ConsistencyCondition>) -> Result<i64> {
+    pub async fn append(
+        &self,
+        events: Vec<TaggedEvent>,
+        condition: Option<ConsistencyCondition>,
+    ) -> Result<i64> {
         let mut inner = self.inner.clone();
         let req = AppendEventsRequest {
             condition,

@@ -1,11 +1,11 @@
+use crate::read::{EventTagQuery, MartenEvent};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts};
+use serde_json::Value;
 use std::error::Error;
 use std::fmt;
-use tokio_postgres::NoTls;
-use deadpool_postgres::{Pool, Runtime, Manager, ManagerConfig, RecyclingMethod, Timeouts};
 use tokio::time::Duration;
+use tokio_postgres::NoTls;
 use uuid::Uuid;
-use serde_json::Value;
-use crate::read::{EventTagQuery, MartenEvent};
 
 #[derive(Debug)]
 pub enum MartenError {
@@ -37,12 +37,19 @@ impl fmt::Display for MartenError {
         match self {
             MartenError::Postgres(e) => {
                 if let Some(db_err) = e.as_db_error() {
-                    write!(f, "Postgres error: {} (Code: {}, Message: {}, Detail: {:?}, Hint: {:?})", 
-                        e, db_err.code().code(), db_err.message(), db_err.detail(), db_err.hint())
+                    write!(
+                        f,
+                        "Postgres error: {} (Code: {}, Message: {}, Detail: {:?}, Hint: {:?})",
+                        e,
+                        db_err.code().code(),
+                        db_err.message(),
+                        db_err.detail(),
+                        db_err.hint()
+                    )
                 } else {
                     write!(f, "Postgres error: {:?}", e.source())
                 }
-            },
+            }
             MartenError::AppendConditionFailed => write!(f, "Append condition failed"),
             MartenError::Uuid(e) => write!(f, "Uuid error: {}", e),
             MartenError::Pool(e) => write!(f, "Pool error: {} ({:?})", e, e),
@@ -85,9 +92,9 @@ impl From<deadpool_postgres::PoolError> for MartenError {
     }
 }
 
-pub mod schema;
 pub mod append;
 pub mod read;
+pub mod schema;
 
 #[derive(Clone)]
 pub struct Marten {
@@ -97,9 +104,9 @@ pub struct Marten {
 
 impl Marten {
     pub async fn connect(connection_string: &str) -> Result<Self, MartenError> {
-        let pg_config: tokio_postgres::Config = connection_string.parse().map_err(|e| {
-            MartenError::Connection(format!("Invalid connection string: {}", e))
-        })?;
+        let pg_config: tokio_postgres::Config = connection_string
+            .parse()
+            .map_err(|e| MartenError::Connection(format!("Invalid connection string: {}", e)))?;
         let mgr_config = ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         };
@@ -118,26 +125,40 @@ impl Marten {
                 recycle: Some(Duration::from_secs(30)),
             })
             .build()
-            .map_err(|e| {
-                MartenError::Connection(format!("Pool creation failed: {}", e))
+            .map_err(|e| MartenError::Connection(format!("Pool creation failed: {}", e)))?;
+        let default_stream_id =
+            Uuid::parse_str("00000000-0000-0000-0000-000000000000").map_err(|e| {
+                MartenError::context("append_events failed to parse default stream id", e)
             })?;
-        let default_stream_id = Uuid::parse_str("00000000-0000-0000-0000-000000000000")
-            .map_err(|e| MartenError::context("append_events failed to parse default stream id", e))?;
-        Ok(Self {pool, default_stream_id})
+        Ok(Self {
+            pool,
+            default_stream_id,
+        })
     }
 
     pub async fn drop_tables(&self) -> Result<(), MartenError> {
         let client = self.pool.get().await?;
         let fut = async {
             client.batch_execute("DROP FUNCTION IF EXISTS mt_quick_append_events(uuid, varchar, varchar, uuid[], varchar[], varchar[], jsonb[], varchar[])").await?;
-            client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_test").await?;
-            client.batch_execute("DROP TABLE IF EXISTS mt_event_tag_string").await?;
-            client.batch_execute("DROP TABLE IF EXISTS mt_events").await?;
-            client.batch_execute("DROP TABLE IF EXISTS mt_streams").await?;
-            client.batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence").await?;
+            client
+                .batch_execute("DROP TABLE IF EXISTS mt_event_tag_test")
+                .await?;
+            client
+                .batch_execute("DROP TABLE IF EXISTS mt_event_tag_string")
+                .await?;
+            client
+                .batch_execute("DROP TABLE IF EXISTS mt_events")
+                .await?;
+            client
+                .batch_execute("DROP TABLE IF EXISTS mt_streams")
+                .await?;
+            client
+                .batch_execute("DROP SEQUENCE IF EXISTS mt_events_sequence")
+                .await?;
             Ok::<(), MartenError>(())
         };
-        tokio::time::timeout(Duration::from_secs(60), fut).await
+        tokio::time::timeout(Duration::from_secs(60), fut)
+            .await
             .map_err(|_| MartenError::Connection("Timeout dropping tables".to_string()))?
     }
 
@@ -147,15 +168,23 @@ impl Marten {
             client.batch_execute(schema::CREATE_EVENTS_SEQUENCE).await?;
             client.batch_execute(schema::CREATE_STREAMS_TABLE).await?;
             client.batch_execute(schema::CREATE_EVENTS_TABLE).await?;
-            client.batch_execute(&schema::get_create_tag_table_sql("string")).await?;
-            client.batch_execute(append::CREATE_QUICK_APPEND_EVENTS_FUNCTION).await?;
+            client
+                .batch_execute(&schema::get_create_tag_table_sql("string"))
+                .await?;
+            client
+                .batch_execute(append::CREATE_QUICK_APPEND_EVENTS_FUNCTION)
+                .await?;
             Ok::<(), MartenError>(())
         };
-        tokio::time::timeout(Duration::from_secs(60), fut).await
+        tokio::time::timeout(Duration::from_secs(60), fut)
+            .await
             .map_err(|_| MartenError::Connection("Timeout creating tables".to_string()))?
     }
 
-    pub async fn new_boundary<'a>(&self, mut query: EventTagQuery<'a>) -> Result<Boundary<'a>, MartenError> {
+    pub async fn new_boundary<'a>(
+        &self,
+        mut query: EventTagQuery<'a>,
+    ) -> Result<Boundary<'a>, MartenError> {
         let events = self.read_events(&query).await.map_err(|e| {
             MartenError::context(
                 format!(
@@ -199,7 +228,11 @@ impl Marten {
         Ok(result_seq_ids)
     }
 
-    pub async fn append_events(&self, events: &mut Vec<MartenDcbEvent>, query: Option<&EventTagQuery<'_>>) -> Result<Vec<i64>, MartenError> {
+    pub async fn append_events(
+        &self,
+        events: &mut Vec<MartenDcbEvent>,
+        query: Option<&EventTagQuery<'_>>,
+    ) -> Result<Vec<i64>, MartenError> {
         let client = self.pool.get().await.map_err(|e| {
             MartenError::context("append_events failed to acquire postgres connection", e)
         })?;
@@ -208,12 +241,17 @@ impl Marten {
 
         // If all tags are the same, then make UUID version 5 for the stream ID,
         // otherwise use the default_stream_id.
-        let stream_id = events.first()
+        let stream_id = events
+            .first()
             .and_then(|e| e.tags.first())
-            .filter(|first_tag| events.iter().all(|e| e.tags.first().map_or(false, |t| t == *first_tag)))
+            .filter(|first_tag| {
+                events
+                    .iter()
+                    .all(|e| e.tags.first().map_or(false, |t| t == *first_tag))
+            })
             .map(|first_tag| Uuid::new_v5(&Uuid::NAMESPACE_OID, first_tag.as_bytes()))
             .unwrap_or(self.default_stream_id);
-        
+
         let mut any_event_with_more_than_two_tags = false;
         for i in 0..num_events {
             if events[i].tags.len() > 1 {
@@ -221,7 +259,7 @@ impl Marten {
                 break;
             }
         }
-        
+
         if !any_event_with_more_than_two_tags && query.is_none() {
             let mut event_ids = vec![];
             let mut event_types = vec![];
@@ -248,22 +286,22 @@ impl Marten {
                     &dotnet_types,
                     &bodies,
                     &tags,
-                ).await
+                )
+                .await
             };
-            let quick_result = tokio::time::timeout(Duration::from_secs(60), fut).await
-                .map_err(|_| MartenError::Connection(
-                    format!(
+            let quick_result = tokio::time::timeout(Duration::from_secs(60), fut)
+                .await
+                .map_err(|_| {
+                    MartenError::Connection(format!(
                         "Timeout in quick_append_events (events={}, stream_id={})",
-                        num_events,
-                        stream_id
-                    )
-                ))?;
+                        num_events, stream_id
+                    ))
+                })?;
             quick_result.map_err(|e| {
                 MartenError::context(
                     format!(
                         "quick_append_events failed (events={}, stream_id={})",
-                        num_events,
-                        stream_id
+                        num_events, stream_id
                     ),
                     e,
                 )
@@ -271,22 +309,36 @@ impl Marten {
         } else {
             let fut = async move {
                 let client_ref = &**client;
-                let current_version = append::get_stream_version(client_ref, &stream_id).await
-                    .map_err(|e| MartenError::context(
-                        format!("failed to fetch stream version (stream_id={})", stream_id),
-                        e,
-                    ))?;
+                let current_version = append::get_stream_version(client_ref, &stream_id)
+                    .await
+                    .map_err(|e| {
+                        MartenError::context(
+                            format!("failed to fetch stream version (stream_id={})", stream_id),
+                            e,
+                        )
+                    })?;
 
                 let mut marten_events = Vec::new();
 
                 // Get new sequence numbers from the database
-                let seq_ids = get_next_sequence_numbers(client_ref, num_events).await
-                    .map_err(|e| MartenError::context(
-                        format!("failed to allocate sequence numbers (count={})", num_events),
-                        e,
-                    ))?;
+                let seq_ids = get_next_sequence_numbers(client_ref, num_events)
+                    .await
+                    .map_err(|e| {
+                        MartenError::context(
+                            format!("failed to allocate sequence numbers (count={})", num_events),
+                            e,
+                        )
+                    })?;
 
-                for (i, MartenDcbEvent { data, event_type, tags }) in events.drain(..).enumerate() {
+                for (
+                    i,
+                    MartenDcbEvent {
+                        data,
+                        event_type,
+                        tags,
+                    },
+                ) in events.drain(..).enumerate()
+                {
                     marten_events.push(read::MartenEvent {
                         id: Uuid::new_v4(),
                         stream_id,
@@ -313,20 +365,27 @@ impl Marten {
                             e,
                         ))?
                 } else {
-                    append::rich_append_events(&mut *client, marten_events).await
-                        .map_err(|e| MartenError::context(
-                            format!("rich_append_events failed (events={})", num_events),
-                            e,
-                        ))?
+                    append::rich_append_events(&mut *client, marten_events)
+                        .await
+                        .map_err(|e| {
+                            MartenError::context(
+                                format!("rich_append_events failed (events={})", num_events),
+                                e,
+                            )
+                        })?
                 };
 
                 Ok::<Vec<i64>, MartenError>(result_seq_ids)
             };
 
-            tokio::time::timeout(Duration::from_secs(60), fut).await
-                .map_err(|_| MartenError::Connection(
-                    format!("Timeout in rich_append_events (events={})", num_events)
-                ))?
+            tokio::time::timeout(Duration::from_secs(60), fut)
+                .await
+                .map_err(|_| {
+                    MartenError::Connection(format!(
+                        "Timeout in rich_append_events (events={})",
+                        num_events
+                    ))
+                })?
         }
     }
 
@@ -335,19 +394,23 @@ impl Marten {
         self.read_events(&query).await
     }
 
-    pub async fn read_events(&self, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, MartenError> {
+    pub async fn read_events(
+        &self,
+        query: &EventTagQuery<'_>,
+    ) -> Result<Vec<MartenEvent>, MartenError> {
         let client = self.pool.get().await.map_err(|e| {
             MartenError::context("read_events failed to acquire postgres connection", e)
         })?;
         let fut = read::select_events_for_query(&**client, query);
-        let read_result = tokio::time::timeout(Duration::from_secs(60), fut).await
-            .map_err(|_| MartenError::Connection(
-                format!(
+        let read_result = tokio::time::timeout(Duration::from_secs(60), fut)
+            .await
+            .map_err(|_| {
+                MartenError::Connection(format!(
                     "Timeout reading events (last_seen_seq_id={}, tags={})",
                     query.last_seen_seq_id,
                     query.conditions.len()
-                )
-            ))?;
+                ))
+            })?;
         read_result.map_err(|e| {
             MartenError::context(
                 format!(
@@ -359,7 +422,6 @@ impl Marten {
             )
         })
     }
-
 }
 
 pub struct MartenDcbEvent {
@@ -388,21 +450,26 @@ impl<'a> Boundary<'a> {
     }
 }
 
-pub async fn get_next_sequence_numbers(client: &tokio_postgres::Client, count: usize) -> Result<Vec<i64>, tokio_postgres::Error> {
+pub async fn get_next_sequence_numbers(
+    client: &tokio_postgres::Client,
+    count: usize,
+) -> Result<Vec<i64>, tokio_postgres::Error> {
     if count == 0 {
         return Ok(Vec::new());
     }
-    
-    let rows = client.query(
-        "SELECT nextval('mt_events_sequence') FROM generate_series(1, $1::int)",
-        &[&(count as i32)]
-    ).await?;
-    
+
+    let rows = client
+        .query(
+            "SELECT nextval('mt_events_sequence') FROM generate_series(1, $1::int)",
+            &[&(count as i32)],
+        )
+        .await?;
+
     let mut seq_ids = Vec::with_capacity(count);
     for row in rows {
         seq_ids.push(row.get(0));
     }
-    
+
     Ok(seq_ids)
 }
 
@@ -413,13 +480,13 @@ pub fn add(left: u64, right: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
-    use serde_json::json;
     use chrono;
+    use serde_json::json;
     use serial_test::serial;
+    use uuid::Uuid;
 
     async fn setup_postgres_client() -> Result<Option<tokio_postgres::Client>, MartenError> {
-        // Since we are now using a pool, this test helper needs to be adjusted 
+        // Since we are now using a pool, this test helper needs to be adjusted
         // if it's still needed. For now, let's just make it return None or get from pool.
         let marten = setup_marten().await?;
         let _client = marten.pool.get().await?;
@@ -435,7 +502,6 @@ mod tests {
         marten.create_tables().await?;
         Ok(marten)
     }
-
 
     #[tokio::test]
     #[serial]
@@ -469,7 +535,8 @@ mod tests {
             &timestamp,
             "DEFAULT",
             seq_id_to_insert,
-        ).await?;
+        )
+        .await?;
         assert_eq!(seq_id, seq_id_to_insert);
 
         // 3. Insert multiple tags (multi-statement approach)
@@ -495,7 +562,7 @@ mod tests {
         let timestamp = chrono::Utc::now();
         let seq_ids = get_next_sequence_numbers(&client, 1).await?;
         let seq_id_to_insert = seq_ids[0];
-        
+
         let seq_id2 = append::insert_event(
             &client,
             &json!({"second": "event"}),
@@ -507,7 +574,8 @@ mod tests {
             &timestamp,
             "DEFAULT",
             seq_id_to_insert,
-        ).await?;
+        )
+        .await?;
         assert_eq!(seq_id2, seq_id_to_insert);
 
         append::insert_tag(&client, "string", "tagC", seq_id2).await?;
@@ -535,65 +603,117 @@ mod tests {
         // Set up some data
         let stream_id = Uuid::new_v4();
         append::insert_stream(client, &stream_id, "test_stream", 0, "DEFAULT").await?;
-        
+
         let timestamp = chrono::Utc::now();
         let seq_ids = get_next_sequence_numbers(client, 2).await?;
-        
+
         // Event 1 with tag1, seq_id = seq_ids[0]
         append::insert_event(
-            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
-            &stream_id, 1, &timestamp, "DEFAULT", seq_ids[0]
-        ).await?;
+            client,
+            &json!({}),
+            "type1",
+            &None::<String>,
+            &Uuid::new_v4(),
+            &stream_id,
+            1,
+            &timestamp,
+            "DEFAULT",
+            seq_ids[0],
+        )
+        .await?;
         append::insert_tag(client, "string", "tag1", seq_ids[0]).await?;
 
         // Event 2 with tag2, seq_id = seq_ids[1]
         append::insert_event(
-            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
-            &stream_id, 2, &timestamp, "DEFAULT", seq_ids[1]
-        ).await?;
+            client,
+            &json!({}),
+            "type1",
+            &None::<String>,
+            &Uuid::new_v4(),
+            &stream_id,
+            2,
+            &timestamp,
+            "DEFAULT",
+            seq_ids[1],
+        )
+        .await?;
         append::insert_tag(client, "string", "tag2", seq_ids[1]).await?;
 
         // Event 3 with NO tags, seq_id = seq_ids[2] (if we had a third)
         let seq_ids_more = get_next_sequence_numbers(client, 1).await?;
         append::insert_event(
-            client, &json!({}), "type1", &None::<String>, &Uuid::new_v4(), 
-            &stream_id, 3, &timestamp, "DEFAULT", seq_ids_more[0]
-        ).await?;
+            client,
+            &json!({}),
+            "type1",
+            &None::<String>,
+            &Uuid::new_v4(),
+            &stream_id,
+            3,
+            &timestamp,
+            "DEFAULT",
+            seq_ids_more[0],
+        )
+        .await?;
 
         // Test Case 8: Event with NO tags exists with seq_id > last_seen_seq_id, query with NO conditions -> returns false because it only checks tags
         let query = EventTagQuery::new(seq_ids[1]);
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(!result, "Should return false if an event exists with higher seq_id but no tags exist for it");
+        assert!(
+            !result,
+            "Should return false if an event exists with higher seq_id but no tags exist for it"
+        );
 
         // Test Case 2: Events exist but seq_id <= last_seen_seq_id -> returns false
-        let query = EventTagQuery::new(seq_ids[1]).with_tag("tag1").with_tag("tag2");
+        let query = EventTagQuery::new(seq_ids[1])
+            .with_tag("tag1")
+            .with_tag("tag2");
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(!result, "Should return false when all matching events have seq_id <= last_seen_seq_id");
+        assert!(
+            !result,
+            "Should return false when all matching events have seq_id <= last_seen_seq_id"
+        );
 
         // Test Case 3: Events exist with seq_id > last_seen_seq_id but different tags -> returns false
         let query = EventTagQuery::new(seq_ids[0]).with_tag("tag1");
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(!result, "Should return false when only event with higher seq_id has a different tag");
+        assert!(
+            !result,
+            "Should return false when only event with higher seq_id has a different tag"
+        );
 
         // Test Case 4: Events exist with seq_id > last_seen_seq_id and matching tags -> returns true
         let query = EventTagQuery::new(seq_ids[0]).with_tag("tag2");
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(result, "Should return true when an event with higher seq_id matches a tag");
+        assert!(
+            result,
+            "Should return true when an event with higher seq_id matches a tag"
+        );
 
         // Test Case 5: Multiple tags, one matches -> returns true
-        let query = EventTagQuery::new(seq_ids[0]).with_tag("nonexistent").with_tag("tag2");
+        let query = EventTagQuery::new(seq_ids[0])
+            .with_tag("nonexistent")
+            .with_tag("tag2");
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(result, "Should return true when at least one tag matches an event with higher seq_id");
+        assert!(
+            result,
+            "Should return true when at least one tag matches an event with higher seq_id"
+        );
 
         // Test Case 6: No conditions -> returns true if ANY event exists with seq_id > last_seen_seq_id
         let query = EventTagQuery::new(seq_ids[0]);
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(result, "Should return true if any event exists with seq_id > last_seen_seq_id when no conditions are specified");
+        assert!(
+            result,
+            "Should return true if any event exists with seq_id > last_seen_seq_id when no conditions are specified"
+        );
 
         // Test Case 7: No conditions, all events have seq_id <= last_seen_seq_id -> returns false
         let query = EventTagQuery::new(seq_ids[1]);
         let result = read::evaluate_append_condition(client, &query).await?;
-        assert!(!result, "Should return false if all events have seq_id <= last_seen_seq_id when no conditions are specified");
+        assert!(
+            !result,
+            "Should return false if all events have seq_id <= last_seen_seq_id when no conditions are specified"
+        );
 
         Ok(())
     }
@@ -629,7 +749,8 @@ mod tests {
             &dotnet_types,
             &bodies,
             &tags,
-        ).await?;
+        )
+        .await?;
 
         // Marten's result is [new_version, seq_id1, seq_id2, ...]
         assert_eq!(result.len(), 3);
@@ -913,7 +1034,7 @@ mod tests {
 
         let stream_id1 = Uuid::new_v4();
         let stream_id2 = Uuid::new_v4();
-        
+
         let events = vec![
             read::MartenEvent {
                 id: Uuid::new_v4(),
@@ -953,13 +1074,13 @@ mod tests {
         // Verify events
         let events = read::read_all_events(&client).await?;
         assert_eq!(events.len(), 3);
-        
+
         assert_eq!(events[0].stream_id, stream_id1);
         assert_eq!(events[0].version, 1);
-        
+
         assert_eq!(events[1].stream_id, stream_id1);
         assert_eq!(events[1].version, 2);
-        
+
         assert_eq!(events[2].stream_id, stream_id2);
         assert_eq!(events[2].version, 1);
 
@@ -970,10 +1091,10 @@ mod tests {
         // event 3: tag2
         // Total 4 tag entries
         assert_eq!(tags.len(), 4);
-        
+
         assert_eq!(tags[0].value, "tag1");
         assert_eq!(tags[0].seq_id, seq_ids[0]);
-        
+
         assert_eq!(tags[1].value, "tag2");
         assert_eq!(tags[1].seq_id, seq_ids[0]);
 
@@ -986,12 +1107,12 @@ mod tests {
         // Verify streams
         let streams = read::read_all_streams(&client).await?;
         assert_eq!(streams.len(), 2);
-        
+
         let mut stream_versions = std::collections::HashMap::new();
         for s in streams {
             stream_versions.insert(s.id, s.version);
         }
-        
+
         assert_eq!(stream_versions.get(&stream_id1), Some(&2));
         assert_eq!(stream_versions.get(&stream_id2), Some(&1));
 
@@ -1008,74 +1129,69 @@ mod tests {
 
         // 1. Prepare some initial data
         let stream_id = Uuid::new_v4();
-        let initial_events = vec![
-            read::MartenEvent {
-                id: Uuid::new_v4(),
-                stream_id,
-                version: 1,
-                data: json!({"initial": true}),
-                event_type: "initial_event".to_string(),
-                dotnet_type: None,
-                tags: vec!["target-tag".to_string()],
-                seq_id: 1,
-            },
-        ];
+        let initial_events = vec![read::MartenEvent {
+            id: Uuid::new_v4(),
+            stream_id,
+            version: 1,
+            data: json!({"initial": true}),
+            event_type: "initial_event".to_string(),
+            dotnet_type: None,
+            tags: vec!["target-tag".to_string()],
+            seq_id: 1,
+        }];
         let seq_ids = append::rich_append_events(&mut client, initial_events).await?;
         let last_seq = seq_ids[0];
 
         // 2. Test successful conditional append
         // Condition: exist events with "target-tag" and seq_id > last_seq
         // There are no such events yet, so it should succeed.
-        let query_success = read::EventTagQuery::new(last_seq)
-            .with_tag("target-tag");
-        
-        let new_events1 = vec![
-            read::MartenEvent {
-                id: Uuid::new_v4(),
-                stream_id,
-                version: 2,
-                data: json!({"conditional": "success"}),
-                event_type: "test_event".to_string(),
-                dotnet_type: None,
-                tags: vec!["other-tag".to_string()],
-                seq_id: 2,
-            },
-        ];
-        
-        let seq_ids1 = append::conditional_rich_append_events(&mut client, new_events1, &query_success).await?;
+        let query_success = read::EventTagQuery::new(last_seq).with_tag("target-tag");
+
+        let new_events1 = vec![read::MartenEvent {
+            id: Uuid::new_v4(),
+            stream_id,
+            version: 2,
+            data: json!({"conditional": "success"}),
+            event_type: "test_event".to_string(),
+            dotnet_type: None,
+            tags: vec!["other-tag".to_string()],
+            seq_id: 2,
+        }];
+
+        let seq_ids1 =
+            append::conditional_rich_append_events(&mut client, new_events1, &query_success)
+                .await?;
         assert_eq!(seq_ids1.len(), 1);
         assert_eq!(seq_ids1[0], 2);
 
         // 3. Test failed conditional append
         // Condition: exist events with "target-tag" and seq_id > 0
         // The initial event matches this, so it should fail.
-        let query_fail = read::EventTagQuery::new(0)
-            .with_tag("target-tag");
-        
-        let new_events2 = vec![
-            read::MartenEvent {
-                id: Uuid::new_v4(),
-                stream_id,
-                version: 3,
-                data: json!({"conditional": "fail"}),
-                event_type: "test_event".to_string(),
-                dotnet_type: None,
-                tags: vec!["should-not-exist".to_string()],
-                seq_id: 3,
-            },
-        ];
-        
-        let result = append::conditional_rich_append_events(&mut client, new_events2, &query_fail).await;
-        
+        let query_fail = read::EventTagQuery::new(0).with_tag("target-tag");
+
+        let new_events2 = vec![read::MartenEvent {
+            id: Uuid::new_v4(),
+            stream_id,
+            version: 3,
+            data: json!({"conditional": "fail"}),
+            event_type: "test_event".to_string(),
+            dotnet_type: None,
+            tags: vec!["should-not-exist".to_string()],
+            seq_id: 3,
+        }];
+
+        let result =
+            append::conditional_rich_append_events(&mut client, new_events2, &query_fail).await;
+
         match result {
-            Err(MartenError::AppendConditionFailed) => {},
+            Err(MartenError::AppendConditionFailed) => {}
             _ => panic!("Expected AppendConditionFailed error, got {:?}", result),
         }
 
         // Verify that the failed event was NOT appended
         let all_events = read::read_all_events(&client).await?;
         assert_eq!(all_events.len(), 2); // Initial event + first successful conditional append
-        
+
         for event in all_events {
             assert_ne!(event.data, json!({"conditional": "fail"}));
         }
@@ -1090,16 +1206,31 @@ mod tests {
 
         // 1. Initialize an event tag query
         let last_seen_seq = 0;
-        let query1 = read::EventTagQuery::new(last_seen_seq)
-            .with_tag("target-tag");
+        let query1 = read::EventTagQuery::new(last_seen_seq).with_tag("target-tag");
 
         // 2. Initialize a session and add events
         let mut boundary1 = marten.new_boundary(query1.clone()).await?;
         let mut boundary2 = marten.new_boundary(query1.clone()).await?;
-        boundary1.add_event(MartenDcbEvent { data: json!({"event": 1}), event_type: "type1".to_string(), tags: vec!["target-tag".to_string()] });
-        boundary1.add_event(MartenDcbEvent { data: json!({"event": 2}), event_type: "type2".to_string(), tags: vec!["target-tag".to_string()] });
-        boundary2.add_event(MartenDcbEvent { data: json!({"event": 3}), event_type: "type1".to_string(), tags: vec!["target-tag".to_string()] });
-        boundary2.add_event(MartenDcbEvent { data: json!({"event": 4}), event_type: "type2".to_string(), tags: vec!["target-tag".to_string()] });
+        boundary1.add_event(MartenDcbEvent {
+            data: json!({"event": 1}),
+            event_type: "type1".to_string(),
+            tags: vec!["target-tag".to_string()],
+        });
+        boundary1.add_event(MartenDcbEvent {
+            data: json!({"event": 2}),
+            event_type: "type2".to_string(),
+            tags: vec!["target-tag".to_string()],
+        });
+        boundary2.add_event(MartenDcbEvent {
+            data: json!({"event": 3}),
+            event_type: "type1".to_string(),
+            tags: vec!["target-tag".to_string()],
+        });
+        boundary2.add_event(MartenDcbEvent {
+            data: json!({"event": 4}),
+            event_type: "type2".to_string(),
+            tags: vec!["target-tag".to_string()],
+        });
 
         // 3. Save the session
         let seq_ids = marten.save_boundary(boundary1).await?;
@@ -1107,7 +1238,7 @@ mod tests {
 
         let result = marten.save_boundary(boundary2).await;
         match result {
-            Err(MartenError::AppendConditionFailed) => {},
+            Err(MartenError::AppendConditionFailed) => {}
             _ => panic!("Expected AppendConditionFailed error, got {:?}", result),
         }
 

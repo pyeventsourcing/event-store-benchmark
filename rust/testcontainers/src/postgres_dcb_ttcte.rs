@@ -1,6 +1,6 @@
+use std::borrow::Cow;
 use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::Image;
-use std::borrow::Cow;
 
 const NAME: &str = "postgres";
 const TAG: &str = "16-alpine";
@@ -47,17 +47,14 @@ impl Image for PostgresDcbTtctePostgres {
     }
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
-        vec![WaitFor::message_on_stderr("database system is ready to accept connections")]
+        vec![WaitFor::message_on_stderr(
+            "database system is ready to accept connections",
+        )]
     }
 
     fn env_vars(
         &self,
-    ) -> impl IntoIterator<
-        Item = (
-            impl Into<Cow<'_, str>>,
-            impl Into<Cow<'_, str>>,
-        ),
-    > {
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         self.env_vars.iter().map(|(k, v)| (*k, *v))
     }
 

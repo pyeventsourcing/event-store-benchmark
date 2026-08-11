@@ -1,8 +1,8 @@
+use anyhow::Context;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use anyhow::Context;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionParams {
@@ -187,14 +187,27 @@ impl ReadResponse for VecReadResponse {
 #[async_trait]
 pub trait EventStoreAdapter: Send + Sync {
     fn as_any(&self) -> &dyn std::any::Any;
-    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>>;
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>>;
+    async fn append_dcb(
+        &self,
+        events: &[EventData],
+        condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>>;
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>>;
     async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Box<dyn ReadResponse>>;
 
     /// Open a live subscription for the given request.
     ///
     /// Defaults to a [`NullReadResponse`] so adapters can opt in incrementally.
-    async fn subscribe(&self, _req: Option<ReadRequest>, _from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(
+        &self,
+        _req: Option<ReadRequest>,
+        _from_end: bool,
+    ) -> anyhow::Result<Box<dyn ReadResponse>> {
         Ok(Box::new(NullReadResponse))
     }
 
@@ -228,7 +241,6 @@ pub trait StoreManager: Send + Sync {
 
     /// Set Docker platform for the container (e.g., "linux/amd64")
     fn set_docker_platform(&mut self, platform: Option<String>);
-
 
     /// Store name (adapter name)
     fn name(&self) -> &'static str;
@@ -310,5 +322,9 @@ pub trait StoreManagerFactory: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Create a store manager instance with given (internal) connection params or defaults
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> anyhow::Result<Box<dyn StoreManager>>;
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> anyhow::Result<Box<dyn StoreManager>>;
 }

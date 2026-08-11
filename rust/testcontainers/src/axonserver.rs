@@ -39,7 +39,10 @@ impl AxonServer {
         Self {
             env_vars: vec![
                 ("AXONIQ_AXONSERVER_NAME", "bench-axon-server".to_string()),
-                ("AXONIQ_AXONSERVER_HOSTNAME", "bench-axon-server".to_string()),
+                (
+                    "AXONIQ_AXONSERVER_HOSTNAME",
+                    "bench-axon-server".to_string(),
+                ),
                 ("AXONIQ_AXONSERVER_STANDALONE_DCB", "true".to_string()),
                 ("JAVA_TOOL_OPTIONS", java_tool_options()),
             ],

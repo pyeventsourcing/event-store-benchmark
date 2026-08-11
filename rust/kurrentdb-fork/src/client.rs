@@ -6,7 +6,15 @@ use crate::options::read_all::ReadAllOptions;
 use crate::options::read_stream::ReadStreamOptions;
 use crate::options::subscribe_to_stream::SubscribeToStreamOptions;
 use crate::server_features::ServerInfo;
-use crate::{DeletePersistentSubscriptionOptions, DeleteStreamOptions, GetPersistentSubscriptionInfoOptions, ListPersistentSubscriptionsOptions, MetadataStreamName, PersistentSubscription, PersistentSubscriptionInfo, PersistentSubscriptionToAllOptions, Position, ReadStream, ReplayParkedMessagesOptions, RestartPersistentSubscriptionSubsystem, RevisionOrPosition, StreamMetadata, StreamMetadataResult, StreamName, SubscribeToAllOptions, SubscribeToPersistentSubscriptionOptions, Subscription, TombstoneStreamOptions, VersionedMetadata, WriteResult, commands};
+use crate::{
+    DeletePersistentSubscriptionOptions, DeleteStreamOptions, GetPersistentSubscriptionInfoOptions,
+    ListPersistentSubscriptionsOptions, MetadataStreamName, PersistentSubscription,
+    PersistentSubscriptionInfo, PersistentSubscriptionToAllOptions, Position, ReadStream,
+    ReplayParkedMessagesOptions, RestartPersistentSubscriptionSubsystem, RevisionOrPosition,
+    StreamMetadata, StreamMetadataResult, StreamName, SubscribeToAllOptions,
+    SubscribeToPersistentSubscriptionOptions, Subscription, TombstoneStreamOptions,
+    VersionedMetadata, WriteResult, commands,
+};
 use crate::{
     EventData,
     options::append_to_stream::{AppendToStreamOptions, ToEvents},

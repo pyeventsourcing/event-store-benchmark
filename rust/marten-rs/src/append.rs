@@ -1,9 +1,9 @@
 use crate::MartenError;
-use crate::read::{evaluate_append_condition, EventTagQuery, MartenEvent};
+use crate::read::{EventTagQuery, MartenEvent, evaluate_append_condition};
+use serde_json::Value;
 use std::collections::HashMap;
 use tokio_postgres::{Client, Error, GenericClient};
 use uuid::Uuid;
-use serde_json::Value;
 
 pub const CREATE_QUICK_APPEND_EVENTS_FUNCTION: &str = r#"
 CREATE OR REPLACE FUNCTION mt_quick_append_events(
@@ -82,19 +82,22 @@ pub async fn quick_append_events(
     bodies: &[Value],
     tags: &[Option<String>],
 ) -> Result<Vec<i64>, Error> {
-    let result: Vec<i64> = client.query_one(
-        "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
-        &[
-            &stream_id,
-            &stream_type,
-            &tenant_id,
-            &event_ids,
-            &event_types,
-            &dotnet_types,
-            &bodies,
-            &tags,
-        ]
-    ).await?.get(0);
+    let result: Vec<i64> = client
+        .query_one(
+            "SELECT mt_quick_append_events($1, $2, $3, $4, $5, $6, $7, $8)",
+            &[
+                &stream_id,
+                &stream_type,
+                &tenant_id,
+                &event_ids,
+                &event_types,
+                &dotnet_types,
+                &bodies,
+                &tags,
+            ],
+        )
+        .await?
+        .get(0);
 
     Ok(result)
 }
@@ -125,7 +128,7 @@ pub async fn insert_event(
         "INSERT INTO mt_events (data, type, mt_dotnet_type, id, stream_id, version, timestamp, tenant_id, seq_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING seq_id",
         &[event_data, &event_type, mt_dotnet_type, event_id, stream_id, &version, timestamp, &tenant_id, &seq_id]
     ).await?;
-    
+
     Ok(rows[0].get(0))
 }
 
@@ -136,21 +139,22 @@ pub async fn insert_stream(
     version: i32,
     tenant_id: &str,
 ) -> Result<u64, Error> {
-    client.execute(
-        "INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, $2, $3, $4)",
-        &[id, &stream_type, &version, &tenant_id]
-    ).await
+    client
+        .execute(
+            "INSERT INTO mt_streams (id, type, version, tenant_id) VALUES ($1, $2, $3, $4)",
+            &[id, &stream_type, &version, &tenant_id],
+        )
+        .await
 }
 
 pub async fn get_stream_version(
     client: &impl GenericClient,
     stream_id: &Uuid,
 ) -> Result<i32, Error> {
-    let row = client.query_opt(
-        "SELECT version FROM mt_streams WHERE id = $1",
-        &[stream_id]
-    ).await?;
-    
+    let row = client
+        .query_opt("SELECT version FROM mt_streams WHERE id = $1", &[stream_id])
+        .await?;
+
     Ok(row.map(|r| r.get(0)).unwrap_or(0))
 }
 
@@ -159,12 +163,13 @@ pub async fn update_stream_version(
     stream_id: &Uuid,
     version: i32,
 ) -> Result<u64, Error> {
-    client.execute(
-        "UPDATE mt_streams SET version = $1, timestamp = now() WHERE id = $2",
-        &[&version, stream_id]
-    ).await
+    client
+        .execute(
+            "UPDATE mt_streams SET version = $1, timestamp = now() WHERE id = $2",
+            &[&version, stream_id],
+        )
+        .await
 }
-
 
 pub async fn conditional_rich_append_events(
     client: &mut Client,
@@ -173,7 +178,9 @@ pub async fn conditional_rich_append_events(
 ) -> Result<Vec<i64>, MartenError> {
     let result = evaluate_append_condition(client, query).await?;
     if !result {
-        rich_append_events(client, events).await.map_err(MartenError::from)
+        rich_append_events(client, events)
+            .await
+            .map_err(MartenError::from)
     } else {
         Err(MartenError::AppendConditionFailed)
     }
@@ -181,10 +188,10 @@ pub async fn conditional_rich_append_events(
 
 pub async fn rich_append_events(
     client: &mut Client,
-    events: Vec<MartenEvent>
+    events: Vec<MartenEvent>,
 ) -> Result<Vec<i64>, Error> {
     let tx = client.transaction().await?;
-    
+
     let mut seq_ids = Vec::new();
     let mut max_versions: HashMap<Uuid, i32> = HashMap::new();
     let mut new_streams = std::collections::HashSet::new();
@@ -220,8 +227,9 @@ pub async fn rich_append_events(
             &timestamp,
             "DEFAULT",
             event.seq_id,
-        ).await?;
-        
+        )
+        .await?;
+
         seq_ids.push(seq_id);
 
         for tag in &event.tags {

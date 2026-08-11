@@ -1,12 +1,17 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir,
+    StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::kurrentdb::{KurrentDb, KURRENTDB_PORT};
-use kurrentdb::{AppendToStreamOptions, KurrentDbClient, ReadStreamOptions, StreamPosition, StreamState};
+use kurrentdb::{
+    AppendToStreamOptions, KurrentDbClient, ReadStreamOptions, StreamPosition, StreamState,
+};
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 use uuid::Uuid;
@@ -40,7 +45,9 @@ impl KurrentDbStoreManager {
 
 #[async_trait]
 impl StoreManager for KurrentDbStoreManager {
-    fn use_docker(&self) -> bool { self.use_docker }
+    fn use_docker(&self) -> bool {
+        self.use_docker
+    }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
@@ -70,17 +77,23 @@ impl StoreManager for KurrentDbStoreManager {
             self.container = Some(container);
 
             // Wait for the server to be ready
-            wait_for_ready("KurrentDB", || async {
-                let client = KurrentDbClient::new(self.uri.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
-                let options = AppendToStreamOptions::default();
-                client
-                    .append_to_stream("_ping", &options, vec![event])
-                    .await?;
-                Ok(())
-            }, Duration::from_secs(60)).await?;
+            wait_for_ready(
+                "KurrentDB",
+                || async {
+                    let client = KurrentDbClient::new(self.uri.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    let event =
+                        kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
+                    let options = AppendToStreamOptions::default();
+                    client
+                        .append_to_stream("_ping", &options, vec![event])
+                        .await?;
+                    Ok(())
+                },
+                Duration::from_secs(60),
+            )
+            .await?;
         }
 
         Ok(())
@@ -155,13 +168,24 @@ impl KurrentDbAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for KurrentDbAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        _events: &[EventData],
+        _condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         anyhow::bail!("append_dcb not implemented in KurrentDbAdapter")
     }
 
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, _global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        stream_position: Option<usize>,
+        _global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         if events.is_empty() {
             return Ok(None);
         }
@@ -169,25 +193,34 @@ impl EventStoreAdapter for KurrentDbAdapter {
         let k_events: Vec<kurrentdb::EventData> = events
             .iter()
             .map(|evt| {
-                kurrentdb::EventData::binary(evt.event_type.to_string(), evt.payload.to_vec().into()).id(Uuid::new_v4())
+                kurrentdb::EventData::binary(
+                    evt.event_type.to_string(),
+                    evt.payload.to_vec().into(),
+                )
+                .id(Uuid::new_v4())
             })
             .collect();
         let options = if let Some(stream_position) = stream_position {
             if stream_position == 0 {
                 AppendToStreamOptions::default().stream_state(StreamState::NoStream)
             } else {
-                AppendToStreamOptions::default().stream_state(StreamState::StreamRevision(stream_position as u64 - 1))
+                AppendToStreamOptions::default()
+                    .stream_state(StreamState::StreamRevision(stream_position as u64 - 1))
             }
         } else {
             AppendToStreamOptions::default()
         };
-        let write_result = self.client
+        let write_result = self
+            .client
             .append_to_stream(stream_name, &options, k_events)
             .await?;
         Ok(Some(write_result.position.commit))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let count = req.limit.unwrap_or(4096) as usize;
         let options = ReadStreamOptions::default()
             .position(match req.from_offset {
@@ -203,7 +236,12 @@ impl EventStoreAdapter for KurrentDbAdapter {
             if let Some(lim) = req.limit {
                 if (out.len() as u64) < lim {
                     let mut metadata = Vec::with_capacity(recorded.metadata.len());
-                    metadata.extend(recorded.metadata.iter().map(|(k, v)| (k.clone(), v.clone())));
+                    metadata.extend(
+                        recorded
+                            .metadata
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone())),
+                    );
                     out.push(ReadEvent {
                         offset: recorded.revision,
                         event_type: recorded.event_type.clone(),
@@ -215,7 +253,12 @@ impl EventStoreAdapter for KurrentDbAdapter {
                 }
             } else {
                 let mut metadata = Vec::with_capacity(recorded.metadata.len());
-                metadata.extend(recorded.metadata.iter().map(|(k, v)| (k.clone(), v.clone())));
+                metadata.extend(
+                    recorded
+                        .metadata
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone())),
+                );
                 out.push(ReadEvent {
                     offset: recorded.revision,
                     event_type: recorded.event_type.clone(),
@@ -232,16 +275,16 @@ impl EventStoreAdapter for KurrentDbAdapter {
     }
 }
 
-    // async fn ping(&self) -> Result<Duration> {
-    //     let t0 = std::time::Instant::now();
-    //     // Perform an append operation to verify the node is leader and accepting writes
-    //     let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
-    //     let options = AppendToStreamOptions::default();
-    //     self.client
-    //         .append_to_stream("_ping", &options, vec![event])
-    //         .await?;
-    //     Ok(t0.elapsed())
-    // }
+// async fn ping(&self) -> Result<Duration> {
+//     let t0 = std::time::Instant::now();
+//     // Perform an append operation to verify the node is leader and accepting writes
+//     let event = kurrentdb::EventData::binary("ping", vec![].into()).id(Uuid::new_v4());
+//     let options = AppendToStreamOptions::default();
+//     self.client
+//         .append_to_stream("_ping", &options, vec![event])
+//         .await?;
+//     Ok(t0.elapsed())
+// }
 
 pub struct KurrentDbFactory;
 
@@ -250,7 +293,11 @@ impl StoreManagerFactory for KurrentDbFactory {
         "kurrentdb"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(KurrentDbStoreManager::new(data_dir, use_docker)))
     }
 }

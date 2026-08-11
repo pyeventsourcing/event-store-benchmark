@@ -1,15 +1,19 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
-use bench_core::wait_for_ready;
-use bench_testcontainers::postgres_dcb_ttcte::{
-    PostgresDcbTtctePostgres, POSTGRES_PORT,
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse,
+    StoreDataDir, StoreManager, StoreManagerFactory,
 };
-use postgres_dcb_ttcte::{PostgresDCBRecorderTT, DcbEvent, DcbSequencedEvent, DcbAppendCondition, DcbQuery, DcbQueryItem, NotificationListener};
+use bench_core::wait_for_ready;
+use bench_testcontainers::postgres_dcb_ttcte::{PostgresDcbTtctePostgres, POSTGRES_PORT};
+use postgres_dcb_ttcte::{
+    DcbAppendCondition, DcbEvent, DcbQuery, DcbQueryItem, DcbSequencedEvent, NotificationListener,
+    PostgresDCBRecorderTT,
+};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
@@ -42,13 +46,18 @@ impl PostgresDcbTtcteStoreManager {
     }
 
     fn format_uri(host_port: u16) -> String {
-        format!("postgres://eventsourcing:eventsourcing@localhost:{}/eventsourcing", host_port)
+        format!(
+            "postgres://eventsourcing:eventsourcing@localhost:{}/eventsourcing",
+            host_port
+        )
     }
 }
 
 #[async_trait]
 impl StoreManager for PostgresDcbTtcteStoreManager {
-    fn use_docker(&self) -> bool { self.use_docker }
+    fn use_docker(&self) -> bool {
+        self.use_docker
+    }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
@@ -80,10 +89,19 @@ impl StoreManager for PostgresDcbTtcteStoreManager {
 
             let recorder = PostgresDCBRecorderTT::connect(&self.uri, "public").await?;
 
-            wait_for_ready("PostgresDcbTtctePostgres", || async {
-                let client = recorder.pool.get().await?;
-                client.execute("SELECT 1", &[]).await.map(|_| ()).map_err(|e| anyhow::anyhow!(e))
-            }, Duration::from_secs(60)).await?;
+            wait_for_ready(
+                "PostgresDcbTtctePostgres",
+                || async {
+                    let client = recorder.pool.get().await?;
+                    client
+                        .execute("SELECT 1", &[])
+                        .await
+                        .map(|_| ())
+                        .map_err(|e| anyhow::anyhow!(e))
+                },
+                Duration::from_secs(60),
+            )
+            .await?;
 
             // Initialize tables
             recorder.create_tables().await?;
@@ -132,8 +150,13 @@ impl StoreManager for PostgresDcbTtcteStoreManager {
 
             self.recorder = Some(recorder);
         }
-        let recorder = self.recorder.as_ref().expect("recorder initialized").clone();
-        Ok(Arc::new(PostgresDcbTtcteAdapter::with_recorder(recorder)))    }
+        let recorder = self
+            .recorder
+            .as_ref()
+            .expect("recorder initialized")
+            .clone();
+        Ok(Arc::new(PostgresDcbTtcteAdapter::with_recorder(recorder)))
+    }
 
     async fn logs(&self) -> Result<String> {
         if let Some(container) = &self.container {
@@ -173,68 +196,40 @@ impl PostgresDcbTtcteAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for PostgresDcbTtcteAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
-        let append_condition: Option<DcbAppendCondition> = condition.map(|cond| {
-            DcbAppendCondition {
+    async fn append_dcb(
+        &self,
+        events: &[EventData],
+        condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
+        let append_condition: Option<DcbAppendCondition> =
+            condition.map(|cond| DcbAppendCondition {
                 fail_if_events_match: DcbQuery {
-                    items: cond.fail_if_events_match.items.iter().map(|item| {
-                        DcbQueryItem {
+                    items: cond
+                        .fail_if_events_match
+                        .items
+                        .iter()
+                        .map(|item| DcbQueryItem {
                             types: item.types.clone(),
                             tags: item.tags.clone(),
-                        }
-                    }).collect()
+                        })
+                        .collect(),
                 },
                 after: cond.after.map(|pos| pos as i64),
-            }
-        });
-        let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
-            DcbEvent {
+            });
+        let pg_events: Vec<DcbEvent> = events
+            .iter()
+            .map(|evt| DcbEvent {
                 type_name: evt.event_type.to_string(),
                 data: evt.payload.to_vec(),
                 tags: evt.tags.iter().map(|t| t.to_string()).collect(),
                 uuid: "".to_string(),
                 metadata: evt.metadata.to_vec(),
-            }
-        }).collect();
-
-        let pos = self
-            .recorder
-            .append(pg_events, append_condition)
-            .await
-            .context("PostgresDcbTtcte append failed")?;
-        Ok(Some(pos as u64))    }
-
-    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
-        let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
-            // One query item with one tag, for each unique tag mentioned in all events.
-            Some(DcbAppendCondition {
-                fail_if_events_match: DcbQuery {
-                    items: events.iter()
-                        .flat_map(|evt| evt.tags.iter())
-                        .collect::<std::collections::HashSet<_>>()
-                        .into_iter()
-                        .map(|tag| DcbQueryItem {
-                            types: vec![],
-                            tags: vec![tag.to_string()],
-                        })
-                        .collect()
-                },
-                after: Some(global_position.expect("global position") as i64),
             })
-        } else {
-            None
-        };
-        let pg_events: Vec<DcbEvent> = events.iter().map(|evt| {
-            DcbEvent {
-                type_name: evt.event_type.to_string(),
-                data: evt.payload.to_vec(),
-                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
-                uuid: "".to_string(),
-                metadata: evt.metadata.to_vec(),
-            }
-        }).collect();
+            .collect();
 
         let pos = self
             .recorder
@@ -244,11 +239,63 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         Ok(Some(pos as u64))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        _stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
+        let append_condition: Option<DcbAppendCondition> = if global_position.is_some() {
+            // One query item with one tag, for each unique tag mentioned in all events.
+            Some(DcbAppendCondition {
+                fail_if_events_match: DcbQuery {
+                    items: events
+                        .iter()
+                        .flat_map(|evt| evt.tags.iter())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .map(|tag| DcbQueryItem {
+                            types: vec![],
+                            tags: vec![tag.to_string()],
+                        })
+                        .collect(),
+                },
+                after: Some(global_position.expect("global position") as i64),
+            })
+        } else {
+            None
+        };
+        let pg_events: Vec<DcbEvent> = events
+            .iter()
+            .map(|evt| DcbEvent {
+                type_name: evt.event_type.to_string(),
+                data: evt.payload.to_vec(),
+                tags: evt.tags.iter().map(|t| t.to_string()).collect(),
+                uuid: "".to_string(),
+                metadata: evt.metadata.to_vec(),
+            })
+            .collect();
+
+        let pos = self
+            .recorder
+            .append(pg_events, append_condition)
+            .await
+            .context("PostgresDcbTtcte append failed")?;
+        Ok(Some(pos as u64))
+    }
+
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let stream = req.tag.clone();
         let query = Some(postgres_dcb_ttcte::DcbQuery {
             items: vec![postgres_dcb_ttcte::DcbQueryItem {
-                types: if req.event_type.is_some() {vec![req.event_type.expect("event type").into()]} else {vec![]},
+                types: if req.event_type.is_some() {
+                    vec![req.event_type.expect("event type").into()]
+                } else {
+                    vec![]
+                },
                 tags: vec![req.tag],
             }],
         });
@@ -263,18 +310,23 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
             .await
             .with_context(|| format!("PostgresDcbTtcte read failed for stream '{}'", stream))?;
 
-        let out = events.into_iter().map(|e: DcbSequencedEvent| {
-            ReadEvent {
+        let out = events
+            .into_iter()
+            .map(|e: DcbSequencedEvent| ReadEvent {
                 offset: e.position as u64,
                 event_type: e.event.type_name,
                 payload: e.event.data,
                 metadata: e.event.metadata,
-            }
-        }).collect();
+            })
+            .collect();
         Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 
-    async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
+    async fn subscribe(
+        &self,
+        _req: Option<ReadRequest>,
+        from_end: bool,
+    ) -> Result<Box<dyn ReadResponse>> {
         // Start LISTENing before reading the head so no append is missed in the
         // gap between establishing the baseline and receiving notifications.
         let listener = self.recorder.open_listener().await?;
@@ -292,7 +344,6 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         }))
     }
 }
-
 
 /// Live subscription backed by Postgres `LISTEN`/`NOTIFY`.
 ///
@@ -347,7 +398,13 @@ impl StoreManagerFactory for PostgresDcbTtcteFactory {
         "postgres-dcb-ttcte"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(PostgresDcbTtcteStoreManager::new(data_dir, use_docker)))
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> Result<Box<dyn StoreManager>> {
+        Ok(Box::new(PostgresDcbTtcteStoreManager::new(
+            data_dir, use_docker,
+        )))
     }
 }

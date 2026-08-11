@@ -19,9 +19,7 @@ pub fn get_git_commit_hash() -> Result<String> {
         .output()?;
 
     if output.status.success() {
-        let hash = String::from_utf8(output.stdout)?
-            .trim()
-            .to_string();
+        let hash = String::from_utf8(output.stdout)?.trim().to_string();
         Ok(hash)
     } else {
         Ok("unknown".to_string())
@@ -46,7 +44,9 @@ fn collect_os_info() -> Result<OsInfo> {
         let uname_str = String::from_utf8_lossy(&output.stdout);
 
         let output_version = Command::new("sw_vers").arg("-productVersion").output()?;
-        let version = String::from_utf8_lossy(&output_version.stdout).trim().to_string();
+        let version = String::from_utf8_lossy(&output_version.stdout)
+            .trim()
+            .to_string();
 
         Ok(OsInfo {
             name: "macOS".to_string(),
@@ -68,11 +68,13 @@ fn collect_os_info() -> Result<OsInfo> {
 
         for line in os_release.lines() {
             if line.starts_with("PRETTY_NAME=") {
-                name = line.trim_start_matches("PRETTY_NAME=")
+                name = line
+                    .trim_start_matches("PRETTY_NAME=")
                     .trim_matches('"')
                     .to_string();
             } else if line.starts_with("VERSION_ID=") {
-                version = line.trim_start_matches("VERSION_ID=")
+                version = line
+                    .trim_start_matches("VERSION_ID=")
                     .trim_matches('"')
                     .to_string();
             }
@@ -121,7 +123,11 @@ fn collect_cpu_info() -> Result<CpuInfo> {
             .parse()
             .unwrap_or(1);
 
-        Ok(CpuInfo { model, cores, threads })
+        Ok(CpuInfo {
+            model,
+            cores,
+            threads,
+        })
     }
 
     #[cfg(target_os = "linux")]
@@ -140,7 +146,11 @@ fn collect_cpu_info() -> Result<CpuInfo> {
             }
         }
 
-        Ok(CpuInfo { model, cores, threads })
+        Ok(CpuInfo {
+            model,
+            cores,
+            threads,
+        })
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -158,9 +168,7 @@ fn collect_cpu_info() -> Result<CpuInfo> {
 fn collect_memory_info() -> Result<MemoryInfo> {
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("sysctl")
-            .args(["-n", "hw.memsize"])
-            .output()?;
+        let output = Command::new("sysctl").args(["-n", "hw.memsize"]).output()?;
         let total_bytes: u64 = String::from_utf8_lossy(&output.stdout)
             .trim()
             .parse()
@@ -174,23 +182,37 @@ fn collect_memory_info() -> Result<MemoryInfo> {
             let mut free_pages: u64 = 0;
             let mut speculative_pages: u64 = 0;
             let mut page_size: u64 = 4096; // Default
-            
+
             // Try to get page size
             if let Ok(ps_out) = Command::new("sysctl").args(["-n", "hw.pagesize"]).output() {
-                page_size = String::from_utf8_lossy(&ps_out.stdout).trim().parse().unwrap_or(4096);
+                page_size = String::from_utf8_lossy(&ps_out.stdout)
+                    .trim()
+                    .parse()
+                    .unwrap_or(4096);
             }
 
             for line in vm_stat.lines() {
                 if line.starts_with("Pages free:") {
-                    free_pages = line.split_whitespace().last().and_then(|s| s.trim_end_matches('.').parse().ok()).unwrap_or(0);
+                    free_pages = line
+                        .split_whitespace()
+                        .last()
+                        .and_then(|s| s.trim_end_matches('.').parse().ok())
+                        .unwrap_or(0);
                 } else if line.starts_with("Pages speculative:") {
-                    speculative_pages = line.split_whitespace().last().and_then(|s| s.trim_end_matches('.').parse().ok()).unwrap_or(0);
+                    speculative_pages = line
+                        .split_whitespace()
+                        .last()
+                        .and_then(|s| s.trim_end_matches('.').parse().ok())
+                        .unwrap_or(0);
                 }
             }
             available_bytes = (free_pages + speculative_pages) * page_size;
         }
 
-        Ok(MemoryInfo { total_bytes, available_bytes })
+        Ok(MemoryInfo {
+            total_bytes,
+            available_bytes,
+        })
     }
 
     #[cfg(target_os = "linux")]
@@ -219,7 +241,10 @@ fn collect_memory_info() -> Result<MemoryInfo> {
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        Ok(MemoryInfo { total_bytes: 0, available_bytes: 0 })
+        Ok(MemoryInfo {
+            total_bytes: 0,
+            available_bytes: 0,
+        })
     }
 }
 
@@ -328,7 +353,8 @@ async fn collect_container_runtime_info() -> Result<ContainerRuntimeInfo> {
     let docker_info = async {
         let docker = bollard::Docker::connect_with_local_defaults()?;
         docker.info().await
-    }.await;
+    }
+    .await;
 
     if let Ok(info) = docker_info {
         return Ok(ContainerRuntimeInfo {

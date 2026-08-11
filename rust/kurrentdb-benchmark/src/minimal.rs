@@ -30,9 +30,14 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Use KurrentDbClient::new directly as shown in the test
-    let client = KurrentDbClient::new(args.conn.clone()).await.map_err(|e| anyhow::anyhow!(e))?;
+    let client = KurrentDbClient::new(args.conn.clone())
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
 
-    println!("Starting Minimal Rust benchmark: {} events, {} bytes each", args.events, args.size);
+    println!(
+        "Starting Minimal Rust benchmark: {} events, {} bytes each",
+        args.events, args.size
+    );
     println!("Target stream: {}", args.stream);
     println!("Connection string: {}", args.conn);
 
@@ -44,7 +49,8 @@ async fn main() -> Result<()> {
     let start_time = Instant::now();
 
     for i in 0..args.events {
-        let event = kurrentdb::EventData::binary("BenchmarkEvent", payload.clone().into()).id(Uuid::new_v4());
+        let event = kurrentdb::EventData::binary("BenchmarkEvent", payload.clone().into())
+            .id(Uuid::new_v4());
 
         let step_start = Instant::now();
         client
@@ -52,7 +58,7 @@ async fn main() -> Result<()> {
             .await
             .map_err(|e| anyhow::anyhow!(e))?;
         let step_duration = step_start.elapsed();
-        
+
         histogram.saturating_record(step_duration.as_nanos() as u64);
 
         if (i + 1) % 100 == 0 {
@@ -72,9 +78,18 @@ async fn main() -> Result<()> {
     println!("  Mean:   {:.3} ms", histogram.mean() / 1000000.0);
     println!("  Min:    {:.3} ms", histogram.min() as f64 / 1000000.0);
     println!("  Max:    {:.3} ms", histogram.max() as f64 / 1000000.0);
-    println!("  P50:    {:.3} ms", histogram.value_at_quantile(0.5) as f64 / 1000000.0);
-    println!("  P95:    {:.3} ms", histogram.value_at_quantile(0.95) as f64 / 1000000.0);
-    println!("  P99:    {:.3} ms", histogram.value_at_quantile(0.99) as f64 / 1000000.0);
+    println!(
+        "  P50:    {:.3} ms",
+        histogram.value_at_quantile(0.5) as f64 / 1000000.0
+    );
+    println!(
+        "  P95:    {:.3} ms",
+        histogram.value_at_quantile(0.95) as f64 / 1000000.0
+    );
+    println!(
+        "  P99:    {:.3} ms",
+        histogram.value_at_quantile(0.99) as f64 / 1000000.0
+    );
 
     Ok(())
 }

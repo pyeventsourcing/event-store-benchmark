@@ -1,12 +1,8 @@
-use std::time::Duration;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use std::future::Future;
+use std::time::Duration;
 
-pub async fn wait_for_ready<F, Fut, T>(
-    name: &str,
-    mut f: F,
-    max_duration: Duration,
-) -> Result<T>
+pub async fn wait_for_ready<F, Fut, T>(name: &str, mut f: F, max_duration: Duration) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T>>,

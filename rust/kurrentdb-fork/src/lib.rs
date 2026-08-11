@@ -61,13 +61,13 @@ mod commands;
 mod event_store;
 mod grpc;
 mod http;
+mod minimal_client;
 pub mod operations;
 mod options;
 mod private;
 mod projection_client;
 pub(crate) mod request;
 mod server_features;
-mod minimal_client;
 mod types;
 
 pub(crate) mod google {
@@ -78,9 +78,9 @@ pub(crate) mod google {
 
 pub use batch::*;
 pub use client::Client;
-pub use minimal_client::KurrentDbClient;
 pub use commands::{PersistentSubscription, ReadEvent, ReadStream, Subscription};
 pub use grpc::{ClientSettings, ClientSettingsParseError};
+pub use minimal_client::KurrentDbClient;
 pub use options::append_to_stream::*;
 pub use options::batch_append::*;
 pub use options::delete_stream::*;
@@ -98,9 +98,9 @@ pub use types::*;
 pub mod prelude {
     pub use crate::batch::*;
     pub use crate::client::Client;
-    pub use crate::minimal_client::KurrentDbClient;
     pub use crate::commands::{PersistentSubscription, ReadEvent, ReadStream, Subscription};
     pub use crate::grpc::{ClientSettings, ClientSettingsParseError};
+    pub use crate::minimal_client::KurrentDbClient;
     pub use crate::options::append_to_stream::*;
     pub use crate::options::batch_append::*;
     pub use crate::options::delete_stream::*;

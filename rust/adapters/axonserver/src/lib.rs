@@ -1,14 +1,19 @@
-use anyhow::{Result};
+use anyhow::Result;
 use async_trait::async_trait;
-use axonserver_client::proto::dcb::{source_events_response, ConsistencyCondition, StreamEventsResponse};
+use axonserver_client::proto::dcb::{
+    source_events_response, ConsistencyCondition, StreamEventsResponse,
+};
 use axonserver_client::proto::dcb::{Criterion, Event, Tag, TaggedEvent, TagsAndNamesCriterion};
 use axonserver_client::AxonServerClient;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadResponse, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse,
+    StoreDataDir, StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::axonserver::{AxonServer, AXONSERVER_GRPC_PORT};
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
@@ -53,7 +58,9 @@ impl AxonServerStoreManager {
     // }
 
     fn get_axon_server_uri() -> String {
-        let uri: String = std::env::var("AXON_SERVER_URI").ok().unwrap_or(Self::format_uri(AXONSERVER_GRPC_PORT.as_u16()));
+        let uri: String = std::env::var("AXON_SERVER_URI")
+            .ok()
+            .unwrap_or(Self::format_uri(AXONSERVER_GRPC_PORT.as_u16()));
         println!("Axon Server URI: {}", uri);
         uri
     }
@@ -65,7 +72,9 @@ impl AxonServerStoreManager {
 
 #[async_trait]
 impl StoreManager for AxonServerStoreManager {
-    fn use_docker(&self) -> bool { self.use_docker }
+    fn use_docker(&self) -> bool {
+        self.use_docker
+    }
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
@@ -95,11 +104,16 @@ impl StoreManager for AxonServerStoreManager {
             self.container = Some(container);
 
             // Wait for the container to be ready
-            wait_for_ready("Axon Server", || async {
-                let client = AxonServerClient::connect(self.uri.clone()).await?;
-                client.get_head().await?;
-                Ok(())
-            }, Duration::from_secs(60)).await?;
+            wait_for_ready(
+                "Axon Server",
+                || async {
+                    let client = AxonServerClient::connect(self.uri.clone()).await?;
+                    client.get_head().await?;
+                    Ok(())
+                },
+                Duration::from_secs(60),
+            )
+            .await?;
         }
 
         Ok(())
@@ -212,9 +226,15 @@ impl AxonServerAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for AxonServerAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, events: &[EventData], condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        events: &[EventData],
+        condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         let tagged_events = Self::convert_events(events);
 
         let consistency_condition = condition.map(|c| ConsistencyCondition {
@@ -239,15 +259,23 @@ impl EventStoreAdapter for AxonServerAdapter {
                 .collect(),
         });
 
-        let position = self.client.append(tagged_events, consistency_condition).await?;
+        let position = self
+            .client
+            .append(tagged_events, consistency_condition)
+            .await?;
         Ok(Some(if position >= 0 { position as u64 } else { 0 }))
     }
 
-    async fn append_to_stream(&self, events: &[EventData], _stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        _stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         let tagged_events = Self::convert_events(events);
 
         let condition = if let Some(global_position) = global_position {
-            Some(ConsistencyCondition{
+            Some(ConsistencyCondition {
                 consistency_marker: global_position as i64,
                 criterion: {
                     let mut unique_tags = std::collections::HashSet::new();
@@ -256,23 +284,25 @@ impl EventStoreAdapter for AxonServerAdapter {
                             unique_tags.insert(tag.value.clone());
                         }
                     }
-                    unique_tags.into_iter().map(|tag_value| Criterion {
-                        tags_and_names: Some(TagsAndNamesCriterion {
-                            name: vec![],
-                            tag: vec![Tag {
-                                key: "stream".into(),
-                                value: tag_value,
-                            }],
+                    unique_tags
+                        .into_iter()
+                        .map(|tag_value| Criterion {
+                            tags_and_names: Some(TagsAndNamesCriterion {
+                                name: vec![],
+                                tag: vec![Tag {
+                                    key: "stream".into(),
+                                    value: tag_value,
+                                }],
+                            }),
                         })
-                    }).collect()
-                }
-                
+                        .collect()
+                },
             })
         } else {
             None
         };
         let position = self.client.append(tagged_events, condition).await?;
-        Ok(Some(if position >= 0 {position as u64} else {0}))
+        Ok(Some(if position >= 0 { position as u64 } else { 0 }))
     }
 
     async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn ReadResponse>> {
@@ -311,7 +341,11 @@ impl EventStoreAdapter for AxonServerAdapter {
         }))
     }
 
-    async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
+    async fn subscribe(
+        &self,
+        _req: Option<ReadRequest>,
+        from_end: bool,
+    ) -> Result<Box<dyn ReadResponse>> {
         let from = if from_end {
             self.client.get_head().await?
         } else {
@@ -357,7 +391,9 @@ impl ReadResponse for AxonServerSubscription {
 }
 
 struct AxonServerReadResponse {
-    stream: Option<axonserver_client::tonic::Streaming<axonserver_client::proto::dcb::SourceEventsResponse>>,
+    stream: Option<
+        axonserver_client::tonic::Streaming<axonserver_client::proto::dcb::SourceEventsResponse>,
+    >,
     limit: Option<u64>,
     count: u64,
 }
@@ -409,7 +445,11 @@ impl StoreManagerFactory for AxonServerFactory {
         "axonserver"
     }
 
-    fn create_store_manager(&self, data_dir: Option<String>, use_docker: bool) -> Result<Box<dyn StoreManager>> {
+    fn create_store_manager(
+        &self,
+        data_dir: Option<String>,
+        use_docker: bool,
+    ) -> Result<Box<dyn StoreManager>> {
         Ok(Box::new(AxonServerStoreManager::new(data_dir, use_docker)))
     }
 }
@@ -458,8 +498,12 @@ mod tests {
 
         assert!(read_events.len() >= 2);
 
-        let found1 = read_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
-        let found2 = read_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
+        let found1 = read_events
+            .iter()
+            .any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
+        let found2 = read_events
+            .iter()
+            .any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
 
         assert!(found1, "Event type1 not found in read_all results");
         assert!(found2, "Event type2 not found in read_all results");

@@ -8,7 +8,7 @@ pub const FDB_PORT: ContainerPort = ContainerPort::Tcp(4500);
 
 pub fn fdb_image_tag() -> String {
     if std::env::consts::ARCH == "aarch64" {
-        // Sorry - I didn't want to clone the repo and build the Docker image --JohnB 
+        // Sorry - I didn't want to clone the repo and build the Docker image --JohnB
         // format!("{}-arm", FDB_IMAGE_VERSION)
         FDB_IMAGE_VERSION.to_string()
     } else {
@@ -48,8 +48,12 @@ impl Image for FoundationDb {
 
     fn env_vars(
         &self,
-    ) -> impl IntoIterator<Item = (impl Into<std::borrow::Cow<'_, str>>, impl Into<std::borrow::Cow<'_, str>>)>
-    {
+    ) -> impl IntoIterator<
+        Item = (
+            impl Into<std::borrow::Cow<'_, str>>,
+            impl Into<std::borrow::Cow<'_, str>>,
+        ),
+    > {
         self.env_vars.iter().map(|(k, v)| (*k, *v))
     }
 

@@ -9,10 +9,10 @@ use bench_testcontainers::foundationdb_dcb::{FoundationDb, FDB_PORT};
 use dcb_layer::{AppendCondition, Event, FdbStore, Query, QueryItem, ReadOptions, Versionstamp};
 use foundationdb::Database;
 use std::collections::HashMap;
+use std::io::Write;
 use std::mem::ManuallyDrop;
 use std::process::Command;
 use std::sync::{Arc, Once};
-use std::io::Write;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, ImageExt};
 use tokio::time::Duration;
@@ -30,7 +30,11 @@ struct VsRegistry {
 impl VsRegistry {
     fn new() -> Self {
         // ID 0 is reserved as the "beginning" sentinel (maps to no versionstamp).
-        Self { next_id: 1, vs_to_id: HashMap::new(), id_to_vs: HashMap::new() }
+        Self {
+            next_id: 1,
+            vs_to_id: HashMap::new(),
+            id_to_vs: HashMap::new(),
+        }
     }
 
     fn register(&mut self, vs: Versionstamp) -> u64 {
@@ -153,7 +157,10 @@ impl EventStoreAdapter for FoundationDbDcbAdapter {
         Ok(Some(id))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let query = Query {
             items: vec![QueryItem {
                 types: req.event_type.into_iter().collect(),
@@ -285,7 +292,13 @@ impl StoreManager for FoundationDbDcbStoreManager {
 
             // Initialize the FDB database inside the container.
             let out = Command::new("docker")
-                .args(["exec", &container_id, "fdbcli", "--exec", "configure new single ssd"])
+                .args([
+                    "exec",
+                    &container_id,
+                    "fdbcli",
+                    "--exec",
+                    "configure new single ssd",
+                ])
                 .output()?;
             let stdout = String::from_utf8_lossy(&out.stdout);
             anyhow::ensure!(
@@ -320,7 +333,11 @@ impl StoreManager for FoundationDbDcbStoreManager {
             self.init_from_cluster_file(&path).await?;
         } else {
             let path = std::env::var("FDB_CLUSTER_FILE").unwrap_or_default();
-            let path = if path.is_empty() { "/usr/local/etc/foundationdb/fdb.cluster".to_string() } else { path };
+            let path = if path.is_empty() {
+                "/usr/local/etc/foundationdb/fdb.cluster".to_string()
+            } else {
+                path
+            };
             self.init_from_cluster_file(&path).await?;
         }
         Ok(())
@@ -328,7 +345,11 @@ impl StoreManager for FoundationDbDcbStoreManager {
 
     async fn pull(&mut self) -> Result<()> {
         // Skip pull if the image already exists locally (e.g. custom-built ARM image).
-        let image_ref = format!("{}:{}", bench_testcontainers::foundationdb_dcb::FDB_IMAGE_NAME, bench_testcontainers::foundationdb_dcb::fdb_image_tag());
+        let image_ref = format!(
+            "{}:{}",
+            bench_testcontainers::foundationdb_dcb::FDB_IMAGE_NAME,
+            bench_testcontainers::foundationdb_dcb::fdb_image_tag()
+        );
         let exists = Command::new("docker")
             .args(["image", "inspect", &image_ref])
             .output()
@@ -414,6 +435,8 @@ impl StoreManagerFactory for FoundationDbDcbFactory {
         data_dir: Option<String>,
         use_docker: bool,
     ) -> Result<Box<dyn StoreManager>> {
-        Ok(Box::new(FoundationDbDcbStoreManager::new(data_dir, use_docker)))
+        Ok(Box::new(FoundationDbDcbStoreManager::new(
+            data_dir, use_docker,
+        )))
     }
 }

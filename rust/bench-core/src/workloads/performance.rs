@@ -1,18 +1,23 @@
-use crate::adapter::{EsbAppendCondition, EsbQuery, EsbQueryItem, EventData, ReadRequest, StoreManager};
+use crate::adapter::{
+    EsbAppendCondition, EsbQuery, EsbQueryItem, EventData, ReadRequest, StoreManager,
+};
 use crate::common::{SetupConfig, TagScheme};
-use crate::metrics::{LatencyRecorder, PerformanceWorkloadResults, ThroughputRecorder, ThroughputSample, RecordingStatus, SamplingConfigDecision};
+use crate::metrics::{
+    LatencyRecorder, PerformanceWorkloadResults, RecordingStatus, SamplingConfigDecision,
+    ThroughputRecorder, ThroughputSample,
+};
+use crate::EventStoreAdapter;
 use anyhow::Result;
 use futures::stream::{FuturesUnordered, StreamExt};
 use rand::{rngs::StdRng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{Barrier, watch};
 use std::time::{Duration, Instant};
-use uuid::Uuid;
-use tokio::task::{JoinSet};
+use tokio::sync::{watch, Barrier};
+use tokio::task::JoinSet;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
-use crate::EventStoreAdapter;
+use uuid::Uuid;
 
 use std::num::ParseIntError;
 use std::sync::OnceLock;
@@ -28,9 +33,7 @@ fn base_instant() -> Instant {
 /// Generates a high-precision, monotonic timestamp as a String.
 /// Call this on the WRITER side.
 pub fn generate_monotonic_timestamp() -> u128 {
-    Instant::now()
-        .duration_since(base_instant())
-        .as_nanos()
+    Instant::now().duration_since(base_instant()).as_nanos()
 }
 
 /// Calculates the duration elapsed since the timestamp was generated.
@@ -40,15 +43,13 @@ pub fn calculate_transit_duration(timestamp_str: &str) -> Result<Duration, Parse
     let write_nanos = timestamp_str.parse::<u128>()?;
 
     // Get the receiver's current nanosecond offset
-    let recv_nanos = Instant::now()
-        .duration_since(base_instant())
-        .as_nanos();
+    let recv_nanos = Instant::now().duration_since(base_instant()).as_nanos();
 
     // Calculate the difference safely
     let diff_nanos = recv_nanos.saturating_sub(write_nanos);
 
     // Convert back to a standard Rust Duration.
-    // Casting to u64 is perfectly safe here: a u64 can hold up to 
+    // Casting to u64 is perfectly safe here: a u64 can hold up to
     // ~584 years of nanoseconds, which is more than enough for a duration difference.
     Ok(Duration::from_nanos(diff_nanos as u64))
 }
@@ -56,7 +57,7 @@ pub fn calculate_transit_duration(timestamp_str: &str) -> Result<Duration, Parse
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkloadConfig {
     #[serde(default)]
-    pub performance: Option<PerformanceConfig>
+    pub performance: Option<PerformanceConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +100,7 @@ impl PerformanceConfig {
         //  This issue came up whilst trying to limit subscribers to 1 when writers=2,
         //  which caused the workflow to be entirely disabled because writers > given max.
         let max_concurrent_workers: Option<usize> = std::env::var("ESB_MAX_CONCURRENT_WORKERS")
-            .ok()                            // Converts Result<String, VarError> into Option<String>
+            .ok() // Converts Result<String, VarError> into Option<String>
             .and_then(|val| val.parse().ok()); // Parses String to usize, turning Result into Option
         for &writers in &writers_vec {
             if max_concurrent_workers.is_some_and(|max| writers > max) {
@@ -160,7 +161,7 @@ impl ConcurrencyValue {
                 } else {
                     v.clone()
                 }
-            },
+            }
         }
     }
 
@@ -267,7 +268,6 @@ pub enum ResumePoint {
     /// repeatedly hitting the head, which would otherwise stay cache-resident.
     Random,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConcurrencyConfig {
@@ -390,7 +390,11 @@ impl PerformanceWorkload {
         }
 
         let stream_prefix = format!("stream-{}-", Uuid::new_v4());
-        Ok(Self { config, seed, stream_prefix })
+        Ok(Self {
+            config,
+            seed,
+            stream_prefix,
+        })
     }
 
     pub fn name(&self) -> &str {
@@ -429,16 +433,19 @@ impl PerformanceWorkload {
                     match store.create_adapter().await {
                         Ok(adapter) => {
                             reader_adapters.push(adapter);
-                            break
-                        },
+                            break;
+                        }
                         Err(err) => {
                             if failures >= max_failures {
-                                return Err(err)
+                                return Err(err);
                             }
-                            println!("Failed ({}/{}) to create reader: {}", failures, max_failures, err);
+                            println!(
+                                "Failed ({}/{}) to create reader: {}",
+                                failures, max_failures, err
+                            );
                             failures += 1;
                             sleep(Duration::from_secs(1)).await;
-                        },
+                        }
                     };
                 }
             }
@@ -454,16 +461,19 @@ impl PerformanceWorkload {
                     match store.create_adapter().await {
                         Ok(adapter) => {
                             writer_adapters.push(adapter);
-                            break
-                        },
+                            break;
+                        }
                         Err(err) => {
                             if failures >= max_failures {
-                                return Err(err)
+                                return Err(err);
                             }
-                            println!("Failed ({}/{}) to create writer: {}", failures, max_failures, err);
+                            println!(
+                                "Failed ({}/{}) to create writer: {}",
+                                failures, max_failures, err
+                            );
                             failures += 1;
                             sleep(Duration::from_secs(1)).await;
-                        },
+                        }
                     };
                 }
             }
@@ -534,14 +544,20 @@ impl PerformanceWorkload {
             info
         };
 
-        println!("Warmup: {}s, Running for {}s", self.config.warmup_seconds, self.config.duration_seconds);
+        println!(
+            "Warmup: {}s, Running for {}s",
+            self.config.warmup_seconds, self.config.duration_seconds
+        );
         let mut worker_tasks = JoinSet::new();
         let duration_seconds = self.config.duration_seconds;
         let samples_per_second = self.config.samples_per_second.max(1);
 
         // Spawn writer tasks
         for adapter in writer_adapters.into_iter() {
-            let activate_metrics = matches!(self.config.mode, PerformanceMode::Write | PerformanceMode::Writeflood);
+            let activate_metrics = matches!(
+                self.config.mode,
+                PerformanceMode::Write | PerformanceMode::Writeflood
+            );
             match self.config.mode {
                 PerformanceMode::Write => Self::spawn_write_task(
                     &mut worker_tasks,
@@ -597,7 +613,6 @@ impl PerformanceWorkload {
                     ready_barrier.clone(),
                     sampling_config_rx.clone(),
                 );
-
             } else {
                 Self::spawn_read_task(
                     &mut worker_tasks,
@@ -617,7 +632,10 @@ impl PerformanceWorkload {
 
         // Wait for all workers to be spawned and ready
         ready_barrier.wait().await;
-        println!("All {} worker tasks ready, starting benchmark...", total_workers);
+        println!(
+            "All {} worker tasks ready, starting benchmark...",
+            total_workers
+        );
 
         // Signal benchmark start
         let start_time = Instant::now() + Duration::from_secs(self.config.warmup_seconds);
@@ -638,9 +656,20 @@ impl PerformanceWorkload {
         let mut timestamp_max: Option<u128> = None;
         let mut timestamp_count: u64 = 0;
         while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput_counts, worker_error_counts, worker_tool_latencies, worker_timestamp_max, worker_timestamp_count))) = worker_result {
+            if let Ok(Some((
+                worker_latencies,
+                worker_throughput_counts,
+                worker_error_counts,
+                worker_tool_latencies,
+                worker_timestamp_max,
+                worker_timestamp_count,
+            ))) = worker_result
+            {
                 store_latencies.hist.add(&worker_latencies.hist).unwrap();
-                tool_latencies.hist.add(&worker_tool_latencies.hist).unwrap();
+                tool_latencies
+                    .hist
+                    .add(&worker_tool_latencies.hist)
+                    .unwrap();
                 for (i, count) in worker_throughput_counts.counts.iter().enumerate() {
                     if i < combined_throughput_counts.len() {
                         combined_throughput_counts[i] += count;
@@ -799,7 +828,16 @@ impl PerformanceWorkload {
     }
 
     fn spawn_write_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
+        worker_tasks: &mut JoinSet<
+            Option<(
+                LatencyRecorder,
+                ThroughputRecorder,
+                ThroughputRecorder,
+                LatencyRecorder,
+                Option<u128>,
+                u64,
+            )>,
+        >,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -810,7 +848,7 @@ impl PerformanceWorkload {
     ) {
         worker_tasks.spawn(async move {
             ready_barrier.wait().await;
-            
+
             loop {
                 if sampling_config_rx.borrow().is_some() {
                     break;
@@ -819,7 +857,7 @@ impl PerformanceWorkload {
                     return None;
                 }
             }
-            
+
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
@@ -835,8 +873,10 @@ impl PerformanceWorkload {
 
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
-            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut operation_error_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut throughput_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut operation_error_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
             let mut store_latencies = LatencyRecorder::new_for_store_latencies();
             let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
@@ -884,46 +924,60 @@ impl PerformanceWorkload {
                 operation_started = Instant::now();
                 let operation_response = match write_cfg.append_condition {
                     AppendConditionValue::None => {
-                        adapter.append_to_stream(
-                            &events,
-                            if write_cfg.concurrency_control { Some(stream_position) } else { None },
-                            if write_cfg.concurrency_control { Some(global_position) } else { None },
-                        ).await
-
-                    },
+                        adapter
+                            .append_to_stream(
+                                &events,
+                                if write_cfg.concurrency_control {
+                                    Some(stream_position)
+                                } else {
+                                    None
+                                },
+                                if write_cfg.concurrency_control {
+                                    Some(global_position)
+                                } else {
+                                    None
+                                },
+                            )
+                            .await
+                    }
                     AppendConditionValue::OneTagOneType => {
                         // The batch shares one (tag, type), so guard on the first event.
-                        adapter.append_dcb(
-                            &events,
-                            Some(
-                                EsbAppendCondition::new(
-                                    EsbQuery::new()
-                                        .item(
+                        adapter
+                            .append_dcb(
+                                &events,
+                                Some(
+                                    EsbAppendCondition::new(
+                                        EsbQuery::new().item(
                                             EsbQueryItem::new()
                                                 .tags(vec![events[0].tags[0].as_ref()])
-                                                .types(vec![events[0].event_type.as_ref()])
-                                        )
-                                ).after(Some(0))
-                            ),
-                        ).await
+                                                .types(vec![events[0].event_type.as_ref()]),
+                                        ),
+                                    )
+                                    .after(Some(0)),
+                                ),
+                            )
+                            .await
                     }
                 };
                 operation_completed = Instant::now();
                 operation_duration = operation_completed - operation_started;
-                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+                out_of_time =
+                    (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
                 match operation_response {
                     Ok(returned_global_position) => {
-
                         timestamp_acked_max = timestamp_generated_last;
                         timestamp_acked_count += batch_size as u64;
 
                         if write_cfg.concurrency_control {
-                            global_position = returned_global_position.expect("global sequence value not returned");
+                            global_position = returned_global_position
+                                .expect("global sequence value not returned");
                         }
                         if activate_metrics {
                             // Record throughput sample (a batch commits batch_size events).
-                            if throughput_recorder.record(operation_completed, batch_size as u64) == RecordingStatus::During {
+                            if throughput_recorder.record(operation_completed, batch_size as u64)
+                                == RecordingStatus::During
+                            {
                                 // Record latency sample
                                 store_latencies.record(operation_duration);
                             }
@@ -935,15 +989,19 @@ impl PerformanceWorkload {
                             tags = Arc::from([Arc::from(stream_name.as_str())]);
                             stream_position = 0;
                         }
-                    },
+                    }
                     Err(e) => {
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Write operation failed after {} ms: {:#}", operation_duration.as_millis(), e);
+                        eprintln!(
+                            "Write operation failed after {} ms: {:#}",
+                            operation_duration.as_millis(),
+                            e
+                        );
                         sleep(Duration::from_secs(1)).await;
                         loop_started = Instant::now();
-                        continue
+                        continue;
                     }
                 }
 
@@ -952,7 +1010,14 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, timestamp_acked_max, timestamp_acked_count))
+                Some((
+                    store_latencies,
+                    throughput_recorder,
+                    operation_error_recorder,
+                    tool_latencies,
+                    timestamp_acked_max,
+                    timestamp_acked_count,
+                ))
             } else {
                 None
             }
@@ -960,7 +1025,16 @@ impl PerformanceWorkload {
     }
 
     fn spawn_read_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
+        worker_tasks: &mut JoinSet<
+            Option<(
+                LatencyRecorder,
+                ThroughputRecorder,
+                ThroughputRecorder,
+                LatencyRecorder,
+                Option<u128>,
+                u64,
+            )>,
+        >,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
         seed: u64,
@@ -999,8 +1073,10 @@ impl PerformanceWorkload {
 
             // Sampling for metrics measurement
             let num_intervals = (duration_seconds * samples_per_second) as usize;
-            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut operation_error_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut throughput_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut operation_error_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
             let mut store_latencies = LatencyRecorder::new_for_store_latencies();
             let mut tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
@@ -1058,17 +1134,21 @@ impl PerformanceWorkload {
                         count += 1;
                     }
                     Ok::<u64, anyhow::Error>(count as u64)
-                }.await;
+                }
+                .await;
 
                 operation_completed = Instant::now();
                 operation_duration = operation_completed - operation_started;
-                out_of_time = (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
+                out_of_time =
+                    (start_time + Duration::from_secs(duration_seconds + 1)) < operation_completed;
 
                 match operation_response {
                     Ok(count) => {
                         if activate_metrics {
                             // Record throughput sample
-                            if throughput_recorder.record(operation_completed, count) == RecordingStatus::During {
+                            if throughput_recorder.record(operation_completed, count)
+                                == RecordingStatus::During
+                            {
                                 // Record latency sample
                                 store_latencies.record(operation_duration);
                             }
@@ -1078,10 +1158,14 @@ impl PerformanceWorkload {
                         if activate_metrics {
                             operation_error_recorder.record(operation_completed, 1);
                         }
-                        eprintln!("Read operation failed after {} ms: {:#}", operation_duration.as_millis(), e);
+                        eprintln!(
+                            "Read operation failed after {} ms: {:#}",
+                            operation_duration.as_millis(),
+                            e
+                        );
                         sleep(Duration::from_secs(1)).await;
                         loop_started = Instant::now();
-                        continue
+                        continue;
                     }
                 }
 
@@ -1089,7 +1173,14 @@ impl PerformanceWorkload {
                 loop_started = Instant::now();
             }
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None, 0))
+                Some((
+                    store_latencies,
+                    throughput_recorder,
+                    operation_error_recorder,
+                    tool_latencies,
+                    None,
+                    0,
+                ))
             } else {
                 None
             }
@@ -1097,7 +1188,16 @@ impl PerformanceWorkload {
     }
 
     fn spawn_subscribe_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
+        worker_tasks: &mut JoinSet<
+            Option<(
+                LatencyRecorder,
+                ThroughputRecorder,
+                ThroughputRecorder,
+                LatencyRecorder,
+                Option<u128>,
+                u64,
+            )>,
+        >,
         adapter: Arc<dyn EventStoreAdapter>,
         _read_cfg: ReadOpConfig,
         _seed: u64,
@@ -1199,7 +1299,16 @@ impl PerformanceWorkload {
 
     fn spawn_writer_flood_task(
         store_name: String,
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
+        worker_tasks: &mut JoinSet<
+            Option<(
+                LatencyRecorder,
+                ThroughputRecorder,
+                ThroughputRecorder,
+                LatencyRecorder,
+                Option<u128>,
+                u64,
+            )>,
+        >,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -1230,14 +1339,20 @@ impl PerformanceWorkload {
             let payload: Arc<[u8]> = Arc::from(vec![0u8; size]);
 
             let num_intervals = (duration_seconds * samples_per_second) as usize;
-            let mut throughput_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
-            let mut operation_error_recorder = ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut throughput_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
+            let mut operation_error_recorder =
+                ThroughputRecorder::new(samples_per_second, num_intervals, start_time);
             let mut store_latencies = LatencyRecorder::new_for_store_latencies();
             let tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
             let mut stream_name = format!("stream-{}-", Uuid::new_v4());
             // TODO: Hack to give Marten a bit of a chance (otherwise it just generates errors).
-            let stream_len = if store_name == "postgres-dcb-marten" { 1 } else { 10 };
+            let stream_len = if store_name == "postgres-dcb-marten" {
+                1
+            } else {
+                10
+            };
             let mut stream_position = 0;
             let mut tags: Arc<[Arc<str>]> = Arc::from([Arc::from(stream_name.as_ref())]);
 
@@ -1251,26 +1366,28 @@ impl PerformanceWorkload {
 
             let mut pending = FuturesUnordered::new();
 
-            let mut handle_completion = |completed_at: Instant, operation_duration: Option<Duration>, is_error: bool| {
-                if is_error {
-                    if activate_metrics {
-                        operation_error_recorder.record(completed_at, 1);
+            let mut handle_completion =
+                |completed_at: Instant, operation_duration: Option<Duration>, is_error: bool| {
+                    if is_error {
+                        if activate_metrics {
+                            operation_error_recorder.record(completed_at, 1);
+                        }
+                        return;
                     }
-                    return;
-                }
-                if let Some(duration) = operation_duration {
-                    if activate_metrics {
-                        let status = throughput_recorder.record(completed_at, 1);
-                        if status == RecordingStatus::During {
-                            store_latencies.record(duration);
+                    if let Some(duration) = operation_duration {
+                        if activate_metrics {
+                            let status = throughput_recorder.record(completed_at, 1);
+                            if status == RecordingStatus::During {
+                                store_latencies.record(duration);
+                            }
                         }
                     }
-                }
-            };
+                };
 
             while !cancel_token.is_cancelled() && Instant::now() < benchmark_end {
                 if pending.len() >= in_flight_limit {
-                    if let Some((completed_at, operation_duration, is_error)) = pending.next().await {
+                    if let Some((completed_at, operation_duration, is_error)) = pending.next().await
+                    {
                         handle_completion(completed_at, operation_duration, is_error);
                     }
                     continue;
@@ -1293,7 +1410,11 @@ impl PerformanceWorkload {
                         }
                         Err(e) => {
                             let completed_at = Instant::now();
-                            eprintln!("Operation failed after {} ms: {:#}", (completed_at - operation_started).as_millis(), e);
+                            eprintln!(
+                                "Operation failed after {} ms: {:#}",
+                                (completed_at - operation_started).as_millis(),
+                                e
+                            );
                             sleep(Duration::from_secs(1)).await;
                             (completed_at, None, true)
                         }
@@ -1307,7 +1428,12 @@ impl PerformanceWorkload {
                     stream_position = 0;
                 }
 
-                while let std::task::Poll::Ready(Some((completed_at, operation_duration, is_error))) = futures::poll!(pending.next()) {
+                while let std::task::Poll::Ready(Some((
+                    completed_at,
+                    operation_duration,
+                    is_error,
+                ))) = futures::poll!(pending.next())
+                {
                     handle_completion(completed_at, operation_duration, is_error);
                 }
             }
@@ -1317,13 +1443,19 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None, 0))
+                Some((
+                    store_latencies,
+                    throughput_recorder,
+                    operation_error_recorder,
+                    tool_latencies,
+                    None,
+                    0,
+                ))
             } else {
                 None
             }
         });
     }
-    
 }
 
 #[cfg(test)]
@@ -1350,7 +1482,10 @@ performance:
         let perf = cfg.performance.unwrap();
 
         assert!(matches!(perf.mode, PerformanceMode::Writeflood));
-        assert_eq!(perf.operations.write.in_flight_limit, default_in_flight_limit());
+        assert_eq!(
+            perf.operations.write.in_flight_limit,
+            default_in_flight_limit()
+        );
     }
 
     #[test]
@@ -1383,7 +1518,10 @@ performance:
             stores: StoreValue::Single("umadb".to_string()),
         };
 
-        let err = PerformanceWorkload::from_config(config, 42).err().unwrap().to_string();
+        let err = PerformanceWorkload::from_config(config, 42)
+            .err()
+            .unwrap()
+            .to_string();
         assert!(err.contains("in_flight_limit"));
     }
 }

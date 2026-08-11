@@ -1,11 +1,14 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir,
+    StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use bench_testcontainers::fact::{FactDb, FACT_PORT};
 use std::sync::Arc;
-use testcontainers::ImageExt;
 use testcontainers::runners::AsyncRunner;
+use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, ContainerRequest};
 use tokio::time::Duration;
 
@@ -83,10 +86,7 @@ impl StoreManager for FactStoreManager {
                     let uri = uri.clone();
                     async move {
                         let mut client = FactBenchClient::connect(uri).await?;
-                        let resp = client
-                            .healthz(proto::HealthzRequest {})
-                            .await?
-                            .into_inner();
+                        let resp = client.healthz(proto::HealthzRequest {}).await?.into_inner();
                         if resp.status == "ok" {
                             Ok(())
                         } else {
@@ -96,7 +96,7 @@ impl StoreManager for FactStoreManager {
                 },
                 Duration::from_secs(60),
             )
-                .await?;
+            .await?;
         }
 
         Ok(())
@@ -164,13 +164,24 @@ pub struct FactAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for FactAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        _events: &[EventData],
+        _condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         anyhow::bail!("append_dcb not implemented in FactAdapter")
     }
 
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         if stream_position.is_some() || global_position.is_some() {
             anyhow::bail!("Optimistic concurrency control not implemented in FactAdapter")
         }
@@ -193,7 +204,10 @@ impl EventStoreAdapter for FactAdapter {
         Ok(None)
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let request = proto::ReadRequest {
             stream: req.tag,
             from_offset: req.from_offset,

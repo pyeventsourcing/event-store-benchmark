@@ -23,15 +23,17 @@ impl<'a> EventTagQuery<'a> {
     }
 }
 
-use tokio_postgres::{Error, GenericClient};
 use serde_json::Value;
+use tokio_postgres::{Error, GenericClient};
 
 pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
-    let mut sql = String::from("SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, e.mt_dotnet_type FROM mt_events e");
-    
+    let mut sql = String::from(
+        "SELECT e.seq_id, e.id, e.stream_id, e.version, e.data, e.type, e.mt_dotnet_type FROM mt_events e",
+    );
+
     // Marten joins to the tag table(s) to apply filters
     sql.push_str(" LEFT JOIN mt_event_tag_string t0 ON e.seq_id = t0.seq_id");
-    
+
     sql.push_str(&format!(" WHERE (e.seq_id > {})", query.last_seen_seq_id));
 
     if !query.conditions.is_empty() {
@@ -44,7 +46,7 @@ pub fn generate_select_events_sql(query: &EventTagQuery) -> String {
         }
         sql.push_str(")");
     }
-    
+
     sql.push_str(" ORDER BY e.seq_id");
     sql
 }
@@ -88,7 +90,12 @@ pub struct MartenStringTag {
 }
 
 pub async fn read_all_tags(client: &impl GenericClient) -> Result<Vec<MartenStringTag>, Error> {
-    let rows = client.query("SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value", &[]).await?;
+    let rows = client
+        .query(
+            "SELECT value, seq_id FROM mt_event_tag_string ORDER BY seq_id, value",
+            &[],
+        )
+        .await?;
     let mut tags = Vec::new();
     for row in rows {
         tags.push(MartenStringTag {
@@ -105,7 +112,9 @@ pub struct RecordedStream {
 }
 
 pub async fn read_all_streams(client: &impl GenericClient) -> Result<Vec<RecordedStream>, Error> {
-    let rows = client.query("SELECT id, version FROM mt_streams ORDER BY id", &[]).await?;
+    let rows = client
+        .query("SELECT id, version FROM mt_streams ORDER BY id", &[])
+        .await?;
     let mut streams = Vec::new();
     for row in rows {
         streams.push(RecordedStream {
@@ -121,23 +130,29 @@ pub async fn read_all_events(client: &impl GenericClient) -> Result<Vec<MartenEv
     select_events_for_query(client, &query).await
 }
 
-pub async fn evaluate_append_condition(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<bool, Error> {
+pub async fn evaluate_append_condition(
+    client: &impl GenericClient,
+    query: &EventTagQuery<'_>,
+) -> Result<bool, Error> {
     let sql = generate_dcb_exists_sql(query);
     let row = client.query_one(&sql, &[]).await?;
     Ok(row.get(0))
 }
 
-pub async fn select_events_for_query(client: &impl GenericClient, query: &EventTagQuery<'_>) -> Result<Vec<MartenEvent>, Error> {
+pub async fn select_events_for_query(
+    client: &impl GenericClient,
+    query: &EventTagQuery<'_>,
+) -> Result<Vec<MartenEvent>, Error> {
     let sql = generate_select_events_sql(query);
     let rows = client.query(&sql, &[]).await?;
     let mut events = Vec::new();
     let mut last_seq_id = -1;
     for row in rows {
         let seq_id: i64 = row.get(0);
-        
+
         // Marten's query with LEFT JOIN might return duplicates if multiple tags match.
-        // In HandleAsync it just does events.Add(@event), but since we want the result 
-        // to be clean and match Marten's eventual de-duplicated aggregate state, 
+        // In HandleAsync it just does events.Add(@event), but since we want the result
+        // to be clean and match Marten's eventual de-duplicated aggregate state,
         // we'll filter out consecutive duplicates based on seq_id (which is ORDER BY'd).
         if seq_id == last_seq_id {
             continue;

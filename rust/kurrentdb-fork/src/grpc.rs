@@ -1480,7 +1480,7 @@ fn determine_best_node(
 
 #[cfg(test)]
 mod node_selection_tests {
-    use rand::{SeedableRng, rngs::SmallRng, TryRng};
+    use rand::{SeedableRng, TryRng, rngs::SmallRng};
 
     use crate::{
         Endpoint, NodePreference,

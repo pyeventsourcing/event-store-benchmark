@@ -1,15 +1,18 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir, StoreManager, StoreManagerFactory};
+use bench_core::adapter::{
+    EsbAppendCondition, EventData, EventStoreAdapter, ReadEvent, ReadRequest, StoreDataDir,
+    StoreManager, StoreManagerFactory,
+};
 use bench_core::wait_for_ready;
 use marten_rs::read::EventTagQuery;
 use marten_rs::{Marten as MartenClient, MartenDcbEvent};
+use std::borrow::Cow;
 use std::sync::Arc;
 use testcontainers::core::{ContainerPort, Mount, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, Image, ImageExt, ContainerRequest};
+use testcontainers::{ContainerAsync, ContainerRequest, Image, ImageExt};
 use tokio::time::Duration;
-use std::borrow::Cow;
 
 const NAME: &str = "postgres";
 const TAG: &str = "16-alpine";
@@ -65,23 +68,26 @@ impl Image for Marten {
     }
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
-        vec![WaitFor::message_on_stderr("database system is ready to accept connections")]
+        vec![WaitFor::message_on_stderr(
+            "database system is ready to accept connections",
+        )]
     }
 
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<Cow<'_, str>>> {
         // Pin shared_buffers so Postgres's cache budget is a recorded, comparable value rather
         // than the tiny 128 MB default; the 4 GB container cgroup cap is the outer equalizer.
-        ["postgres", "-c", "shared_buffers=1GB", "-c", "max_connections=200"]
+        [
+            "postgres",
+            "-c",
+            "shared_buffers=1GB",
+            "-c",
+            "max_connections=200",
+        ]
     }
 
     fn env_vars(
         &self,
-    ) -> impl IntoIterator<
-        Item = (
-            impl Into<Cow<'_, str>>,
-            impl Into<Cow<'_, str>>,
-        ),
-    > {
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         self.env_vars.iter().map(|(k, v)| (*k, *v))
     }
 
@@ -138,32 +144,31 @@ impl StoreManager for MartenStoreManager {
 
     async fn start(&mut self) -> Result<()> {
         if self.use_docker {
-            
             let mount_path = self.data_dir.setup()?;
             let mut image: ContainerRequest<_> = Marten::new(mount_path).into();
-    
+
             if let Some(ref platform) = self.docker_platform {
                 image = image.with_platform(platform);
             }
-    
+
             if let Some(limit_mb) = self.memory_limit_mb {
                 let bytes = limit_mb * 1024 * 1024;
                 image = image.with_host_config_modifier(move |host_config| {
                     host_config.memory = Some(bytes as i64);
                 });
             }
-    
+
             // At small (e.g. 16 MiB) segment sizes a multi-GB run produces hundreds of segment
             // files, and these engines hold file handles per segment; raise the container's
             // open-file limit so fds — not concurrency — are never the bottleneck (mirrors tephra).
             image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
 
             let container = image.start().await?;
-    
+
             let host_port = container.get_host_port_ipv4(POSTGRES_PORT).await?;
             self.uri = Self::format_uri(host_port);
             self.container = Some(container);
-    
+
             // Reconnect on every attempt: the official Postgres image logs "ready to accept
             // connections" during its init bootstrap and then restarts, so a connection made
             // before that restart goes stale and every create_tables() on it fails for the
@@ -176,7 +181,10 @@ impl StoreManager for MartenStoreManager {
                     let uri = uri.clone();
                     async move {
                         let client = MartenClient::connect(&uri).await?;
-                        client.create_tables().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+                        client
+                            .create_tables()
+                            .await
+                            .map_err(|e| anyhow::anyhow!("{}", e))?;
                         Ok(client)
                     }
                 },
@@ -207,7 +215,9 @@ impl StoreManager for MartenStoreManager {
     }
 
     fn container_id(&self) -> Option<String> {
-        self.container.as_ref().map(|c: &ContainerAsync<Marten>| c.id().to_string())
+        self.container
+            .as_ref()
+            .map(|c: &ContainerAsync<Marten>| c.id().to_string())
     }
 
     fn set_memory_limit(&mut self, limit_mb: Option<u64>) {
@@ -235,7 +245,8 @@ impl StoreManager for MartenStoreManager {
             self.client = Some(MartenClient::connect(&self.uri).await?)
         }
         let client = self.client.as_ref().expect("client initialized").clone();
-        Ok(Arc::new(MartenAdapter::with_client(client)))    }
+        Ok(Arc::new(MartenAdapter::with_client(client)))
+    }
 
     async fn logs(&self) -> Result<String> {
         // Just return empty for now to avoid compilation issues with testcontainers logs API
@@ -249,9 +260,7 @@ pub struct MartenAdapter {
 
 impl MartenAdapter {
     pub fn with_client(client: MartenClient) -> Self {
-        Self {
-            client,
-        }
+        Self { client }
     }
 
     pub fn client(&self) -> &MartenClient {
@@ -261,13 +270,24 @@ impl MartenAdapter {
 
 #[async_trait]
 impl EventStoreAdapter for MartenAdapter {
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 
-    async fn append_dcb(&self, _events: &[EventData], _condition: Option<EsbAppendCondition>) -> anyhow::Result<Option<u64>> {
+    async fn append_dcb(
+        &self,
+        _events: &[EventData],
+        _condition: Option<EsbAppendCondition>,
+    ) -> anyhow::Result<Option<u64>> {
         anyhow::bail!("append_dcb not implemented in MartenAdapter")
     }
 
-    async fn append_to_stream(&self, events: &[EventData], stream_position: Option<usize>, global_position: Option<u64>) -> anyhow::Result<Option<u64>> {
+    async fn append_to_stream(
+        &self,
+        events: &[EventData],
+        stream_position: Option<usize>,
+        global_position: Option<u64>,
+    ) -> anyhow::Result<Option<u64>> {
         let event_tag_query = if stream_position.is_some() || global_position.is_some() {
             let mut query = EventTagQuery::new(global_position.unwrap() as i64);
 
@@ -324,18 +344,25 @@ impl EventStoreAdapter for MartenAdapter {
                     global_position
                 )
             })?;
-        Ok(Some(sequence_ids.last().expect("Marten sequence ID").clone() as u64))
+        Ok(Some(
+            sequence_ids.last().expect("Marten sequence ID").clone() as u64,
+        ))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
+    async fn read_stream(
+        &self,
+        req: ReadRequest,
+    ) -> Result<Box<dyn bench_core::adapter::ReadResponse>> {
         let mut query = EventTagQuery::new(req.from_offset.map(|o| o as i64).unwrap_or(-1));
         if !req.tag.is_empty() {
             query = query.with_tag(&req.tag);
         }
 
-        let events = self.client.read_events(&query).await.with_context(|| {
-            format!("Marten read failed for stream '{}'", req.tag)
-        })?;
+        let events = self
+            .client
+            .read_events(&query)
+            .await
+            .with_context(|| format!("Marten read failed for stream '{}'", req.tag))?;
 
         let mut out = Vec::new();
         for (i, se) in events.into_iter().enumerate() {

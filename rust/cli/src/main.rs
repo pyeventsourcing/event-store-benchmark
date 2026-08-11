@@ -1,15 +1,18 @@
 use anyhow::Result;
-use bench_core::{collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionInfo, StoreManagerFactory, WorkloadRunner};
+use bench_core::workloads::performance::WorkloadConfig;
+use bench_core::{
+    collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionInfo,
+    StoreManagerFactory, WorkloadRunner,
+};
 use bench_testcontainers::detect_docker_host;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use rand::random;
+use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
-use bench_core::workloads::performance::WorkloadConfig;
-use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 #[command(name = "es-bench", version, about = "Event Store Benchmark Suite CLI")]
@@ -92,7 +95,9 @@ fn store_manager_factories() -> Vec<Box<dyn StoreManagerFactory>> {
 
     #[cfg(feature = "postgres-dcb-ttcte")]
     {
-        factories.push(Box::new(postgres_dcb_ttcte_adapter::PostgresDcbTtcteFactory));
+        factories.push(Box::new(
+            postgres_dcb_ttcte_adapter::PostgresDcbTtcteFactory,
+        ));
     }
 
     #[cfg(feature = "foundationdb-dcb")]
@@ -108,9 +113,7 @@ fn main() -> Result<()> {
 
     // Suppress the noise from the KurrentDB Rust client
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::new(&cli.log).add_directive("kurrentdb::grpc=off".parse()?),
-        )
+        .with_env_filter(EnvFilter::new(&cli.log).add_directive("kurrentdb::grpc=off".parse()?))
         .init();
 
     // Must run before Runtime::new() — set_var is unsound under concurrent env reads.
@@ -128,7 +131,9 @@ fn main() -> Result<()> {
 
     // Spawn Ctrl+C handler
     rt.spawn(async move {
-        tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl_c");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to listen for ctrl_c");
         println!("\nInterrupt received, shutting down...");
         ct.cancel();
     });
@@ -148,7 +153,9 @@ fn main() -> Result<()> {
                     let mut manager = factory.create_store_manager(None, false)?;
                     let adapter = manager.create_adapter().await?;
                     // We know it's a PostgresDcbTtcteAdapter
-                    let adapter = adapter.as_any().downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
+                    let adapter = adapter
+                        .as_any()
+                        .downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
                         .expect("Adapter should be PostgresDcbTtcteAdapter");
                     adapter.recorder().create_tables().await?;
                     println!("postgres-dcb-ttcte tables created successfully");
@@ -165,7 +172,9 @@ fn main() -> Result<()> {
                     let mut manager = factory.create_store_manager(None, false)?;
                     let adapter = manager.create_adapter().await?;
                     // We know it's a PostgresDcbTtcteAdapter
-                    let adapter = adapter.as_any().downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
+                    let adapter = adapter
+                        .as_any()
+                        .downcast_ref::<postgres_dcb_ttcte_adapter::PostgresDcbTtcteAdapter>()
                         .expect("Adapter should be PostgresDcbTtcteAdapter");
                     adapter.recorder().drop_tables().await?;
                     println!("postgres-dcb-ttcte tables dropped successfully");
@@ -182,7 +191,9 @@ fn main() -> Result<()> {
                     let mut manager = factory.create_store_manager(None, false)?;
                     let adapter = manager.create_adapter().await?;
                     // We know it's a MartenAdapter
-                    let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                    let adapter = adapter
+                        .as_any()
+                        .downcast_ref::<marten_adapter::MartenAdapter>()
                         .expect("Adapter should be MartenAdapter");
                     // We need a way to use the client. Marten is not Clone easily if it has a client.
                     // Actually, let's just use the connect if we can.
@@ -202,7 +213,9 @@ fn main() -> Result<()> {
                     let mut manager = factory.create_store_manager(None, false)?;
                     let adapter = manager.create_adapter().await?;
                     // We know it's a MartenAdapter
-                    let adapter = adapter.as_any().downcast_ref::<marten_adapter::MartenAdapter>()
+                    let adapter = adapter
+                        .as_any()
+                        .downcast_ref::<marten_adapter::MartenAdapter>()
                         .expect("Adapter should be MartenAdapter");
                     // We need a way to use the client. Marten is not Clone easily if it has a client.
                     // Actually, let's just use the connect if we can.
@@ -306,14 +319,23 @@ fn main() -> Result<()> {
             })?;
             Ok(())
         }
-        Commands::Run { config, seed, data_dir } => {
+        Commands::Run {
+            config,
+            seed,
+            data_dir,
+        } => {
             rt.block_on(async { run_benchmark(&config, seed, data_dir, cancel_token).await })?;
             Ok(())
         }
     }
 }
 
-async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_dir: Option<String>, cancel_token: CancellationToken) -> Result<()> {
+async fn run_benchmark(
+    session_config_path: &PathBuf,
+    seed: Option<u64>,
+    data_dir: Option<String>,
+    cancel_token: CancellationToken,
+) -> Result<()> {
     // Generate session ID (ISO timestamp or from environment variable)
     let session_id = std::env::var("ESB_SESSION_ID")
         .unwrap_or_else(|_| Utc::now().format("%Y-%m-%dT%H-%M-%S").to_string());
@@ -329,17 +351,19 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
 
     // Resolve data_dir to an absolute path if provided
     let data_dir = if let Some(path) = data_dir {
-        let abs_path = fs::canonicalize(&path)
-            .or_else(|_| {
-                // If it doesn't exist yet, create it and then canonicalize
-                fs::create_dir_all(&path)?;
-                fs::canonicalize(&path)
-            })?;
+        let abs_path = fs::canonicalize(&path).or_else(|_| {
+            // If it doesn't exist yet, create it and then canonicalize
+            fs::create_dir_all(&path)?;
+            fs::canonicalize(&path)
+        })?;
         Some(abs_path.to_string_lossy().to_string())
     } else {
         None
     };
-    println!("Data path: {:?}", data_dir.clone().unwrap_or("".to_string()));
+    println!(
+        "Data path: {:?}",
+        data_dir.clone().unwrap_or("".to_string())
+    );
 
     // Read config file
     let session_config_yaml = fs::read_to_string(session_config_path)?;
@@ -349,7 +373,10 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     fs::create_dir_all(&session_results_path)?;
 
     // Record session config
-    fs::write(session_results_path.join("config.yaml"), session_config_yaml.clone())?;
+    fs::write(
+        session_results_path.join("config.yaml"),
+        session_config_yaml.clone(),
+    )?;
 
     // 1. Collect all expanded workloads and ensure unique base names across the whole session
     let mut all_workload_runs = Vec::new();
@@ -367,7 +394,8 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
             original_workload_names.insert(original_workload_config.name.clone());
 
             for workload_run_config in original_workload_config.expand() {
-                all_workload_runs.push((original_workload_config.name.clone(), workload_run_config));
+                all_workload_runs
+                    .push((original_workload_config.name.clone(), workload_run_config));
             }
         }
     }
@@ -385,24 +413,30 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     let session_metadata = SessionInfo {
         session_id: session_id.clone(),
         tool_version,
-        workload_name: session_config_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string(),
+        workload_name: session_config_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string(),
         config_file: session_config_path.to_string_lossy().to_string(),
         seed: actual_seed,
     };
     fs::write(
         session_results_path.join("session.json"),
-        serde_json::to_string_pretty(&session_metadata)?
+        serde_json::to_string_pretty(&session_metadata)?,
     )?;
 
     let data_dir_path = data_dir.as_ref().map(Path::new);
     let environment_info = collect_environment_info(data_dir_path).await?;
     fs::write(
         session_results_path.join("environment.json"),
-        serde_json::to_string_pretty(&environment_info)?
+        serde_json::to_string_pretty(&environment_info)?,
     )?;
 
     // 3. Execute all runs
-    for (run_index, (original_workload_name, workload_run_config)) in all_workload_runs.into_iter().enumerate() {
+    for (run_index, (original_workload_name, workload_run_config)) in
+        all_workload_runs.into_iter().enumerate()
+    {
         if cancel_token.is_cancelled() {
             break;
         }
@@ -410,7 +444,10 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         let use_docker = std::env::var("ESB_USE_DOCKER")
             .map(|val| matches!(val.to_lowercase().as_str(), "true" | "1"))
             .unwrap_or(workload_run_config.use_docker);
-        let workload_runner = WorkloadRunner::Performance(PerformanceWorkload::from_config(workload_run_config, actual_seed)?);
+        let workload_runner = WorkloadRunner::Performance(PerformanceWorkload::from_config(
+            workload_run_config,
+            actual_seed,
+        )?);
         let workload_run_name = workload_runner.name()?.to_string();
 
         // Progress line: which run this is, elapsed session time, and a rough ETA from the
@@ -435,7 +472,9 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         );
 
         // Create workload run results directory (results/esb-<session_id>/<original_workload_name>/<workload_run_name>)
-        let run_results_path = session_results_path.join(&original_workload_name).join(&workload_run_name);
+        let run_results_path = session_results_path
+            .join(&original_workload_name)
+            .join(&workload_run_name);
         fs::create_dir_all(&run_results_path)?;
 
         // Find store factory
@@ -449,7 +488,10 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
         let store_manager = store_factory.create_store_manager(data_dir.clone(), use_docker)?;
 
         // Run the workload
-        let run_results = match workload_runner.execute(store_manager, cancel_token.clone()).await {
+        let run_results = match workload_runner
+            .execute(store_manager, cancel_token.clone())
+            .await
+        {
             Ok(run_results) => run_results,
             Err(e) => {
                 if cancel_token.is_cancelled() {
@@ -470,4 +512,3 @@ async fn run_benchmark(session_config_path: &PathBuf, seed: Option<u64>, data_di
     println!("\n✓ Session complete: {}", session_results_path.display());
     Ok(())
 }
-

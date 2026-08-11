@@ -1,11 +1,11 @@
+use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
 use anyhow::Result;
-use bollard::Docker;
 use bollard::query_parameters::StatsOptions;
+use bollard::Docker;
 use futures::StreamExt;
 use std::sync::Arc;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{watch, Mutex};
 use tokio::task::JoinHandle;
-use crate::metrics::{CpuSample, MemorySample, SamplingConfigDecision};
 
 pub struct ContainerMonitor {
     docker: Docker,
@@ -33,7 +33,10 @@ impl ContainerMonitor {
         })
     }
 
-    pub async fn start(&mut self, mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>) {
+    pub async fn start(
+        &mut self,
+        mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+    ) {
         let docker = self.docker.clone();
         let container_id = self.container_id.clone();
         let stats_arc = self.stats.clone();
@@ -49,7 +52,7 @@ impl ContainerMonitor {
                     return;
                 }
             }
-            
+
             let msg = sampling_config_rx.borrow().unwrap();
             let start_time = msg.start_time;
             let duration_seconds = msg.duration_seconds;
@@ -61,8 +64,14 @@ impl ContainerMonitor {
                 guard.cpu_samples = Vec::with_capacity(expected_samples);
                 guard.memory_samples = Vec::with_capacity(expected_samples);
             }
-            
-            let mut stream = docker.stats(&container_id, Some(StatsOptions { stream: true, one_shot: false }));
+
+            let mut stream = docker.stats(
+                &container_id,
+                Some(StatsOptions {
+                    stream: true,
+                    one_shot: false,
+                }),
+            );
             let mut stop_rx = stop_rx;
             let mut first_sample = true;
 
@@ -129,12 +138,20 @@ impl ContainerMonitor {
 
         let guard = self.stats.lock().await;
 
-        (Some(guard.cpu_samples.clone()), Some(guard.memory_samples.clone()))
+        (
+            Some(guard.cpu_samples.clone()),
+            Some(guard.memory_samples.clone()),
+        )
     }
 
     pub async fn get_image_size(&self) -> Result<u64> {
-        let inspect = self.docker.inspect_container(&self.container_id, None).await?;
-        let image_id = inspect.image.ok_or_else(|| anyhow::anyhow!("No image ID for container"))?;
+        let inspect = self
+            .docker
+            .inspect_container(&self.container_id, None)
+            .await?;
+        let image_id = inspect
+            .image
+            .ok_or_else(|| anyhow::anyhow!("No image ID for container"))?;
         let image_inspect = self.docker.inspect_image(&image_id).await?;
         Ok(image_inspect.size.unwrap_or(0) as u64)
     }

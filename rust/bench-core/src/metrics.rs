@@ -1,9 +1,9 @@
-use std::fs;
-use std::path::Path;
 use anyhow::Result;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 /// Sampling configuration message
@@ -116,7 +116,11 @@ impl WorkloadResults {
                 println!("Throughput: {:.2} eps", throughput);
             }
             if !results.operation_error_samples.is_empty() {
-                let total_errors: u64 = results.operation_error_samples.iter().map(|s| s.count).sum();
+                let total_errors: u64 = results
+                    .operation_error_samples
+                    .iter()
+                    .map(|s| s.count)
+                    .sum();
                 println!("Operation errors: {}", total_errors);
             }
         }
@@ -149,10 +153,7 @@ impl PerformanceWorkloadResults {
 }
 
 impl WorkloadResults {
-    pub fn write_to_dir(
-        &self,
-        path: &Path,
-    ) -> Result<()> {
+    pub fn write_to_dir(&self, path: &Path) -> Result<()> {
         match self {
             WorkloadResults::Performance(results) => {
                 fs::write(
@@ -341,9 +342,9 @@ impl LatencyRecorder {
         for p in 0..100 {
             let quantile = p as f64 / 100.0;
             let latency_ns = self.hist.value_at_quantile(quantile);
-            percentiles.push(LatencyPercentile{
+            percentiles.push(LatencyPercentile {
                 percentile: p as f64,
-                latency_ns
+                latency_ns,
             });
         }
 
@@ -351,9 +352,9 @@ impl LatencyRecorder {
         for p in [99.5, 99.9, 99.99, 99.999] {
             let quantile = p / 100.0;
             let latency_ns = self.hist.value_at_quantile(quantile);
-            percentiles.push(LatencyPercentile{
+            percentiles.push(LatencyPercentile {
                 percentile: p,
-                latency_ns
+                latency_ns,
             });
         }
         percentiles

@@ -1,19 +1,21 @@
-use std::time::Instant;
 use anyhow::Result;
+use std::time::Instant;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
-use tokio::sync::watch;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
+use tokio::sync::watch;
 
+use super::consistency::ConsistencyWorkload;
+use super::durability::DurabilityWorkload;
+use super::operational::OperationalWorkload;
+use super::performance::{PerformanceConfig, PerformanceWorkload};
 use crate::adapter::StoreManager;
 use crate::container_stats::ContainerMonitor;
-use crate::metrics::{ContainerStats, CpuSample, MemorySample, RunResults, SamplingConfigDecision, WorkloadResults};
+use crate::metrics::{
+    ContainerStats, CpuSample, MemorySample, RunResults, SamplingConfigDecision, WorkloadResults,
+};
 use crate::process_stats::{MonitoringScope, ProcessMonitor};
-use super::performance::{PerformanceConfig, PerformanceWorkload};
-use super::durability::DurabilityWorkload;
-use super::consistency::ConsistencyWorkload;
-use super::operational::OperationalWorkload;
 
 /// Represents a workload that can be executed
 pub enum WorkloadRunner {
@@ -114,12 +116,12 @@ impl WorkloadRunner {
                 let max_retries = 3;
                 for attempt in 1..=(max_retries + 1) {
                     let res = tokio::select! {
-                res = store.pull() => res,
-                _ = cancel_token.cancelled() => {
-                    println!("Interrupted while pulling image.");
-                    anyhow::bail!("Interrupted");
-                }
-            };
+                        res = store.pull() => res,
+                        _ = cancel_token.cancelled() => {
+                            println!("Interrupted while pulling image.");
+                            anyhow::bail!("Interrupted");
+                        }
+                    };
 
                     match res {
                         Ok(_) => {
@@ -178,9 +180,7 @@ impl WorkloadRunner {
             // Initialize container monitoring if possible
             let monitor = if let Some(id) = store.container_id() {
                 match ContainerMonitor::new(id) {
-                    Ok(m) => {
-                        Some(Monitor::Container(m))
-                    }
+                    Ok(m) => Some(Monitor::Container(m)),
                     Err(e) => {
                         eprintln!("Failed to initialize container monitor: {}", e);
                         None
@@ -196,8 +196,11 @@ impl WorkloadRunner {
             let monitor_scope = Self::monitor_scope_for_store(store_name);
             let monitor = if let Ok(pid_str) = std::fs::read_to_string(&pid_file) {
                 if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                    if let Some(expected_process_name) = Self::expected_process_name_for_store(store_name) {
-                        if !Self::is_pid_matching_expected_process_name(pid, expected_process_name) {
+                    if let Some(expected_process_name) =
+                        Self::expected_process_name_for_store(store_name)
+                    {
+                        if !Self::is_pid_matching_expected_process_name(pid, expected_process_name)
+                        {
                             eprintln!(
                                 "PID {} from {} does not match expected process name '{}' for {}, skipping monitoring",
                                 pid,
@@ -207,12 +210,18 @@ impl WorkloadRunner {
                             );
                             None
                         } else {
-                            println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
+                            println!(
+                                "Found PID {} for {} in {}, starting process monitor...",
+                                pid, store_name, pid_file
+                            );
                             let pm = ProcessMonitor::new(pid, monitor_scope);
                             Some(Monitor::Process(pm))
                         }
                     } else {
-                        println!("Found PID {} for {} in {}, starting process monitor...", pid, store_name, pid_file);
+                        println!(
+                            "Found PID {} for {} in {}, starting process monitor...",
+                            pid, store_name, pid_file
+                        );
                         let pm = ProcessMonitor::new(pid, monitor_scope);
                         Some(Monitor::Process(pm))
                     }
@@ -221,7 +230,10 @@ impl WorkloadRunner {
                     None
                 }
             } else {
-                println!("No PID file {} found for {}, skipping monitoring", pid_file, store_name);
+                println!(
+                    "No PID file {} found for {}, skipping monitoring",
+                    pid_file, store_name
+                );
                 None
             };
             (monitor, None)
@@ -314,7 +326,6 @@ impl WorkloadRunner {
             });
             // println!("Got container logs: {}", server_logs.clone());
             store.stop().await?;
-
         } else {
             match monitor {
                 Some(Monitor::Process(m)) => {
@@ -333,7 +344,6 @@ impl WorkloadRunner {
             store.stop().await?;
         }
 
-
         Ok(RunResults {
             container_stats,
             workload_results,
@@ -348,9 +358,7 @@ impl WorkloadRunner {
 
     pub fn performance_config(&self) -> Result<PerformanceConfig> {
         match self {
-            WorkloadRunner::Performance(w) => {
-                Ok(w.config.clone())
-            }
+            WorkloadRunner::Performance(w) => Ok(w.config.clone()),
             _ => anyhow::bail!("Not a performance workload"),
         }
     }

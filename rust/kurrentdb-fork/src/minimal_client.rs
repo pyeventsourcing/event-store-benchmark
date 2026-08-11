@@ -1,10 +1,13 @@
-use std::time::Duration;
-use tonic::transport::{Channel, Endpoint};
+use crate::commands::new_request;
 use crate::event_store::client::streams::streams_client::StreamsClient;
 use crate::event_store::client::streams::{AppendReq, ReadReq, append_req, read_req};
 use crate::event_store::generated::common::StreamIdentifier;
-use crate::{ClientSettings, EventData, StreamName, AppendToStreamOptions, ReadStreamOptions, WriteResult, ReadStream, StreamPosition, ReadDirection};
-use crate::commands::new_request;
+use crate::{
+    AppendToStreamOptions, ClientSettings, EventData, ReadDirection, ReadStream, ReadStreamOptions,
+    StreamName, StreamPosition, WriteResult,
+};
+use std::time::Duration;
+use tonic::transport::{Channel, Endpoint};
 
 /// A minimal KurrentDB client that works with a single node and performs direct gRPC calls.
 /// This client does not use a background state machine or MPSC channels for request coordination.
@@ -17,10 +20,14 @@ impl KurrentDbClient {
     /// Creates a new KurrentDbClient from ClientSettings.
     /// It connects to the first host defined in the settings.
     pub async fn new(uri: String) -> crate::Result<Self> {
-        let settings: ClientSettings = uri.parse().map_err(|e: crate::ClientSettingsParseError| crate::Error::InitializationError(e.to_string()))?;
+        let settings: ClientSettings =
+            uri.parse().map_err(|e: crate::ClientSettingsParseError| {
+                crate::Error::InitializationError(e.to_string())
+            })?;
 
-        let host_endpoint = settings.hosts().first()
-            .ok_or_else(|| crate::Error::InitializationError("No hosts provided in settings".to_string()))?;
+        let host_endpoint = settings.hosts().first().ok_or_else(|| {
+            crate::Error::InitializationError("No hosts provided in settings".to_string())
+        })?;
 
         let uri = settings.to_uri(host_endpoint);
         let mut endpoint = Endpoint::from_shared(uri.to_string())
@@ -38,22 +45,26 @@ impl KurrentDbClient {
             }
 
             if let Some(ca_file) = settings.tls_ca_file() {
-                let ca_cert = std::fs::read(ca_file)
-                    .map_err(|e| crate::Error::InitializationError(format!("Failed to read CA file: {}", e)))?;
-                tls_config = tls_config.ca_certificate(tonic::transport::Certificate::from_pem(ca_cert));
+                let ca_cert = std::fs::read(ca_file).map_err(|e| {
+                    crate::Error::InitializationError(format!("Failed to read CA file: {}", e))
+                })?;
+                tls_config =
+                    tls_config.ca_certificate(tonic::transport::Certificate::from_pem(ca_cert));
             }
 
-            endpoint = endpoint.tls_config(tls_config)
+            endpoint = endpoint
+                .tls_config(tls_config)
                 .map_err(|e| crate::Error::InitializationError(e.to_string()))?;
         }
 
-        let channel = endpoint.connect()
+        let channel = endpoint
+            .connect()
             .await
             .map_err(|e| crate::Error::InitializationError(e.to_string()))?;
 
         Ok(Self {
             settings,
-            streams: StreamsClient::new(channel.clone())
+            streams: StreamsClient::new(channel.clone()),
         })
     }
 
@@ -85,13 +96,21 @@ impl KurrentDbClient {
         };
 
         let req = new_request(&self.settings, options, payload);
-        let resp = self.streams.clone().append(req).await
+        let resp = self
+            .streams
+            .clone()
+            .append(req)
+            .await
             .map_err(crate::Error::from_grpc)?
             .into_inner();
 
         match resp.result.unwrap() {
-            crate::event_store::client::streams::append_resp::Result::Success(success) => Ok(success.into()),
-            crate::event_store::client::streams::append_resp::Result::WrongExpectedVersion(error) => Err(error.into()),
+            crate::event_store::client::streams::append_resp::Result::Success(success) => {
+                Ok(success.into())
+            }
+            crate::event_store::client::streams::append_resp::Result::WrongExpectedVersion(
+                error,
+            ) => Err(error.into()),
         }
     }
 
@@ -111,7 +130,9 @@ impl KurrentDbClient {
         };
 
         let revision_option = match options.position {
-            StreamPosition::Position(rev) => read_req::options::stream_options::RevisionOption::Revision(rev),
+            StreamPosition::Position(rev) => {
+                read_req::options::stream_options::RevisionOption::Revision(rev)
+            }
             StreamPosition::Start => read_req::options::stream_options::RevisionOption::Start(()),
             StreamPosition::End => read_req::options::stream_options::RevisionOption::End(()),
         };
@@ -123,7 +144,9 @@ impl KurrentDbClient {
 
         let req_options = read_req::Options {
             stream_option: Some(read_req::options::StreamOption::Stream(stream_options)),
-            count_option: Some(read_req::options::CountOption::Count(options.max_count as u64)),
+            count_option: Some(read_req::options::CountOption::Count(
+                options.max_count as u64,
+            )),
             filter_option: Some(read_req::options::FilterOption::NoFilter(())),
             resolve_links: options.resolve_link_tos,
             read_direction,
@@ -138,7 +161,11 @@ impl KurrentDbClient {
         };
 
         let req = new_request(&self.settings, options, message);
-        let resp = self.streams.clone().read(req).await
+        let resp = self
+            .streams
+            .clone()
+            .read(req)
+            .await
             .map_err(crate::Error::from_grpc)?
             .into_inner();
 
@@ -164,7 +191,9 @@ mod tests {
 
         // Test Append
         let append_options = AppendToStreamOptions::default();
-        let write_result = client.append_to_stream(stream_name.clone(), &append_options, vec![event_data]).await?;
+        let write_result = client
+            .append_to_stream(stream_name.clone(), &append_options, vec![event_data])
+            .await?;
         println!("Write result: {:?}", write_result);
 
         // Test Read
