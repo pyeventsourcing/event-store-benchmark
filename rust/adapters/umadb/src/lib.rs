@@ -237,32 +237,15 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbReadResponse { stream }))
     }
 
-    async fn subscribe(&self, req: Option<ReadRequest>, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> anyhow::Result<Box<dyn ReadResponse>> {
         // Build a query from whichever of event_type / tag is set. An empty tag
         // and no event type means "no filter" (subscribe to all events).
-        let query = if let Some(req) = req {
-            let mut item = DcbQueryItem { types: vec![], tags: vec![] };
-            if let Some(event_type) = req.event_type {
-                item.types.push(event_type);
-            }
-            if !req.tag.is_empty() {
-                item.tags.push(req.tag);
-            }
-            let query = if item.types.is_empty() && item.tags.is_empty() {
-                None
-            } else {
-                Some(DcbQuery { items: vec![item] })
-            };
-            query
-        } else {
-            None
-        };
         let after = if from_end {
             self.client.head().await?
         } else {
             None
         };
-        let stream = self.client.subscribe(query, after).await?;
+        let stream = self.client.subscribe(None, after).await?;
         Ok(Box::new(UmaDbSubscription { stream }))
     }
 

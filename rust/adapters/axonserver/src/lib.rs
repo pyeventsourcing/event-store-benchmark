@@ -291,7 +291,7 @@ impl EventStoreAdapter for AxonServerAdapter {
         }))
     }
 
-    async fn subscribe(&self, req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, _req: Option<ReadRequest>, from_end: bool) -> Result<Box<dyn ReadResponse>> {
         let from = if from_end {
             self.client.get_head().await?
         } else {
