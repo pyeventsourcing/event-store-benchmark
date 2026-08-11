@@ -13,7 +13,7 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     env:
-      ESB_FEATURES: umadb,axonserver,postgres-dcb-ttcte
+      ESB_FEATURES: umadb,axonserver,postgres-dcb-ttcte,tephra
     outputs:
       session_id: ${{ steps.session.outputs.session_id }}
     steps:
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        store: [umadb, axonserver, postgres-dcb-ttcte]
+        store: [umadb, axonserver, postgres-dcb-ttcte, tephra]
     env:
       ESB_SESSION_ID: ${{ needs.setup.outputs.session_id }}
       ESB_WORKLOAD_STORES: ${{ matrix.store }}
@@ -135,7 +135,8 @@ jobs:
           for i in {1..60}; do
             if curl -s http://127.0.0.1:8024/actuator/health | grep -q '"status":"UP"'; then
               cat $GITHUB_WORKSPACE/axonserver.log
-              echo "Axon Server is ready after $((i-1)) seconds"
+              echo "Axon Server is ready after $((i-1)) seconds, sleeping for 15s while it warms up"
+              sleep 15
               exit 0
             fi
             sleep 1
@@ -163,6 +164,28 @@ jobs:
           done
           cat $GITHUB_WORKSPACE/umadb.log
           echo "UmaDB failed to start after 60 seconds"
+          exit 1
+
+      - name: Set up Rust
+        if: ${{ matrix.store == 'tephra' }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install and start Tephra
+        if: ${{ matrix.store == 'tephra' }}
+        run: |
+          cargo install tephra-server
+          taskset -c 0,1,2 nohup tephra-server > $GITHUB_WORKSPACE/tephra.log 2>&1 &
+          echo $! > $GITHUB_WORKSPACE/tephra.pid
+          for i in {1..60}; do
+            if nc -z 127.0.0.1 9000; then
+              cat $GITHUB_WORKSPACE/tephra.log
+              echo "Tephra is ready after $((i-1)) seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat $GITHUB_WORKSPACE/tephra.log
+          echo "Tephra failed to start after 60 seconds"
           exit 1
 
       - name: Run scaling DCB workload
