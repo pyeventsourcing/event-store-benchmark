@@ -1,0 +1,32 @@
+{
+  "name": "esb-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Interactive (PNG-free) front-end for event-store-benchmark results. Alternative to the Python matplotlib HTML report.",
+  "scripts": {
+    "data": "tsx scripts/prepare-data.ts",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "echarts": "^5.5.1",
+    "echarts-for-react": "^3.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "js-yaml": "^4.1.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}
