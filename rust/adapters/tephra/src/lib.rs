@@ -688,10 +688,19 @@ mod tests {
 
         // let mut received_events = Vec::new();
 
-        let event1 = subscription.next_event().await?;
-        let event2 = subscription.next_event().await?;
-        assert!(event1.is_some());
-        assert!(event2.is_some());
+        let events = vec![
+            EventData {
+                payload: Arc::from(vec![7, 8, 9]),
+                event_type: Arc::from("type3"),
+                tags: Arc::from([Arc::from("tag3")]),
+                metadata: Arc::from([]),
+            },
+        ];
+
+        adapter.append_dcb(&events, None).await?;
+
+        let event3 = subscription.next_event().await?;
+        assert!(event3.is_some());
 
         manager.stop().await?;
         Ok(())
