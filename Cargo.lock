@@ -3920,6 +3920,7 @@ dependencies = [
  "bench-core",
  "bench-testcontainers",
  "libc",
+ "serde",
  "serde_json",
  "tephra-client",
  "testcontainers",

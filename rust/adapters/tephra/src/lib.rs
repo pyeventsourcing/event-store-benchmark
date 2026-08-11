@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use bench_core::wait_for_ready;
 use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
@@ -9,6 +10,7 @@ use tephra_client::{
 };
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
+
 use tokio::sync::Semaphore;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, ImageExt};
@@ -177,6 +179,17 @@ impl StoreManager for TephraStoreManager {
     }
 }
 
+/// Envelope that bundles the binary payload with metadata key-value pairs.
+/// Tephra's `Event` type carries only a single opaque payload, so we serialise
+/// this envelope as JSON into that payload to round-trip metadata.
+// TODO: Remove this when `Event` supports metadata, which is needed for timestamps
+//  in both the subscription latency workload and in the durability workload.
+#[derive(Serialize, Deserialize)]
+struct TephraEnvelope {
+    payload: Vec<u8>,
+    metadata: Vec<(String, String)>,
+}
+
 /// Adapter over a lazily-grown pool of blocking tephra client connections.
 ///
 /// The tephra client is synchronous and answers one request at a time per connection, and
@@ -263,11 +276,25 @@ impl TephraAdapter {
         events
             .iter()
             .map(|evt| {
+                let envelope = TephraEnvelope {
+                    payload: evt.payload.as_ref().to_vec(),
+                    metadata: evt.metadata.as_ref().to_vec(),
+                };
+                let envelope_bytes = serde_json::to_vec(&envelope)?;
                 let tags: Vec<&str> = evt.tags.iter().map(|t| t.as_ref()).collect();
-                Event::new(evt.event_type.as_ref(), &tags, evt.payload.as_ref().to_vec())
+                Event::new(evt.event_type.as_ref(), &tags, envelope_bytes)
                     .map_err(|err| anyhow!("{err}"))
             })
             .collect()
+    }
+
+    /// Decode a tephra event's payload back into the original payload and metadata.
+    fn decode_envelope(raw: &[u8]) -> (Vec<u8>, Vec<(String, String)>) {
+        match serde_json::from_slice::<TephraEnvelope>(raw) {
+            Ok(env) => (env.payload, env.metadata),
+            // Fallback for events written before the envelope was introduced.
+            Err(_) => (raw.to_vec(), Vec::new()),
+        }
     }
 
     /// Build a single `QueryItem` from string type/tag lists, validating each name.
@@ -399,11 +426,12 @@ impl EventStoreAdapter for TephraAdapter {
                 }
                 let sequenced = item.map_err(|err| anyhow!("{err}"))?;
                 let event = sequenced.event();
+                let (payload, metadata) = Self::decode_envelope(event.payload());
                 out.push(ReadEvent {
                     offset: sequenced.position().get(),
                     event_type: event.event_type().to_string(),
-                    payload: event.payload().to_vec(),
-                    metadata: Vec::new(),
+                    payload,
+                    metadata,
                 });
             }
             // Dropping the partially-consumed stream drains the rest, keeping the connection
@@ -430,11 +458,12 @@ impl EventStoreAdapter for TephraAdapter {
                                 match response {
                                     Ok(sequenced_event) => {
                                         let event = sequenced_event.event();
+                                        let (payload, metadata) = TephraAdapter::decode_envelope(event.payload());
                                         let read_event = ReadEvent {
                                             offset: sequenced_event.position().get(),
                                             event_type: event.event_type().to_string(),
-                                            payload: event.payload().to_vec(),
-                                            metadata: Vec::new(),
+                                            payload,
+                                            metadata,
                                         };
                                         if tx.blocking_send(Ok(read_event)).is_err() {
                                             break;
@@ -499,7 +528,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_all() -> Result<()> {
-        let mut manager = TephraStoreManager::new(None, false);
+        let mut manager = TephraStoreManager::new(None, true);
         manager.start().await?;
 
         println!("Creating adapter");
@@ -510,41 +539,35 @@ mod tests {
                 payload: Arc::from(vec![1, 2, 3]),
                 event_type: Arc::from("type1"),
                 tags: Arc::from([Arc::from("tag1")]),
-                metadata: Arc::from([]),
+                metadata: Arc::from([("a".to_string(), "b".to_string())]),
             },
             EventData {
                 payload: Arc::from(vec![4, 5, 6]),
                 event_type: Arc::from("type2"),
                 tags: Arc::from([Arc::from("tag2")]),
-                metadata: Arc::from([]),
+                metadata: Arc::from([("c".to_string(), "d".to_string())]),
             },
         ];
 
-        println!("Appending events");
         adapter.append_dcb(&events, None).await?;
-        println!("Appended events");
 
-        println!("Reading all events");
         let mut read_response = adapter.read_all().await?;
-        println!("Got read response");
         let mut received_events = Vec::new();
         while let Some(event) = read_response.next_event().await? {
             received_events.push(event);
-            println!("Got next event");
         }
-        println!("Got all events");
 
         assert!(received_events.len() >= 2);
+        assert_eq!(received_events[0].payload, vec![1, 2, 3]);
+        assert_eq!(received_events[1].payload, vec![4, 5, 6]);
+        assert_eq!(received_events[0].event_type, "type1".to_string());
+        assert_eq!(received_events[1].event_type, "type2".to_string());
+        assert_eq!(received_events[0].metadata.len(), 1);
+        assert_eq!(received_events[1].metadata.len(), 1);
+        assert_eq!(received_events[0].metadata[0], ("a".to_string(), "b".to_string()));
+        assert_eq!(received_events[1].metadata[0], ("c".to_string(), "d".to_string()));
 
-        let found1 = received_events.iter().any(|e| e.event_type == "type1" && e.payload == vec![1, 2, 3]);
-        let found2 = received_events.iter().any(|e| e.event_type == "type2" && e.payload == vec![4, 5, 6]);
-
-        assert!(found1, "Event type1 not found in read_all results");
-        assert!(found2, "Event type2 not found in read_all results");
-
-        println!("Stopping manager");
         manager.stop().await?;
-        println!("Stopped manager");
         Ok(())
     }
 }
