@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "❌ Unknown option: $1"
-      echo "Usage: $0 --store <axonserver|umadb>"
+      echo "Usage: $0 --store <axonserver|umadb|tephra>"
       exit 1
       ;;
   esac
@@ -35,13 +35,13 @@ done
 
 if [[ -z "$STORE" ]]; then
   echo "❌ Error: The --store argument is mandatory."
-  echo "Usage: $0 --store <axonserver|umadb>"
+  echo "Usage: $0 --store <axonserver|umadb|tephra>"
   exit 1
 fi
 
-if [[ "$STORE" != "axonserver" && "$STORE" != "umadb" ]]; then
+if [[ "$STORE" != "axonserver" && "$STORE" != "umadb" && "$STORE" != "tephra" ]]; then
   echo "❌ Error: Invalid store '$STORE'."
-  echo "Must be either 'axonserver' or 'umadb'."
+  echo "Must be either 'axonserver' or 'umadb' or 'tephra'."
   exit 1
 fi
 
@@ -81,6 +81,7 @@ echo "SG_ID=$SG_ID" >> .test-state
 aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 22 --cidr 0.0.0.0/0 2>/dev/null || true
 aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 8124 --cidr 0.0.0.0/0 2>/dev/null || true
 aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 50051 --cidr 0.0.0.0/0 2>/dev/null || true
+aws ec2 authorize-security-group-ingress --group-id $SG_ID --protocol tcp --port 9000 --cidr 0.0.0.0/0 2>/dev/null || true
 
 # 2. Create EBS Volume (10GB gp3 defaults to 3000 IOPS and 125MB/s - perfect bottleneck)
 echo "📦 Creating EBS Volume in $AZ..."
@@ -162,23 +163,44 @@ if [ "$STORE" == "axonserver" ]; then
         echo "⏳ Waiting 30 seconds for Axon Server to boot..."
         sleep 30
 EOF
-else
+elif [ "$STORE" == "umadb" ]; then
     echo "🐳 Starting UmaDB container..."
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
-        sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data umadb/umadb:latest
+        sudo docker run -d --rm -p 50051:50051 -v /mnt/data/umadb:/data umadb/umadb:latest
         echo "⏳ Waiting 3 seconds for UmaDB to boot..."
         sleep 3
 EOF
+elif [ "$STORE" == "tephra" ]; then
+    echo "🐳 Starting Tephra container..."
+    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
+        sudo mkdir -p /mnt/data/tephra-data
+        sudo chmod -R 777 /mnt/data
+
+        sudo docker run -d --rm -p 9000:9000 -v /mnt/data/tephra-data:/data ghcr.io/tqwewe/tephra:latest
+        echo "⏳ Waiting 3 seconds for Tephra to boot..."
+        sleep 3
+EOF
+else
+    echo "Error: Store $STORE not supported!"
+    exit 1
 fi
 
 if [ "$STORE" == "axonserver" ]; then
-    echo "⏱️ Getting max timestamp for Axon Server..."
+    echo "⏱️ Getting max timestamp for Axon Server (should be none)..."
     AXON_SERVER_URI=http://$IP:8124 ./target/release/es-bench read-max-timestamp axonserver
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "AXON_SERVER_URI=http://$IP:8124 ESB_WORKLOAD_STORES=axonserver make run-write-unconditional"
-else
-    echo "⏱️ Getting max timestamp for UmaDB..."
+elif [ "$STORE" == "umadb" ]; then
+    echo "⏱️ Getting max timestamp for UmaDB (should be none)..."
     UMADB_URI=http://$IP:50051 ./target/release/es-bench read-max-timestamp umadb
     echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
     echo "UMADB_URI=http://$IP:50051 ESB_WORKLOAD_STORES=umadb make run-write-unconditional"
+elif [ "$STORE" == "tephra" ]; then
+    echo "⏱️ Getting max timestamp for Tephra (should be none)..."
+    TEPHRA_URI=$IP:9000 ./target/release/es-bench read-max-timestamp tephra
+    echo -e "\n✅ INSTANCE 1 READY! Run your write workload:"
+    echo "TEPHRA_URI=$IP:9000 ESB_WORKLOAD_STORES=tephra make run-write-unconditional"
+else
+    echo "Error: Store $STORE not supported!"
+    exit 1
 fi

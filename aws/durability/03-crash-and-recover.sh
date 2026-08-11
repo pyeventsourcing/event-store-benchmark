@@ -168,13 +168,28 @@ EOF
 
     echo -e "\n✅ RECOVERY COMPLETE! Run your read verification:"
     echo "AXON_SERVER_URI=http://$IP:8124 ./target/release/es-bench read-max-timestamp axonserver"
-else
+
+elif [ "$STORE" == "umadb" ]; then
     echo "🐳 Starting UmaDB container..."
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
-        sudo docker run -d -p 50051:50051 -v /mnt/data/umadb:/data umadb/umadb:latest
+        sudo docker run -d --rm -p 50051:50051 -v /mnt/data/umadb:/data umadb/umadb:latest
         echo "⏳ Waiting 3 seconds for UmaDB to boot..."
         sleep 3
 EOF
     echo -e "\n✅ RECOVERY COMPLETE! Run your read verification:"
     echo "UMADB_URI=http://$IP:50051 ./target/release/es-bench read-max-timestamp umadb"
+
+elif [ "$STORE" == "tephra" ]; then
+    echo "🐳 Starting Tephra container..."
+    ssh -i $KEY_FILE -o StrictHostKeyChecking=no ubuntu@$IP << 'EOF'
+        sudo docker run -d --rm -p 9000:9000 -v /mnt/data/tephra-data:/data ghcr.io/tqwewe/tephra:latest
+        echo "⏳ Waiting 3 seconds for Tephra to boot..."
+        sleep 3
+EOF
+    echo -e "\n✅ RECOVERY COMPLETE! Run your read verification:"
+    echo "TEPHRA_URI=$IP:9000 ./target/release/es-bench read-max-timestamp tephra"
+
+else
+    echo "Error: Store $STORE not supported!"
+    exit 1
 fi

@@ -635,9 +635,10 @@ impl PerformanceWorkload {
         let mut combined_throughput_counts = vec![0u64; num_intervals];
         let mut combined_error_counts = vec![0u64; num_intervals];
 
-        let mut max_timestamp: Option<u128> = None;
+        let mut timestamp_max: Option<u128> = None;
+        let mut timestamp_count: u64 = 0;
         while let Some(worker_result) = worker_tasks.join_next().await {
-            if let Ok(Some((worker_latencies, worker_throughput_counts, worker_error_counts, worker_tool_latencies, worker_max_timestamp))) = worker_result {
+            if let Ok(Some((worker_latencies, worker_throughput_counts, worker_error_counts, worker_tool_latencies, worker_timestamp_max, worker_timestamp_count))) = worker_result {
                 store_latencies.hist.add(&worker_latencies.hist).unwrap();
                 tool_latencies.hist.add(&worker_tool_latencies.hist).unwrap();
                 for (i, count) in worker_throughput_counts.counts.iter().enumerate() {
@@ -650,20 +651,22 @@ impl PerformanceWorkload {
                         combined_error_counts[i] += count;
                     }
                 }
-                if worker_max_timestamp.is_some() {
-                    if max_timestamp.is_none() {
-                        max_timestamp = worker_max_timestamp;
+                if worker_timestamp_max.is_some() {
+                    if timestamp_max.is_none() {
+                        timestamp_max = worker_timestamp_max;
                     } else {
-                        if worker_max_timestamp.unwrap() > max_timestamp.unwrap() {
-                            max_timestamp = worker_max_timestamp;
+                        if worker_timestamp_max.unwrap() > timestamp_max.unwrap() {
+                            timestamp_max = worker_timestamp_max;
                         }
                     }
                 }
+                timestamp_count += worker_timestamp_count;
             }
         }
 
-        if max_timestamp.is_some() {
-            println!("Max acknowledged timestamp: {} ns", max_timestamp.unwrap())
+        if timestamp_max.is_some() {
+            println!("Total acknowledged timestamps: {}", timestamp_count);
+            println!("Max acknowledged timestamp: {} ns", timestamp_max.unwrap())
         }
 
         // Convert combined counts to ThroughputSamples
@@ -796,7 +799,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_write_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -821,8 +824,9 @@ impl PerformanceWorkload {
             let start_time = msg.start_time;
             let samples_per_second = msg.samples_per_second;
             let duration_seconds = msg.duration_seconds;
-            let mut max_timestamp: Option<u128> = None;
-            let mut last_timestamp: Option<u128> = None;
+            let mut timestamp_acked_max: Option<u128> = None;
+            let mut timestamp_acked_count: u64 = 0;
+            let mut timestamp_generated_last: Option<u128> = None;
 
             let mut out_of_time = false;
 
@@ -864,7 +868,7 @@ impl PerformanceWorkload {
                 let mut events = Vec::with_capacity(batch_size);
                 for _ in 0..batch_size {
                     let timestamp = generate_monotonic_timestamp();
-                    last_timestamp = Some(timestamp);
+                    timestamp_generated_last = Some(timestamp);
                     events.push(EventData {
                         payload: payload.clone(),
                         event_type: event_types[stream_position].clone(),
@@ -911,7 +915,8 @@ impl PerformanceWorkload {
                 match operation_response {
                     Ok(returned_global_position) => {
 
-                        max_timestamp = last_timestamp;
+                        timestamp_acked_max = timestamp_generated_last;
+                        timestamp_acked_count += batch_size as u64;
 
                         if write_cfg.concurrency_control {
                             global_position = returned_global_position.expect("global sequence value not returned");
@@ -947,7 +952,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, max_timestamp))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, timestamp_acked_max, timestamp_acked_count))
             } else {
                 None
             }
@@ -955,7 +960,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_read_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         read_cfg: ReadOpConfig,
         seed: u64,
@@ -1084,7 +1089,7 @@ impl PerformanceWorkload {
                 loop_started = Instant::now();
             }
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None, 0))
             } else {
                 None
             }
@@ -1092,7 +1097,7 @@ impl PerformanceWorkload {
     }
 
     fn spawn_subscribe_task(
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         _read_cfg: ReadOpConfig,
         _seed: u64,
@@ -1185,7 +1190,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None, 0))
             } else {
                 None
             }
@@ -1194,7 +1199,7 @@ impl PerformanceWorkload {
 
     fn spawn_writer_flood_task(
         store_name: String,
-        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>)>>,
+        worker_tasks: &mut JoinSet<Option<(LatencyRecorder, ThroughputRecorder, ThroughputRecorder, LatencyRecorder, Option<u128>, u64)>>,
         adapter: Arc<dyn EventStoreAdapter>,
         write_cfg: WriteOpConfig,
         cancel_token: CancellationToken,
@@ -1312,7 +1317,7 @@ impl PerformanceWorkload {
             }
 
             if activate_metrics {
-                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None))
+                Some((store_latencies, throughput_recorder, operation_error_recorder, tool_latencies, None, 0))
             } else {
                 None
             }

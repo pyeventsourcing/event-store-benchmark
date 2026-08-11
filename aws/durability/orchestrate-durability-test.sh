@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "❌ Unknown option: $1"
-      echo "Usage: $0 --store <axonserver|umadb>"
+      echo "Usage: $0 --store <axonserver|umadb|tephra>"
       exit 1
       ;;
   esac
@@ -23,7 +23,7 @@ if [[ -z "$STORE" ]]; then
   exit 1
 fi
 
-if [[ "$STORE" != "axonserver" && "$STORE" != "umadb" ]]; then
+if [[ "$STORE" != "axonserver" && "$STORE" != "umadb" && "$STORE" != "tephra" ]]; then
   echo "❌ Error: Invalid store '$STORE'."
   exit 1
 fi
@@ -65,7 +65,7 @@ echo "💥 Terminating node to test durability..."
 # 4. Wait for the workload to finish naturally
 # The recovery step above takes ~1-2 minutes, so es-bench might already be done.
 # This just ensures we don't proceed until es-bench has printed its final summary.
-echo "⏳ Waiting for client workload to gracefully conclude its 120s run..."
+echo "⏳ Waiting for client workload to gracefully conclude its 60s run..."
 wait $WORKLOAD_PID || true
 # Clear the PID so the trap doesn't try to kill it again
 WORKLOAD_PID=""
@@ -79,7 +79,7 @@ echo "📊 Querying surviving event store on Instance 2..."
 echo ""
 echo "📋 Client Workload Summary (from workload.log):"
 # Grabbing the last 25 lines so you can see the final stats even if there are a few timeout logs at the end
-tail -n 25 workload.log | grep "Total count:" || true
+tail -n 25 workload.log | grep "Total acknowledged timestamps:" || true
 tail -n 25 workload.log | grep "Max acknowledged timestamp:" || true
 echo "=================================================="
 echo "✅ Test complete! (Cleanup will run automatically)"

@@ -13,14 +13,18 @@ if [ "$STORE" == "axonserver" ]; then
     ssh -i $KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$INST2_IP "sudo docker logs my-axon-server-dcb --tail 50"  || echo "Failed to get last 50 lines (INST2_IP: $INST2_IP)"
     echo "--------------------------------------------------"
 
-    echo -e "\n📊 --- ES-BENCH READ MAX TIMESTAMP RESULT ---"
+    echo -e "\n📊 --- TIMESTAMPS RECOVERED FROM AXON SERVER ---"
     echo "$ES_BENCH_OUTPUT"
 
-    echo -e "\n📊 --- PYTHON TIMESTAMP EXTRACTION ----------"
+    echo -e "\n📊 --- TIMESTAMPS EXTRACTED FROM EVENTS FILE ---"
     python3 ./aws/durability/extract-max-timestamp-from-axon-events-file.py || true
     echo ""
 
-else
-    echo -e "\n📊 --- ES-BENCH READ MAX TIMESTAMP RESULT ---"
+elif [ "$STORE" == "umadb" ]; then
+    echo -e "\n📊 --- TIMESTAMPS RECOVERED FROM UMADB ---"
     UMADB_URI=http://$INST2_IP:50051 ./target/release/es-bench read-max-timestamp umadb
+
+elif [ "$STORE" == "tephra" ]; then
+    echo -e "\n📊 --- TIMESTAMPS RECOVERED FROM TEPHRA ---"
+    TEPHRA_URI=$INST2_IP:9000 ./target/release/es-bench read-max-timestamp tephra
 fi

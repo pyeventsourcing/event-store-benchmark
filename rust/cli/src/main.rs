@@ -226,7 +226,7 @@ fn main() -> Result<()> {
                 let max_retries = 30;
                 let mut attempts = 0;
 
-                let (max_timestamp, count) = loop {
+                let (min_timestamp, max_timestamp, count) = loop {
                     attempts += 1;
 
                     // Especially to copy with Axon Server's...
@@ -240,29 +240,36 @@ fn main() -> Result<()> {
                         let adapter = manager.create_adapter().await?;
                         let mut read_response = adapter.read_all().await?;
 
+                        let mut current_min: Option<u128> = None;
                         let mut current_max: Option<u128> = None;
-                        let mut count = 0u64;
+                        let mut timestamp_count = 0u64;
 
                         while let Some(event) = read_response.next_event().await? {
-                            count += 1;
                             for (key, value) in &event.metadata {
                                 if key == "timestamp" {
+                                    timestamp_count += 1;
                                     if let Ok(ts) = value.parse::<u128>() {
                                         current_max = match current_max {
                                             Some(max) if ts > max => Some(ts),
                                             Some(max) => Some(max),
                                             None => Some(ts),
                                         };
+                                        current_min = match current_min {
+                                            Some(min) if ts < min => Some(ts),
+                                            Some(min) => Some(min),
+                                            None => Some(ts),
+                                        };
                                     }
+                                    break
                                 }
                             }
                         }
 
-                        Ok::<(Option<u128>, u64), anyhow::Error>((current_max, count))
+                        Ok::<(Option<u128>, Option<u128>, u64), anyhow::Error>((current_min, current_max, timestamp_count))
                     }.await;
 
                     match result {
-                        Ok(ts) => break ts,
+                        Ok(result) => break result,
                         Err(e) => {
                             if attempts >= max_retries {
                                 return Err(anyhow::anyhow!(
@@ -274,16 +281,25 @@ fn main() -> Result<()> {
                             // Print to stderr so it doesn't pollute stdout if you are parsing the final number
                             eprintln!("⚠️ [Attempt {}/{}] Store not ready: {}. Retrying in 2s...", attempts, max_retries, e);
 
-                            // Wait 2 seconds before trying again
-                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            // Wait 2 seconds before trying again, unless interrupted
+                            tokio::select! {
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
+                                _ = cancel_token.cancelled() => {
+                                    return Err(anyhow::anyhow!("Interrupted while waiting to retry"));
+                                }
+                            }
                         }
                     }
                 };
 
-                println!("Received event count: {}", count);
+                println!("Total received timestamps: {}", count);
+                match min_timestamp {
+                    Some(ts) => println!("Min received timestamp: {} ns", ts),
+                    None => {},
+                }
                 match max_timestamp {
                     Some(ts) => println!("Max received timestamp: {} ns", ts),
-                    None => println!("No timestamps were found"),
+                    None => {},
                 }
 
                 Ok::<(), anyhow::Error>(())
