@@ -386,12 +386,9 @@ impl PerformanceWorkload {
         let mut reader_adapters = Vec::new();
         if readers > 0 {
             println!("Creating {} reader clients...", readers);
-            for _ in 0..readers {
-                reader_adapters.push(store.create_adapter().await?);
-            }
             let max_failures = 60;
             let mut failures = 0;
-            for _ in 0..writers {
+            for _ in 0..readers {
                 loop {
                     match store.create_adapter().await {
                         Ok(adapter) => {
