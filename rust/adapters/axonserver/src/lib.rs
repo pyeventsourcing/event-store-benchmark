@@ -199,7 +199,7 @@ impl AxonServerAdapter {
     pub async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
         let stream = self.client.source(0, vec![]).await?;
         Ok(Box::new(AxonServerReadResponse {
-            stream,
+            stream: Some(stream),
             limit: None,
             count: 0,
         }))
@@ -285,7 +285,7 @@ impl EventStoreAdapter for AxonServerAdapter {
         let stream = self.client.source(from, vec![criterion]).await?;
 
         Ok(Box::new(AxonServerReadResponse {
-            stream,
+            stream: Some(stream),
             limit: req.limit,
             count: 0,
         }))
@@ -339,7 +339,7 @@ impl ReadResponse for AxonServerSubscription {
 }
 
 struct AxonServerReadResponse {
-    stream: axonserver_client::tonic::Streaming<axonserver_client::proto::dcb::SourceEventsResponse>,
+    stream: Option<axonserver_client::tonic::Streaming<axonserver_client::proto::dcb::SourceEventsResponse>>,
     limit: Option<u64>,
     count: u64,
 }
@@ -349,10 +349,18 @@ impl ReadResponse for AxonServerReadResponse {
     async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
         if let Some(lim) = self.limit {
             if self.count >= lim {
+                // Drain remaining messages before closing to avoid h2 RST_STREAM resets
+                if let Some(mut stream) = self.stream.take() {
+                    while stream.message().await?.is_some() {}
+                }
                 return Ok(None);
             }
         }
-        while let Some(resp) = self.stream.message().await? {
+        let stream = match self.stream.as_mut() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        while let Some(resp) = stream.message().await? {
             if let Some(result) = resp.result {
                 match result {
                     source_events_response::Result::Event(seq_evt) => {
