@@ -879,9 +879,9 @@ impl PerformanceWorkload {
 
                 operation_started = Instant::now();
                 let result = async {
-                    let mut subscription = adapter.read_stream(req).await?;
+                    let mut read_response = adapter.read_stream(req).await?;
                     let mut count = 0;
-                    while let Some(_) = subscription.next_event().await? {
+                    while let Some(_) = read_response.next_event().await? {
                         count += 1;
                     }
                     Ok::<u64, anyhow::Error>(count as u64)

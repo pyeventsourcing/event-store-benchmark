@@ -347,6 +347,8 @@ struct AxonServerReadResponse {
 #[async_trait]
 impl ReadResponse for AxonServerReadResponse {
     async fn next_event(&mut self) -> Result<Option<ReadEvent>> {
+        // The Axon Server 'Source' operation doesn't support reading
+        // only a limited number, but we can apply the limit here.
         if let Some(lim) = self.limit {
             if self.count >= lim {
                 // Drain remaining messages before closing to avoid h2 RST_STREAM resets
@@ -431,9 +433,9 @@ mod tests {
 
         axon_adapter.append_dcb(&events, None).await?;
 
-        let mut subscription = axon_adapter.read_all().await?;
+        let mut read_response = axon_adapter.read_all().await?;
         let mut read_events = Vec::new();
-        while let Some(event) = subscription.next_event().await? {
+        while let Some(event) = read_response.next_event().await? {
             read_events.push(event);
         }
 
