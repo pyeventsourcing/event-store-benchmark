@@ -2,15 +2,15 @@
 // so every chart and table is consistent (the reviewer explicitly wanted each store identifiable).
 
 const STORE_COLORS: Record<string, string> = {
-  tephra: "#6366f1", // indigo
-  dcbdb: "#818cf8", // historical alias of tephra (pre-rename) — lighter indigo
-  umadb: "#10b981", // emerald
-  axonserver: "#f59e0b", // amber
-  kurrentdb: "#ef4444", // red
+  tephra: "#7c5cfc", // violet (placeholder — no brand color yet; chosen to sit distinctly in the set)
+  dcbdb: "#a78bfa", // historical alias of tephra (pre-rename) — lighter violet
+  umadb: "#f4bd17", // gold
+  axonserver: "#2e90fa", // blue
+  kurrentdb: "#ff4a80", // rose
   eventsourcingdb: "#06b6d4", // cyan
-  fact: "#a855f7", // violet
-  "postgres-dcb-marten": "#ec4899", // pink
-  marten: "#ec4899",
+  fact: "#7f9b5a", // olive
+  "postgres-dcb-marten": "#b18b6a", // tan
+  marten: "#b18b6a",
 };
 
 const FALLBACK = ["#64748b", "#0ea5e9", "#22c55e", "#eab308", "#f97316", "#14b8a6", "#f43f5e"];
