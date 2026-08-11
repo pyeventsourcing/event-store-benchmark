@@ -238,7 +238,7 @@ fn main() -> Result<()> {
                     // so we can easily catch any anyhow::Error and retry.
                     let result = async {
                         let adapter = manager.create_adapter().await?;
-                        let mut read_response = adapter.read_all_events().await?;
+                        let mut read_response = adapter.read_all().await?;
 
                         let mut current_max: Option<u128> = None;
                         let mut count = 0u64;

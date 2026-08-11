@@ -201,7 +201,7 @@ pub trait EventStoreAdapter: Send + Sync {
     /// Read all events from the store.
     ///
     /// Defaults to an empty vector so adapters can opt in incrementally.
-    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn read_all(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
         Ok(Box::new(NullReadResponse))
     }
 }

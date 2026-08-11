@@ -1,9 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use bench_core::adapter::{
-    EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest,
-    StoreDataDir, StoreManager, StoreManagerFactory,
-};
+use bench_core::adapter::{EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest, ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse};
 use bench_core::wait_for_ready;
 use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
 use tephra_client::{
@@ -29,7 +26,7 @@ pub struct TephraStoreManager {
 impl TephraStoreManager {
     pub fn new(data_dir: Option<String>, use_docker: bool) -> Self {
         Self {
-            addr: format!("127.0.0.1:{}", TEPHRA_PORT.as_u16()),
+            addr: Self::get_uri(),
             container: None,
             use_docker,
             data_dir: StoreDataDir::new(data_dir, "tephra"),
@@ -37,7 +34,18 @@ impl TephraStoreManager {
             docker_platform: None,
         }
     }
+
+    fn get_uri() -> String {
+        let uri: String = std::env::var("TEPHRA_URI").ok().unwrap_or(Self::local_uri(TEPHRA_PORT.as_u16()));
+        println!("Tephra Server URI: {}", uri);
+        uri
+    }
+
+    fn local_uri(host_port: u16) -> String {
+        format!("127.0.0.1:{}", host_port)
+    }
 }
+
 
 #[async_trait]
 impl StoreManager for TephraStoreManager {
@@ -355,7 +363,7 @@ impl EventStoreAdapter for TephraAdapter {
         .await
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Box<dyn ReadResponse>> {
         // Build a single-item query from whichever of tag / event_type is set; an empty tag
         // and no event type means "read everything".
         let mut types: Vec<String> = Vec::new();
@@ -377,7 +385,8 @@ impl EventStoreAdapter for TephraAdapter {
         let after = Position::new(req.from_offset.unwrap_or(0));
         let limit = req.limit;
 
-        self.with_client(move |client| {
+        // TODO: Actually define a TephraReadResponse... this is just to fix the build.
+        let out = self.with_client(move |client| {
             let mut stream = client.read(query, after).map_err(|err| anyhow!("{err}"))?;
             let mut out = Vec::new();
             for item in stream.by_ref() {
@@ -399,7 +408,9 @@ impl EventStoreAdapter for TephraAdapter {
             // frame-aligned for the next request.
             Ok(out)
         })
-        .await
+        .await?;
+
+        Ok(Box::new(VecReadResponse::new(out)))
     }
 }
 

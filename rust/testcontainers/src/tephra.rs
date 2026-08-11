@@ -3,8 +3,10 @@ use testcontainers::Image;
 
 // tephra is not published to a registry; the image is built locally from the tephra
 // source tree (see `docker/tephra.Dockerfile` and the `build-tephra-image` Makefile target).
-const NAME: &str = "tephra";
-const TAG: &str = "local";
+// const NAME: &str = "tephra";
+// const TAG: &str = "local";
+const NAME: &str = "ghcr.io/tqwewe/tephra";
+const TAG: &str = "latest";
 
 /// Container port exposed by the tephra TCP server (length-prefixed protobuf).
 pub const TEPHRA_PORT: ContainerPort = ContainerPort::Tcp(9000);

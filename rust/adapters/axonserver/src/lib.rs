@@ -208,15 +208,6 @@ impl AxonServerAdapter {
             })
             .collect()
     }
-
-    pub async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
-        let stream = self.client.source(0, vec![]).await?;
-        Ok(Box::new(AxonServerReadResponse {
-            stream: Some(stream),
-            limit: None,
-            count: 0,
-        }))
-    }
 }
 
 #[async_trait]
@@ -331,11 +322,14 @@ impl EventStoreAdapter for AxonServerAdapter {
         Ok(Box::new(AxonServerSubscription { stream }))
     }
 
-
-    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
-        self.read_all().await
+    async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
+        let stream = self.client.source(0, vec![]).await?;
+        Ok(Box::new(AxonServerReadResponse {
+            stream: Some(stream),
+            limit: None,
+            count: 0,
+        }))
     }
-
 }
 
 /// Live subscription backed by Axon Server's infinite `Stream` RPC.
@@ -438,7 +432,6 @@ mod tests {
         manager.start().await?;
 
         let adapter = manager.create_adapter().await?;
-        let axon_adapter = adapter.as_any().downcast_ref::<AxonServerAdapter>().expect("AxonServerAdapter");
 
         let events = vec![
             EventData {
@@ -455,9 +448,9 @@ mod tests {
             },
         ];
 
-        axon_adapter.append_dcb(&events, None).await?;
+        adapter.append_dcb(&events, None).await?;
 
-        let mut read_response = axon_adapter.read_all().await?;
+        let mut read_response = adapter.read_all().await?;
         let mut read_events = Vec::new();
         while let Some(event) = read_response.next_event().await? {
             read_events.push(event);

@@ -43,7 +43,6 @@ impl UmaDbStoreManager {
         println!("UmaDB Server URI: {}", uri);
         uri
     }
-
 }
 
 #[async_trait]
@@ -178,11 +177,6 @@ impl UmaDbAdapter {
             })
             .collect()
     }
-
-    pub async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
-        let stream = self.client.read(None, None, false, None).await?;
-        Ok(Box::new(UmaDbReadResponse { stream }))
-    }
 }
 
 #[async_trait]
@@ -232,7 +226,7 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Some(pos))
     }
 
-    async fn read_stream(&self, req: ReadRequest) -> Result<Vec<ReadEvent>> {
+    async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Box<dyn ReadResponse>> {
         // An empty tag and no event type means "no filter" (full scan). Passing an empty-string
         // tag would otherwise match nothing, so build the query from only the set fields and
         // send `None` when neither is present, matching the tephra adapter's semantics.
@@ -272,8 +266,9 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbSubscription { stream }))
     }
 
-    async fn read_all_events(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
-        self.read_all().await
+    async fn read_all(&self) -> Result<Box<dyn ReadResponse>> {
+        let stream = self.client.read(None, None, false, None).await?;
+        Ok(Box::new(UmaDbReadResponse { stream }))
     }
 }
 
@@ -340,8 +335,6 @@ mod tests {
         manager.start().await?;
 
         let adapter = manager.create_adapter().await?;
-        // We can use the concrete type directly since we created it
-        let umadb_adapter = adapter.as_any().downcast_ref::<UmaDbAdapter>().expect("UmaDbAdapter");
 
         let events = vec![
             EventData {
@@ -358,9 +351,9 @@ mod tests {
             },
         ];
 
-        umadb_adapter.append_dcb(&events, None).await?;
+        adapter.append_dcb(&events, None).await?;
 
-        let mut read_response = umadb_adapter.read_all().await?;
+        let mut read_response = adapter.read_all().await?;
         let mut received_events = Vec::new();
         while let Some(event) = read_response.next_event().await? {
             received_events.push(event);
