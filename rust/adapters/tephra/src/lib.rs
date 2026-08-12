@@ -2,23 +2,20 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bench_core::adapter::{
     EsbAppendCondition, EsbQuery, EventData, EventStoreAdapter, ReadEvent, ReadRequest,
-    ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory, VecReadResponse,
+    ReadResponse, StoreDataDir, StoreManager, StoreManagerFactory,
 };
 use bench_core::wait_for_ready;
-use bench_testcontainers::tephra::{pool_size, Tephra, TEPHRA_PORT};
-use serde::{Deserialize, Serialize};
+use bench_testcontainers::tephra::{Tephra, TEPHRA_PORT};
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tephra_client::{
-    AppendCondition, Client, Event, EventType, Position, Query, QueryItem, SubEvent,
-    SubscribeCancel, Tag, Tags,
+    AppendCondition, AsyncClient, AsyncReadStream, AsyncSubscribeStream, Event, EventType,
+    Position, Query, QueryItem, SubEvent, Tag, Tags,
 };
-use tokio::sync::{mpsc, oneshot};
-
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, ImageExt};
-use tokio::sync::Semaphore;
 use tokio::time::Duration;
+use tokio_stream::StreamExt;
 
 // Store manager - handles lifecycle and adapter creation.
 pub struct TephraStoreManager {
@@ -77,9 +74,9 @@ impl StoreManager for TephraStoreManager {
                 image = image.with_user(format!("{uid}:{gid}"));
             }
 
-            // tephra-server is thread-per-connection and opens log-file handles per read, so a
-            // high-concurrency run (hundreds of clients) blows past the default 1024 open-file
-            // limit ("Too many open files"). Raise nofile so concurrency, not fds, is measured.
+            // A high-concurrency run (hundreds of clients, each an async connection) can blow past
+            // the default 1024 open-file limit ("Too many open files"). Raise nofile so concurrency,
+            // not fds, is what's measured.
             image = image.with_ulimit("nofile", 1_048_576, Some(1_048_576));
 
             if let Some(ref platform) = self.docker_platform {
@@ -100,22 +97,22 @@ impl StoreManager for TephraStoreManager {
             self.container = Some(container);
 
             // The container's WaitFor already gates on the "listening" log line; this second
-            // check confirms the server actually serves a request over the mapped port.
+            // check confirms the server actually serves a request over the mapped port. `Some(1)`
+            // bounds the probe to a single event so it can never scan the whole log.
             let addr = self.addr.clone();
             wait_for_ready(
                 "tephra",
                 || {
                     let addr = addr.clone();
                     async move {
-                        tokio::task::spawn_blocking(move || {
-                            let mut client =
-                                Client::connect(&addr).map_err(|err| anyhow!("{err}"))?;
-                            client
-                                .read_all(Query::all(), Position::ZERO)
-                                .map_err(|err| anyhow!("{err}"))?;
-                            Ok::<(), anyhow::Error>(())
-                        })
-                        .await?
+                        let client = AsyncClient::connect(&addr)
+                            .await
+                            .map_err(|err| anyhow!("{err}"))?;
+                        client
+                            .read_all(Query::all(), Position::ZERO, Some(1))
+                            .await
+                            .map_err(|err| anyhow!("{err}"))?;
+                        Ok::<(), anyhow::Error>(())
                     }
                 },
                 Duration::from_secs(60),
@@ -184,96 +181,47 @@ impl StoreManager for TephraStoreManager {
     }
 }
 
-/// Envelope that bundles the binary payload with metadata key-value pairs.
-/// Tephra's `Event` type carries only a single opaque payload, so we serialise
-/// this envelope as JSON into that payload to round-trip metadata.
-// TODO: Remove this when `Event` supports metadata, which is needed for timestamps
-//  in both the subscription latency workload and in the durability workload.
-#[derive(Serialize, Deserialize)]
-struct TephraEnvelope {
-    payload: Vec<u8>,
-    metadata: Vec<(String, String)>,
-}
-
-/// Adapter over a lazily-grown pool of blocking tephra client connections.
+/// Adapter over a single multiplexing async tephra client connection.
 ///
-/// The tephra client is synchronous and answers one request at a time per connection, and
-/// tephra-server is sequential per connection (it reads the next frame only after the current
-/// append is durable). So a single connection can hold just one in-flight append — a worker
-/// driving `in_flight_limit` concurrent ops (writeflood) would collapse to one, starving the
-/// server's group commit. The adapter therefore keeps a pool of independent connections (the same
-/// shape the Marten adapter uses for Postgres) and checks one out per operation, so concurrent ops
-/// actually run concurrently.
+/// [`AsyncClient`] is a cheap `Clone` handle over one socket — like a gRPC channel, it multiplexes
+/// many concurrent in-flight requests (and long-lived subscription streams) over that one
+/// connection, so there is no per-operation pool to manage. The benchmark harness creates one
+/// adapter per worker, so this is one connection per worker: a writer floods appends over it (the
+/// client bounds outstanding requests via `AsyncClientConfig::max_inflight_requests` for end-to-end
+/// backpressure), a reader streams over it, and a subscriber owns it for the subscription's life.
 ///
-/// The pool grows on demand up to [`pool_size`] (`ESB_TEPHRA_POOL_SIZE`, default 16): a permit
-/// bounds live connections at that cap, and a connection is only opened when an op finds none idle.
-/// A worker that never runs two ops at once (every reader, and non-flood writers) therefore opens
-/// exactly one connection, so read workloads keep their previous single-connection footprint. The
-/// blocking calls run on tokio's blocking pool.
+/// A per-worker *pool* is deliberately avoided: it would multiply sockets by worker count (e.g. 64
+/// workers × 16 = 1024 connections) and overwhelm the server, whereas one multiplexed socket per
+/// worker is both simpler and what the async client is designed for.
 #[derive(Clone)]
 pub struct TephraAdapter {
-    addr: String,
-    /// One permit per allowed connection; held for the duration of an op, so at most `pool_size`
-    /// connections are ever live. Ops beyond the cap wait here (natural backpressure).
-    permits: Arc<Semaphore>,
-    /// Idle connections available for reuse. The `std` mutex is only held for the brief
-    /// pop/push (never across an `.await`).
-    idle: Arc<Mutex<Vec<Client>>>,
+    client: AsyncClient,
 }
 
 impl TephraAdapter {
     pub async fn connect(addr: String) -> Result<Self> {
-        // Validate connectivity up front with one connection, kept as the pool's first member; the
-        // rest are opened lazily as concurrency demands.
-        let first_addr = addr.clone();
-        let client = tokio::task::spawn_blocking(move || {
-            Client::connect(&first_addr).map_err(|err| anyhow!("{err}"))
-        })
-        .await??;
-        Ok(Self {
-            addr,
-            permits: Arc::new(Semaphore::new(pool_size())),
-            idle: Arc::new(Mutex::new(vec![client])),
-        })
+        let client = AsyncClient::connect(&addr)
+            .await
+            .map_err(|err| anyhow!("{err}"))?;
+        Ok(Self { client })
     }
 
-    /// Checks out a connection (reusing an idle one, or opening a new one up to the pool cap, or
-    /// waiting for one to free up), runs a blocking closure against it on tokio's blocking pool,
-    /// then returns it to the pool.
-    async fn with_client<F, T>(&self, f: F) -> Result<T>
-    where
-        F: FnOnce(&mut Client) -> Result<T> + Send + 'static,
-        T: Send + 'static,
-    {
-        // The permit bounds concurrent connections to the pool size; it is held until the
-        // connection is returned, so a waiter that acquires it sees a freed connection.
-        let permit = Arc::clone(&self.permits)
-            .acquire_owned()
-            .await
-            .map_err(|_| anyhow!("tephra connection pool closed"))?;
-        let existing = self.idle.lock().expect("tephra pool mutex poisoned").pop();
-        let mut client = match existing {
-            Some(client) => client,
-            None => {
-                let addr = self.addr.clone();
-                tokio::task::spawn_blocking(move || {
-                    Client::connect(&addr).map_err(|err| anyhow!("{err}"))
-                })
-                .await??
-            }
-        };
-        // The closure owns the connection for the blocking call and hands it back with the result.
-        let (client, result) = tokio::task::spawn_blocking(move || {
-            let result = f(&mut client);
-            (client, result)
-        })
-        .await?;
-        self.idle
-            .lock()
-            .expect("tephra pool mutex poisoned")
-            .push(client);
-        drop(permit);
-        result
+    /// Pack the payload and metadata into one opaque blob for tephra's single-payload `Event`.
+    ///
+    /// Layout: `[metadata_json_len: u32 LE][metadata_json][raw payload bytes]`. The **payload stays
+    /// raw** — serialising the whole thing as JSON would encode the `Vec<u8>` payload as a number
+    /// array (`[0,255,...]`), ~3-4x larger and slower. Only the (usually empty) metadata map is
+    /// JSON. (`Event` has no native metadata; the subscription-latency and durability workloads
+    /// need it for timestamps.)
+    fn encode_payload(payload: &[u8], metadata: &[(String, String)]) -> Result<Vec<u8>> {
+        let meta = serde_json::to_vec(metadata)?;
+        let meta_len =
+            u32::try_from(meta.len()).map_err(|_| anyhow!("event metadata too large"))?;
+        let mut buf = Vec::with_capacity(4 + meta.len() + payload.len());
+        buf.extend_from_slice(&meta_len.to_le_bytes());
+        buf.extend_from_slice(&meta);
+        buf.extend_from_slice(payload);
+        Ok(buf)
     }
 
     /// Convert the benchmark's `EventData` into validated tephra `Event`s.
@@ -281,25 +229,29 @@ impl TephraAdapter {
         events
             .iter()
             .map(|evt| {
-                let envelope = TephraEnvelope {
-                    payload: evt.payload.as_ref().to_vec(),
-                    metadata: evt.metadata.as_ref().to_vec(),
-                };
-                let envelope_bytes = serde_json::to_vec(&envelope)?;
+                let payload = Self::encode_payload(evt.payload.as_ref(), evt.metadata.as_ref())?;
                 let tags: Vec<&str> = evt.tags.iter().map(|t| t.as_ref()).collect();
-                Event::new(evt.event_type.as_ref(), &tags, envelope_bytes)
-                    .map_err(|err| anyhow!("{err}"))
+                Event::new(evt.event_type.as_ref(), &tags, payload).map_err(|err| anyhow!("{err}"))
             })
             .collect()
     }
 
     /// Decode a tephra event's payload back into the original payload and metadata.
     fn decode_envelope(raw: &[u8]) -> (Vec<u8>, Vec<(String, String)>) {
-        match serde_json::from_slice::<TephraEnvelope>(raw) {
-            Ok(env) => (env.payload, env.metadata),
-            // Fallback for events written before the envelope was introduced.
-            Err(_) => (raw.to_vec(), Vec::new()),
+        if raw.len() >= 4 {
+            let meta_len = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
+            if let Some(rest) = raw.get(4..) {
+                if let Some(meta_bytes) = rest.get(..meta_len) {
+                    if let Ok(metadata) =
+                        serde_json::from_slice::<Vec<(String, String)>>(meta_bytes)
+                    {
+                        return (rest[meta_len..].to_vec(), metadata);
+                    }
+                }
+            }
         }
+        // Fallback: treat the whole blob as a raw payload with no metadata.
+        (raw.to_vec(), Vec::new())
     }
 
     /// Convert a tephra `SequencedEvent` into the benchmark's `ReadEvent`.
@@ -363,13 +315,12 @@ impl EventStoreAdapter for TephraAdapter {
             None => None,
         };
 
-        self.with_client(move |client| {
-            let resp = client
-                .append(events, condition)
-                .map_err(|err| anyhow!("{err}"))?;
-            Ok(Some(resp.last.get()))
-        })
-        .await
+        let resp = self
+            .client
+            .append(events, condition)
+            .await
+            .map_err(|err| anyhow!("{err}"))?;
+        Ok(Some(resp.last.get()))
     }
 
     async fn append_to_stream(
@@ -400,13 +351,12 @@ impl EventStoreAdapter for TephraAdapter {
 
         let events = Self::convert_events(events)?;
 
-        self.with_client(move |client| {
-            let resp = client
-                .append(events, condition)
-                .map_err(|err| anyhow!("{err}"))?;
-            Ok(Some(resp.last.get()))
-        })
-        .await
+        let resp = self
+            .client
+            .append(events, condition)
+            .await
+            .map_err(|err| anyhow!("{err}"))?;
+        Ok(Some(resp.last.get()))
     }
 
     async fn read_stream(&self, req: ReadRequest) -> anyhow::Result<Box<dyn ReadResponse>> {
@@ -431,156 +381,79 @@ impl EventStoreAdapter for TephraAdapter {
         let after = Position::new(req.from_offset.unwrap_or(0));
         let limit = req.limit;
 
-        // TODO: Actually define a TephraReadResponse... this is just to fix the build.
-        let out = self
-            .with_client(move |client| {
-                let mut stream = client.read(query, after).map_err(|err| anyhow!("{err}"))?;
-                let mut out = Vec::new();
-                for item in stream.by_ref() {
-                    if let Some(lim) = limit {
-                        if out.len() as u64 >= lim {
-                            break;
-                        }
-                    }
-                    let sequenced = item.map_err(|err| anyhow!("{err}"))?;
-                    let event = sequenced.event();
-                    let (payload, metadata) = Self::decode_envelope(event.payload());
-                    out.push(ReadEvent {
-                        offset: sequenced.position().get(),
-                        event_type: event.event_type().to_string(),
-                        payload,
-                        metadata,
-                    });
-                }
-                // Dropping the partially-consumed stream drains the rest, keeping the connection
-                // frame-aligned for the next request.
-                Ok(out)
-            })
-            .await?;
-
-        Ok(Box::new(VecReadResponse::new(out)))
+        // Push `limit` down to the server (applied during planning) so a selective read
+        // materializes only `limit` events instead of the whole match. The stream is consumed
+        // lazily by the workload; dropping it early cancels the read server-side.
+        let stream = self.client.read(query, after, limit).await;
+        Ok(Box::new(TephraReadResponse {
+            stream,
+            remaining: limit,
+        }))
     }
 
     async fn read_all(&self) -> anyhow::Result<Box<dyn ReadResponse>> {
-        let (tx, rx) = mpsc::channel(64);
-        let addr = self.addr.clone();
-
-        // Spawn a blocking task that creates its own client for the duration of the read,
-        // iterates the streaming ReadStream, and sends events through the channel.
-        tokio::task::spawn_blocking(move || {
-            let send_err = |tx: &mpsc::Sender<_>, err: &dyn std::fmt::Display| {
-                let _ = tx.blocking_send(Err(anyhow!("{err}")));
-            };
-            let mut client = match Client::connect(&addr) {
-                Ok(c) => c,
-                Err(err) => return send_err(&tx, &err),
-            };
-            let read_stream = match client.read(Query::all(), Position::ZERO) {
-                Ok(s) => s,
-                Err(err) => return send_err(&tx, &err),
-            };
-            for result in read_stream {
-                match result {
-                    Ok(sequenced) => {
-                        if tx
-                            .blocking_send(Ok(TephraAdapter::to_read_event(&sequenced)))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        send_err(&tx, &err);
-                        break;
-                    }
-                }
-            }
-        });
-
-        Ok(Box::new(TephraReadResponse { rx }))
+        let stream = self.client.read(Query::all(), Position::ZERO, None).await;
+        Ok(Box::new(TephraReadResponse {
+            stream,
+            remaining: None,
+        }))
     }
 
     async fn subscribe(&self, after: Option<u64>) -> anyhow::Result<Box<dyn ReadResponse>> {
-        let (tx, rx) = mpsc::channel(64);
-        let (cancel_tx, cancel_rx) = oneshot::channel::<SubscribeCancel>();
-        let addr = self.addr.clone();
-
-        // Spawn a blocking task that creates its own client for the duration of the
-        // subscription, sends the cancel handle back, then forwards events through the channel.
-        tokio::task::spawn_blocking(move || {
-            let send_err = |tx: &mpsc::Sender<_>, err: &dyn std::fmt::Display| {
-                let _ = tx.blocking_send(Err(anyhow!("{err}")));
-            };
-            let mut client = match Client::connect(&addr) {
-                Ok(c) => c,
-                Err(err) => return send_err(&tx, &err),
-            };
-            let (subscription, cancel) =
-                match client.subscribe(Query::all(), after.map_or(Position::ZERO, Position::new)) {
-                    Ok(pair) => pair,
-                    Err(err) => return send_err(&tx, &err),
-                };
-            let _ = cancel_tx.send(cancel);
-            for result in subscription {
-                match result {
-                    Ok(SubEvent::Event(sequenced)) => {
-                        if tx
-                            .blocking_send(Ok(TephraAdapter::to_read_event(&sequenced)))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Ok(SubEvent::CaughtUp(_)) => {}
-                    Err(err) => {
-                        send_err(&tx, &err);
-                        break;
-                    }
-                }
-            }
-        });
-
-        let cancel = cancel_rx.await.ok();
-        Ok(Box::new(TephraSubscription { rx, cancel }))
+        // Multiplex the subscription over the adapter's connection; dropping the stream (when the
+        // returned response is dropped) cancels the subscription server-side.
+        let after = after.map_or(Position::ZERO, Position::new);
+        let stream = self.client.subscribe(Query::all(), after).await;
+        Ok(Box::new(TephraSubscription { stream }))
     }
 }
 
+/// Streams a read/read-all lazily, decoding each event's metadata envelope. `remaining` caps the
+/// count for a limited read (the server already applies the limit; this is a client-side belt).
 struct TephraReadResponse {
-    rx: mpsc::Receiver<anyhow::Result<ReadEvent>>,
+    stream: AsyncReadStream,
+    remaining: Option<u64>,
 }
 
 #[async_trait]
 impl ReadResponse for TephraReadResponse {
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
-        match self.rx.recv().await {
-            Some(Ok(event)) => Ok(Some(event)),
-            Some(Err(e)) => Err(e),
+        if self.remaining == Some(0) {
+            return Ok(None);
+        }
+        match self.stream.next().await {
+            Some(item) => {
+                let sequenced = item.map_err(|err| anyhow!("{err}"))?;
+                if let Some(remaining) = self.remaining.as_mut() {
+                    *remaining -= 1;
+                }
+                Ok(Some(TephraAdapter::to_read_event(&sequenced)))
+            }
             None => Ok(None),
         }
     }
 }
 
-/// Subscription response that cancels the underlying tephra subscription when dropped.
+/// A live subscription. Dropping this (and the `AsyncSubscribeStream` it owns) cancels the
+/// subscription server-side, so no explicit cancel handle is needed.
 struct TephraSubscription {
-    rx: mpsc::Receiver<anyhow::Result<ReadEvent>>,
-    cancel: Option<SubscribeCancel>,
-}
-
-impl Drop for TephraSubscription {
-    fn drop(&mut self) {
-        if let Some(cancel) = self.cancel.take() {
-            cancel.cancel();
-        }
-    }
+    stream: AsyncSubscribeStream,
 }
 
 #[async_trait]
 impl ReadResponse for TephraSubscription {
     async fn next_event(&mut self) -> anyhow::Result<Option<ReadEvent>> {
-        match self.rx.recv().await {
-            Some(Ok(event)) => Ok(Some(event)),
-            Some(Err(e)) => Err(e),
-            None => Ok(None),
+        loop {
+            match self.stream.next().await {
+                Some(item) => match item.map_err(|err| anyhow!("{err}"))? {
+                    SubEvent::Event(sequenced) => {
+                        return Ok(Some(TephraAdapter::to_read_event(&sequenced)))
+                    }
+                    // Live-edge marker (caught up to the tip); keep waiting for the next event.
+                    SubEvent::CaughtUp(_) => continue,
+                },
+                None => return Ok(None),
+            }
         }
     }
 }
@@ -679,11 +552,13 @@ mod tests {
             },
         ];
 
-        let position = adapter.append_dcb(&events, None).await?;
-        let mut subscription = adapter.subscribe(position).await?;
-        let event2 = subscription.next_event().await?;
+        adapter.append_dcb(&events, None).await?;
 
-        // assert_eq!(event1.unwrap().event_type, "type1");
+        // Subscribe from the start; the two durable events replay first, then live events arrive.
+        let mut subscription = adapter.subscribe(Some(0)).await?;
+        let event1 = subscription.next_event().await?;
+        assert_eq!(event1.unwrap().event_type, "type1");
+        let event2 = subscription.next_event().await?;
         assert_eq!(event2.unwrap().event_type, "type2");
 
         let events = vec![EventData {
