@@ -203,11 +203,7 @@ pub trait EventStoreAdapter: Send + Sync {
     /// Open a live subscription for the given request.
     ///
     /// Defaults to a [`NullReadResponse`] so adapters can opt in incrementally.
-    async fn subscribe(
-        &self,
-        _req: Option<ReadRequest>,
-        _from_end: bool,
-    ) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, _after: Option<u64>) -> anyhow::Result<Box<dyn ReadResponse>> {
         Ok(Box::new(NullReadResponse))
     }
 

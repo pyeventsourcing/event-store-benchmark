@@ -341,18 +341,11 @@ impl EventStoreAdapter for AxonServerAdapter {
         }))
     }
 
-    async fn subscribe(
-        &self,
-        _req: Option<ReadRequest>,
-        from_end: bool,
-    ) -> Result<Box<dyn ReadResponse>> {
-        let from = if from_end {
-            self.client.get_head().await?
-        } else {
-            0
-        };
-
-        let stream = self.client.stream(from, vec![]).await?;
+    async fn subscribe(&self, after: Option<u64>) -> Result<Box<dyn ReadResponse>> {
+        let stream = self
+            .client
+            .stream(after.unwrap_or(0) as i64, vec![])
+            .await?;
         Ok(Box::new(AxonServerSubscription { stream }))
     }
 

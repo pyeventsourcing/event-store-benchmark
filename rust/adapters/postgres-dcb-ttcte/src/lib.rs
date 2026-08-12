@@ -322,24 +322,14 @@ impl EventStoreAdapter for PostgresDcbTtcteAdapter {
         Ok(Box::new(bench_core::adapter::VecReadResponse::new(out)))
     }
 
-    async fn subscribe(
-        &self,
-        _req: Option<ReadRequest>,
-        from_end: bool,
-    ) -> Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, after: Option<u64>) -> Result<Box<dyn ReadResponse>> {
         // Start LISTENing before reading the head so no append is missed in the
         // gap between establishing the baseline and receiving notifications.
         let listener = self.recorder.open_listener().await?;
-        let last_position = if from_end {
-            self.recorder.head().await?
-        } else {
-            0
-        };
-
         Ok(Box::new(PostgresSubscription {
             recorder: self.recorder.clone(),
             listener,
-            last_position,
+            last_position: after.unwrap_or(0) as i64,
             buffer: VecDeque::new(),
         }))
     }

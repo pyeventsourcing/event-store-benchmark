@@ -486,6 +486,7 @@ impl PerformanceWorkload {
         // outcome is recorded per run so nobody has to reconstruct from log timestamps whether
         // startup noise touched the numbers; a store that never becomes ready fails the run
         // loudly rather than producing measured-but-meaningless numbers.
+        let mut position_detected_by_readiness_probe: Option<u64> = None;
         let readiness = {
             let probe = store.create_adapter().await?;
             let probe_tag: Arc<str> = Arc::from("esb-readiness-probe");
@@ -505,7 +506,8 @@ impl PerformanceWorkload {
                     .append_to_stream(std::slice::from_ref(&probe_event), None, None)
                     .await
                 {
-                    Ok(_) => {
+                    Ok(position) => {
+                        position_detected_by_readiness_probe = position;
                         ready = true;
                         break;
                     }
@@ -612,6 +614,7 @@ impl PerformanceWorkload {
                     true,
                     ready_barrier.clone(),
                     sampling_config_rx.clone(),
+                    position_detected_by_readiness_probe,
                 );
             } else {
                 Self::spawn_read_task(
@@ -1207,6 +1210,7 @@ impl PerformanceWorkload {
         activate_metrics: bool,
         ready_barrier: Arc<Barrier>,
         mut sampling_config_rx: watch::Receiver<Option<SamplingConfigDecision>>,
+        position_detected_by_readiness_probe: Option<u64>,
     ) {
         worker_tasks.spawn(async move {
             ready_barrier.wait().await;
@@ -1235,7 +1239,8 @@ impl PerformanceWorkload {
             let tool_latencies = LatencyRecorder::new_for_tool_latencies();
 
             // Open a single live subscription for the whole benchmark.
-            let mut subscription = match adapter.subscribe(None, true).await {
+            let mut subscription = match adapter
+                .subscribe(position_detected_by_readiness_probe).await {
                 Ok(sub) => sub,
                 Err(e) => {
                     eprintln!("Failed to open subscription: {:#}", e);

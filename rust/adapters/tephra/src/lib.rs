@@ -500,11 +500,7 @@ impl EventStoreAdapter for TephraAdapter {
         Ok(Box::new(TephraReadResponse { rx }))
     }
 
-    async fn subscribe(
-        &self,
-        _req: Option<ReadRequest>,
-        _from_end: bool,
-    ) -> anyhow::Result<Box<dyn ReadResponse>> {
+    async fn subscribe(&self, after: Option<u64>) -> anyhow::Result<Box<dyn ReadResponse>> {
         let (tx, rx) = mpsc::channel(64);
         let (cancel_tx, cancel_rx) = oneshot::channel::<SubscribeCancel>();
         let addr = self.addr.clone();
@@ -519,10 +515,11 @@ impl EventStoreAdapter for TephraAdapter {
                 Ok(c) => c,
                 Err(err) => return send_err(&tx, &err),
             };
-            let (subscription, cancel) = match client.subscribe(Query::all(), Position::ZERO) {
-                Ok(pair) => pair,
-                Err(err) => return send_err(&tx, &err),
-            };
+            let (subscription, cancel) =
+                match client.subscribe(Query::all(), after.map_or(Position::ZERO, Position::new)) {
+                    Ok(pair) => pair,
+                    Err(err) => return send_err(&tx, &err),
+                };
             let _ = cancel_tx.send(cancel);
             for result in subscription {
                 match result {
@@ -667,8 +664,6 @@ mod tests {
 
         let adapter = manager.create_adapter().await?;
 
-        let mut subscription = adapter.subscribe(None, true).await?;
-
         let events = vec![
             EventData {
                 payload: Arc::from(vec![1, 2, 3]),
@@ -684,23 +679,25 @@ mod tests {
             },
         ];
 
-        adapter.append_dcb(&events, None).await?;
+        let position = adapter.append_dcb(&events, None).await?;
+        let mut subscription = adapter.subscribe(position).await?;
+        let event2 = subscription.next_event().await?;
 
-        // let mut received_events = Vec::new();
+        // assert_eq!(event1.unwrap().event_type, "type1");
+        assert_eq!(event2.unwrap().event_type, "type2");
 
-        let events = vec![
-            EventData {
-                payload: Arc::from(vec![7, 8, 9]),
-                event_type: Arc::from("type3"),
-                tags: Arc::from([Arc::from("tag3")]),
-                metadata: Arc::from([]),
-            },
-        ];
+        let events = vec![EventData {
+            payload: Arc::from(vec![7, 8, 9]),
+            event_type: Arc::from("type3"),
+            tags: Arc::from([Arc::from("tag3")]),
+            metadata: Arc::from([]),
+        }];
 
         adapter.append_dcb(&events, None).await?;
 
         let event3 = subscription.next_event().await?;
         assert!(event3.is_some());
+        assert_eq!(event3.unwrap().event_type, "type3");
 
         manager.stop().await?;
         Ok(())

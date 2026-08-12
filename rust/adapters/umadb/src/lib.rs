@@ -284,16 +284,7 @@ impl EventStoreAdapter for UmaDbAdapter {
         Ok(Box::new(UmaDbReadResponse { stream }))
     }
 
-    async fn subscribe(
-        &self,
-        _req: Option<ReadRequest>,
-        from_end: bool,
-    ) -> anyhow::Result<Box<dyn ReadResponse>> {
-        let after = if from_end {
-            self.client.head().await?
-        } else {
-            None
-        };
+    async fn subscribe(&self, after: Option<u64>) -> anyhow::Result<Box<dyn ReadResponse>> {
         let stream = self.client.subscribe(None, after).await?;
         Ok(Box::new(UmaDbSubscription { stream }))
     }
@@ -419,7 +410,7 @@ mod tests {
 
         let adapter = manager.create_adapter().await?;
 
-        let mut subscription = adapter.subscribe(None, true).await?;
+        let mut subscription = adapter.subscribe(None).await?;
 
         let events = vec![
             EventData {
