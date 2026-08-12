@@ -3920,37 +3920,44 @@ dependencies = [
  "bench-core",
  "bench-testcontainers",
  "libc",
- "serde",
  "serde_json",
  "tephra-client",
  "testcontainers",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
 [[package]]
 name = "tephra-client"
-version = "0.1.0"
-source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d67591c5c1cf7d1c57da4d72878f79ba040a03a201a51a4df1e1c5c10ff0d310"
 dependencies = [
+ "futures-core",
  "tephra-proto",
  "tephra-types",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
 name = "tephra-proto"
-version = "0.1.0"
-source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04ebb698e9b7d79adec303e1b60412b02cc8d7dfe07b710453e4ee7b96f143a2"
 dependencies = [
  "protobuf",
  "protobuf-codegen",
  "tephra-types",
+ "tokio",
 ]
 
 [[package]]
 name = "tephra-types"
-version = "0.1.0"
-source = "git+https://github.com/tqwewe/tephra?rev=b5d2d9642bc891bc14480750719a040029e025d8#b5d2d9642bc891bc14480750719a040029e025d8"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b00d0c6f17c7125768dec53e189b677eea25baae292bf45eb7921ed2f36b5c13"
 dependencies = [
  "smallvec",
  "thiserror 2.0.18",
