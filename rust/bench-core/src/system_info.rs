@@ -348,6 +348,36 @@ fn measure_fsync_latency(path: &Path) -> Result<FsyncStats> {
     })
 }
 
+/// Resolve the *actual* image a running container was started from, so `run_manifest.json`
+/// records the concrete build rather than a mutable tag. Tags like `tephra:local` get retagged
+/// and reused across versions; the image id and repo digest are immutable and pin the exact
+/// server binary. Best-effort: returns `None` if Docker or the container is unreachable.
+pub async fn resolve_image_provenance(container_id: &str) -> Option<serde_json::Value> {
+    let docker = bollard::Docker::connect_with_local_defaults().ok()?;
+    let container = docker.inspect_container(container_id, None).await.ok()?;
+
+    // The tag the container was created with (e.g. "ghcr.io/tqwewe/tephra:latest").
+    let image_ref = container.config.and_then(|cfg| cfg.image);
+    // The immutable content-addressed id of the resolved image (e.g. "sha256:...").
+    let image_id = container.image;
+
+    let mut provenance = serde_json::json!({
+        "container_image_ref": image_ref,
+        "image_id": image_id,
+    });
+
+    // Inspecting the image adds the registry repo digest(s) and all tags currently pointing at it,
+    // which is what lets a reader map the id back to a published version.
+    if let Some(id) = image_id.as_deref() {
+        if let Ok(image) = docker.inspect_image(id).await {
+            provenance["repo_tags"] = serde_json::json!(image.repo_tags);
+            provenance["repo_digests"] = serde_json::json!(image.repo_digests);
+        }
+    }
+
+    Some(provenance)
+}
+
 async fn collect_container_runtime_info() -> Result<ContainerRuntimeInfo> {
     // Try to detect Docker using bollard
     let docker_info = async {

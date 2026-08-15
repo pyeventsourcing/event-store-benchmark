@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bench_core::workloads::performance::WorkloadConfig;
 use bench_core::{
-    collect_environment_info, get_git_commit_hash, PerformanceWorkload, SessionInfo,
+    collect_environment_info, HarnessProvenance, PerformanceWorkload, SessionInfo,
     StoreManagerFactory, WorkloadRunner,
 };
 use bench_testcontainers::detect_docker_host;
@@ -408,11 +408,23 @@ async fn run_benchmark(
     println!("Total runs to execute: {}", total_runs);
     let runs_started = std::time::Instant::now();
 
-    // 2. Write session metadata and environment info (once per session)
-    let tool_version = get_git_commit_hash().unwrap_or_else(|_| "unknown".to_string());
+    // 2. Write session metadata and environment info (once per session).
+    // Provenance is baked into the binary at build time (see `rust/cli/build.rs`), so it is
+    // always present regardless of whether git is reachable at run time. A runtime
+    // `ESB_GIT_VERSION` still overrides the short sha (e.g. for release-pipeline stamping).
+    let provenance = HarnessProvenance {
+        es_bench_version: env!("CARGO_PKG_VERSION").to_string(),
+        git_sha: env!("ESB_GIT_SHA").to_string(),
+        git_sha_short: std::env::var("ESB_GIT_VERSION")
+            .unwrap_or_else(|_| env!("ESB_GIT_SHA_SHORT").to_string()),
+        git_dirty: env!("ESB_GIT_DIRTY") == "true",
+        build_timestamp: env!("ESB_BUILD_TIMESTAMP").to_string(),
+        rustc_version: env!("ESB_RUSTC_VERSION").to_string(),
+    };
     let session_metadata = SessionInfo {
         session_id: session_id.clone(),
-        tool_version,
+        // Kept for backward compatibility with existing tooling; mirrors the short sha.
+        tool_version: provenance.git_sha_short.clone(),
         workload_name: session_config_path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -420,6 +432,7 @@ async fn run_benchmark(
             .to_string(),
         config_file: session_config_path.to_string_lossy().to_string(),
         seed: actual_seed,
+        provenance,
     };
     fs::write(
         session_results_path.join("session.json"),
