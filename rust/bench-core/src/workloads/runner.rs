@@ -294,7 +294,29 @@ impl WorkloadRunner {
 
         // Capture the store's resolved posture (image/tag, segment size, cache/heap, memory
         // limit) while the manager is still alive, for `run_manifest.json`.
-        let store_manifest = store.describe();
+        let mut store_manifest = store.describe();
+
+        // For docker-backed stores, resolve the concrete image the container actually ran (id +
+        // repo digest), not just the mutable tag `describe()` reports. Done here, generically,
+        // while the container is still up — before the `store.stop()` below — so every docker
+        // adapter gets it without per-adapter code.
+        if store.use_docker() {
+            if let Some(container_id) = store.container_id() {
+                if let Some(resolved) =
+                    crate::system_info::resolve_image_provenance(&container_id).await
+                {
+                    match &mut store_manifest {
+                        serde_json::Value::Object(map) => {
+                            map.insert("resolved_image".to_string(), resolved);
+                        }
+                        serde_json::Value::Null => {
+                            store_manifest = serde_json::json!({ "resolved_image": resolved });
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
 
         let mut container_stats: Option<ContainerStats> = None;
         let mut cpu_samples: Option<Vec<CpuSample>> = None;

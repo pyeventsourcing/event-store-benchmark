@@ -370,6 +370,28 @@ pub struct SessionInfo {
     pub workload_name: String,
     pub config_file: String,
     pub seed: u64,
+    /// Build-time identity of the es-bench binary that ran this session. Baked in at compile time
+    /// (see `rust/cli/build.rs`) so it is always present, and pins the adapter code via the
+    /// committed `Cargo.lock` at that sha.
+    pub provenance: HarnessProvenance,
+}
+
+/// Provenance of the es-bench harness binary, captured at build time. Recorded in `session.json`
+/// so every result set is traceable to the exact source it was produced from.
+#[derive(Debug, Clone, Serialize)]
+pub struct HarnessProvenance {
+    /// `CARGO_PKG_VERSION` of the es-bench crate.
+    pub es_bench_version: String,
+    /// Full git commit SHA of the harness repo at build time.
+    pub git_sha: String,
+    /// Short (12-char) git commit SHA.
+    pub git_sha_short: String,
+    /// Whether the working tree had uncommitted changes at build time.
+    pub git_dirty: bool,
+    /// UTC build timestamp (RFC 3339).
+    pub build_timestamp: String,
+    /// `rustc --version` used for the build.
+    pub rustc_version: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
